@@ -1,0 +1,60 @@
+==========================================================================
+  SGF - SISTEMA DE GESTION DE FACTURAS
+  Guia rapida para empezar (no hace falta saber informatica)
+==========================================================================
+
+QUE ES ESTO
+-----------
+SGF es el programa para registrar las facturas y saber a que linea, titular y
+unidad corresponde cada numero de telefono.
+
+Se instala UNA sola vez en el equipo y funciona SIN INTERNET.
+
+
+COMO EMPEZAR (3 pasos)
+----------------------
+1) Abra "SGF Escritorio" desde el escritorio (o desde el menu Inicio).
+
+2) La primera vez aparece un asistente con tres pantallas:
+   - Donde se guardan los datos: deje "En este equipo" (recomendado).
+   - Cuenta del administrador: escriba su nombre y una contrasena que recuerde.
+     ANOTELA: no se puede recuperar, solo cambiar.
+
+3) Cuando termine, pulse "Empezar a trabajar".
+
+
+USO DIARIO
+----------
+- El servidor se enciende solo al abrir el programa. Arriba debe verse en verde
+  "Servidor en marcha".
+- Para procesar facturas: menu "Facturas" y arrastre los PDF a la ventana.
+- Si algun dia algo va mal: menu "Servidor" y pulse "Reiniciar".
+
+
+COPIA DE SEGURIDAD (MUY IMPORTANTE)
+-----------------------------------
+Menu "Servidor" -> "Crear copia ahora".
+Hagalo al terminar cada jornada. Se guardan las 10 ultimas copias.
+Tambien puede pulsar Ctrl + B en cualquier momento.
+
+Sus datos estan en:
+   C:\Users\<su usuario>\AppData\Roaming\SGF
+
+
+PREGUNTAS FRECUENTES
+--------------------
+- No tengo internet. ¿Funciona?  Si. Todo esta en este equipo.
+- ¿Puedo apagar el equipo de golpe?  Mejor cierre el programa primero, pero si
+  se apaga de golpe no se pierden los datos ya guardados.
+- ¿Otra computadora puede entrar?  No. El servidor solo acepta conexiones de
+  este mismo equipo.
+- ¿Como cambio la contrasena de un companero?  Menu "Usuarios".
+- Olvide la contrasena del administrador: consulte con el responsable del
+  sistema; hay que restaurar desde una copia o crear una cuenta nueva.
+
+
+SOPORTE
+-------
+Antes de llamar, abra el menu "Servidor" y copie el texto de "Registro de
+actividad": casi siempre dice exactamente que esta pasando.
+==========================================================================

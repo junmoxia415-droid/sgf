@@ -1,0 +1,261 @@
+name: Compilar e instalar SGF (Windows)
+
+# Se ejecuta al subir cambios a main o a la rama de trabajo, y a mano desde la
+# pestaña Actions. Genera:
+#   - SGF-Escritorio-Setup-<version>.exe   (instalador con TODO dentro)
+#   - SGF-Escritorio-Portable-<version>.zip (carpeta que arranca sin instalar)
+#   - resultados de pruebas e informes
+
+on:
+  push:
+    branches: [main, 'fix/**', 'feature/**']
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión a compilar (ej. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+env:
+  VERSION: ${{ github.event.inputs.version || '1.0.0' }}
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # 1. Comprobaciones rapidas: tipos del servidor, pruebas de la API y del
+  #    analisis de PDF. Si algo falla, no se compila nada.
+  # ───────────────────────────────────────────────────────────────────────────
+  servidor:
+    name: Servidor · tipos y pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: server
+        run: |
+          npm ci --no-audit --no-fund
+          npm rebuild oracledb --build-from-source || true
+
+      - name: Comprobar TypeScript
+        working-directory: server
+        run: npx tsc --noEmit
+
+      - name: Compilar servidor
+        working-directory: server
+        run: npx tsc
+
+      - name: Arrancar servidor de pruebas
+        working-directory: server
+        env:
+          DB_TYPE: sqlite
+          PORT: '3000'
+          HOST: '127.0.0.1'
+          JWT_SECRET: secreto-solo-para-pruebas-123456
+          DEFAULT_ADMIN_USER: admin
+          DEFAULT_ADMIN_PASSWORD: Admin123!
+          SGF_DATA_DIR: ${{ github.workspace }}/datos-prueba
+          SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
+        run: |
+          mkdir -p "$SGF_DATA_DIR"
+          node dist/index.js > servidor.log 2>&1 &
+          echo $! > servidor.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then echo "Servidor arriba"; break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health
+
+      - name: Pruebas de seguridad (rutas cerradas)
+        run: |
+          echo "Sin token, /api/db/config debe dar 403 y /api/facturas debe dar 401"
+          codigo_db=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sgf-console-token: token-incorrecto' http://127.0.0.1:3000/api/db/config)
+          codigo_fact=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/facturas)
+          echo "db/config=$codigo_db facturas=$codigo_fact"
+          test "$codigo_db" = "403"
+          test "$codigo_fact" = "401"
+
+      - name: Panel de la consola responde
+        env:
+          SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
+        run: |
+          curl -fsS -H "x-sgf-console-token: $SGF_CONSOLE_TOKEN" http://127.0.0.1:3000/api/panel/estado | tee panel.json
+          grep -q '"contadores"' panel.json
+
+      - name: Guardar registro del servidor
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registro-servidor
+          path: |
+            server/servidor.log
+            panel.json
+          if-no-files-found: ignore
+
+      - name: Parar servidor
+        if: always()
+        run: kill "$(cat servidor.pid)" 2>/dev/null || true
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 2. Aplicacion Flutter: analisis, pruebas y compilacion del .exe
+  # ───────────────────────────────────────────────────────────────────────────
+  escritorio:
+    name: Escritorio · Flutter (Windows)
+    needs: servidor
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.8'
+          cache: true
+
+      - name: Dependencias
+        working-directory: escritorio
+        run: flutter pub get
+
+      - name: Analisis estatico (0 errores obligatorio)
+        working-directory: escritorio
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Pruebas de interfaz
+        working-directory: escritorio
+        run: flutter test --reporter expanded
+
+      - name: Compilar ejecutable
+        working-directory: escritorio
+        run: flutter build windows --release --build-name=${{ env.VERSION }}
+
+      # ── Montaje del paquete: .exe + servidor + Node + dependencias ─────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar Node portatil
+        shell: pwsh
+        run: |
+          $nodeExe = (Get-Command node).Source
+          $nodeDir = Join-Path $env:RUNNER_TEMP 'node-portatil'
+          New-Item -ItemType Directory -Force -Path $nodeDir | Out-Null
+          Copy-Item $nodeExe (Join-Path $nodeDir 'node.exe')
+          Write-Host "Node copiado desde $nodeExe"
+
+      - name: Preparar el servidor (solo dependencias de produccion)
+        working-directory: server
+        run: |
+          npm ci --omit=dev --no-audit --no-fund
+          npx tsc
+
+      - name: Montar la carpeta de distribucion
+        shell: pwsh
+        run: |
+          $destino = 'distribucion'
+          Remove-Item -Recurse -Force $destino -ErrorAction Ignore
+          New-Item -ItemType Directory -Force -Path $destino | Out-Null
+
+          # 1) La aplicacion Flutter
+          Copy-Item -Recurse 'escritorio/build/windows/x64/runner/Release/*' $destino
+
+          # 2) El servidor Node, con su node_modules de produccion
+          $servidor = Join-Path $destino 'servidor'
+          New-Item -ItemType Directory -Force -Path $servidor | Out-Null
+          Copy-Item -Recurse 'server/dist' (Join-Path $servidor 'dist')
+          Copy-Item 'server/package.json' $servidor
+          Copy-Item -Recurse 'server/node_modules' (Join-Path $servidor 'node_modules')
+          $runtime = Join-Path $servidor 'runtime'
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'node-portatil/node.exe') $runtime
+
+          # 3) Material de apoyo
+          Copy-Item 'escritorio/LEEME-PRIMERO.txt' $destino -ErrorAction Ignore
+          Get-ChildItem $destino | Select-Object Name, Length
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Generar instalador
+        shell: pwsh
+        run: |
+          $iss = 'instalador/sgf.iss'
+          (Get-Content $iss) -replace '@VERSION@', '${{ env.VERSION }}' | Set-Content $iss
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
+          Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
+
+      - name: Comprimir version portable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'distribucion/*' -DestinationPath "SGF-Escritorio-Portable-${{ env.VERSION }}.zip" -Force
+
+      - name: Publicar resultados
+        uses: actions/upload-artifact@v4
+        with:
+          name: SGF-Escritorio-${{ env.VERSION }}
+          path: |
+            instalador/SGF-Escritorio-Setup-*.exe
+            SGF-Escritorio-Portable-*.zip
+          if-no-files-found: error
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 3. Pruebas de integracion: la app Flutter habla con el servidor real
+  # ───────────────────────────────────────────────────────────────────────────
+  integracion:
+    name: Integracion · Flutter + servidor
+    needs: servidor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.8'
+          cache: true
+
+      - name: Preparar servidor
+        working-directory: server
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc
+          mkdir -p "$GITHUB_WORKSPACE/datos-ci"
+          DB_TYPE=sqlite PORT=3000 HOST=127.0.0.1 \
+          JWT_SECRET=secreto-ci-1234567890 \
+          DEFAULT_ADMIN_USER=admin DEFAULT_ADMIN_PASSWORD=Admin123! \
+          SGF_DATA_DIR="$GITHUB_WORKSPACE/datos-ci" \
+          SGF_CONSOLE_TOKEN=token-consola-ci-1234567890 \
+          node dist/index.js > servidor.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3000/api/health > /dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health
+
+      - name: Dependencias Flutter
+        working-directory: escritorio
+        run: flutter pub get
+
+      - name: Pruebas de integracion
+        working-directory: escritorio
+        env:
+          SGF_INTEGRACION: '1'
+          SGF_BASE: http://127.0.0.1:3000
+          SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
+        run: flutter test test/api_test.dart --reporter expanded
+
+      - name: Registro si algo falla
+        if: failure()
+        run: cat server/servidor.log || true

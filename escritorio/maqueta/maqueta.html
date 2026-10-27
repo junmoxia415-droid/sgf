@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>SGF Escritorio · Maqueta navegable</title>
+<style>
+  :root{
+    --verde:#0E7C66; --verde-claro:#E6F4F1; --verde-ok:#1B7F4B; --azul:#1D6FB8;
+    --ambar:#B8730B; --rojo:#B3261E; --gris:#6B7280;
+    --fondo:#F4F6F8; --superficie:#fff; --borde:#E2E8ED; --texto:#11181F; --texto-2:#5A6672;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    background:#0B1116; color:var(--texto); display:flex; justify-content:center;
+    padding:18px; min-height:100vh;
+  }
+  /* Marco de "ventana de Windows" para que se entienda que es una app de escritorio */
+  .ventana{
+    width:100%; max-width:1360px; background:var(--fondo); border-radius:10px;
+    overflow:hidden; box-shadow:0 24px 70px rgba(0,0,0,.55); display:flex; flex-direction:column;
+    min-height:760px;
+  }
+  .barra-titulo{
+    background:#F7F9FA; border-bottom:1px solid var(--borde); padding:8px 14px;
+    display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--texto-2);
+  }
+  .punto{width:11px;height:11px;border-radius:50%;}
+  .barra-estado{
+    display:flex; align-items:center; gap:10px; padding:12px 20px;
+    background:var(--superficie); border-bottom:1px solid var(--borde);
+  }
+  .etiqueta{
+    display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px;
+    font-size:12.5px; font-weight:700; border:1px solid;
+  }
+  .etiqueta.ok{color:var(--verde-ok); background:#EAF6EF; border-color:#B7E0C6;}
+  .etiqueta.info{color:var(--azul); background:#EAF2FA; border-color:#BBD4EC;}
+  .etiqueta.gris{color:#4B5563; background:#F1F3F5; border-color:#DDE2E7;}
+  .etiqueta.ambar{color:var(--ambar); background:#FDF3E3; border-color:#F0D6A8;}
+  .etiqueta.rojo{color:var(--rojo); background:#FBEAE9; border-color:#F0C2BF;}
+  .crecer{flex:1;}
+  .boton{
+    display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 18px;
+    border-radius:10px; font-size:14.5px; font-weight:600; cursor:pointer;
+    border:1px solid var(--borde); background:var(--superficie); color:var(--texto);
+    transition:all .15s;
+  }
+  .boton:hover{background:#F6F8F9;}
+  .boton.primario{background:var(--verde); border-color:var(--verde); color:#fff;}
+  .boton.primario:hover{filter:brightness(1.08);}
+  .boton.peligro{color:var(--rojo); border-color:#F0C2BF; background:#FBEAE9;}
+  .boton:disabled{opacity:.45; cursor:not-allowed;}
+  .boton.pequeno{height:36px; padding:0 12px; font-size:13px;}
+
+  .cuerpo{display:flex; flex:1; min-height:0;}
+  .menu{
+    width:226px; background:var(--superficie); border-right:1px solid var(--borde);
+    padding:14px 10px; display:flex; flex-direction:column; gap:4px;
+  }
+  .logo{display:flex; gap:10px; align-items:center; padding:6px 8px 16px;}
+  .logo .cuadro{
+    width:38px;height:38px;border-radius:10px;background:var(--verde);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:19px;
+  }
+  .logo b{font-size:16.5px; display:block; line-height:1.1;}
+  .logo span{font-size:11px; color:var(--texto-2);}
+  .item{
+    display:flex; align-items:center; gap:11px; padding:11px 12px; border-radius:9px;
+    font-size:14px; cursor:pointer; color:#2A333C;
+  }
+  .item:hover{background:#F3F6F7;}
+  .item.activo{background:var(--verde-claro); color:var(--verde); font-weight:700;}
+  .item .ico{width:20px; text-align:center; font-size:16px;}
+
+  .pantalla{flex:1; overflow:auto; padding:22px 24px 30px;}
+  .pantalla h1{font-size:25px; letter-spacing:-.3px;}
+  .pantalla .sub{font-size:14.5px; color:var(--texto-2); margin-top:5px; line-height:1.45; max-width:820px;}
+  .cabecera{display:flex; align-items:flex-start; gap:16px; margin-bottom:20px;}
+  .tarjeta{
+    background:var(--superficie); border:1px solid var(--borde); border-radius:14px; padding:18px;
+  }
+  .columnas{display:grid; grid-template-columns:1.15fr .85fr; gap:16px; align-items:start;}
+  @media (max-width:1080px){ .columnas{grid-template-columns:1fr;} .menu{width:74px;} .menu .texto{display:none;} }
+  .dato span{display:block; font-size:11px; letter-spacing:.6px; font-weight:700; color:var(--verde);}
+  .dato b{font-size:26px; font-weight:700;}
+  .datos{display:flex; gap:34px; flex-wrap:wrap; margin:18px 0;}
+  .aviso{
+    display:flex; gap:12px; padding:14px; border-radius:12px; font-size:13.5px; line-height:1.45;
+    border:1px solid; align-items:flex-start;
+  }
+  .aviso b{display:block; font-size:14.5px; margin-bottom:3px;}
+  .aviso.info{background:#EFF5FB; border-color:#C4DAF0; color:#154B7D;}
+  .aviso.exito{background:#EDF7F1; border-color:#B7E0C6; color:#136239;}
+  .aviso.ambar{background:#FDF5E8; border-color:#F0D6A8; color:#7C4E06;}
+  .aviso.rojo{background:#FCEDEC; border-color:#F1C7C4; color:#8E1E18;}
+  .fila{border:1px solid var(--borde); border-radius:10px; padding:11px 13px; display:flex; gap:12px; align-items:center; margin-bottom:8px; cursor:pointer;}
+  .fila:hover{background:#F7FAFA;}
+  .fila b{font-size:14.5px;}
+  .fila small{display:block; font-size:12.5px; color:var(--texto-2);}
+  .lista-pasos{counter-reset:paso;}
+  .paso{display:flex; gap:11px; margin-bottom:13px;}
+  .paso .num{
+    width:26px;height:26px;border-radius:50%;background:var(--verde-claro);color:var(--verde);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 auto;
+  }
+  .paso b{font-size:14.5px; font-weight:600; display:block;}
+  .paso span{font-size:13px; color:var(--texto-2); line-height:1.4;}
+  code{font-family:Consolas, "Courier New", monospace; font-size:12.5px; background:#EEF2F4; padding:2px 6px; border-radius:5px;}
+  .terminal{
+    background:#0F1720; color:#9FB3C8; border-radius:8px; padding:12px; font-family:Consolas, monospace;
+    font-size:11.5px; line-height:1.55; height:236px; overflow:auto;
+  }
+  .terminal .hora{color:#5E7285;}
+  .terminal .warn{color:#F0B24A;}
+  .soltar{
+    border:2px dashed var(--borde); border-radius:14px; height:236px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px; background:var(--superficie); text-align:center;
+  }
+  .soltar.activo{border-color:var(--verde); background:var(--verde-claro);}
+  .rejilla-servicios{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px;}
+  .resultado{border:1px solid #B7E0C6; background:#F5FBF7; border-radius:12px; padding:13px; margin-bottom:9px;}
+  .resultado.malo{border-color:#F1C7C4; background:#FDF5F4;}
+  .chips{display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:12.5px;}
+  .chips span b{font-weight:700;}
+  .barra{height:8px; background:#E7ECEF; border-radius:6px; overflow:hidden; margin-top:10px;}
+  .barra i{display:block; height:100%; background:var(--verde); border-radius:6px;}
+  .interruptor{display:flex; align-items:center; gap:12px; padding:12px 0;}
+  .pista{font-size:12.5px; color:var(--texto-2);}
+  .pie{font-size:12px; color:var(--texto-2); padding:10px 20px; border-top:1px solid var(--borde); background:var(--superficie);}
+  .aviso-maqueta{
+    background:#1B2230; color:#C9D6E2; font-size:12.5px; padding:9px 20px; text-align:center;
+  }
+  .aviso-maqueta b{color:#fff;}
+</style>
+</head>
+<body>
+<div class="ventana">
+  <div class="barra-titulo">
+    <span class="punto" style="background:#E06C60"></span>
+    <span class="punto" style="background:#E8B64C"></span>
+    <span class="punto" style="background:#5DBB63"></span>
+    <span style="margin-left:8px">SGF · Sistema de Gestión de Facturas</span>
+    <span class="crecer"></span>
+    <span>— ▢ ✕</span>
+  </div>
+
+  <div class="aviso-maqueta">
+    <b>Maqueta navegable.</b> Puede pulsar el menú y los botones para recorrer la aplicación. En el programa real,
+    estos datos vienen del servidor instalado en el equipo.
+  </div>
+
+  <div class="barra-estado">
+    <span class="etiqueta ok" id="estado-servidor">● Servidor en marcha</span>
+    <span class="etiqueta gris">Puerto 3000</span>
+    <span class="crecer"></span>
+    <span class="etiqueta gris" id="usuario-chip">Sin sesión</span>
+    <button class="boton pequeno" onclick="abrirLogin()">Iniciar sesión</button>
+  </div>
+
+  <div class="cuerpo">
+    <nav class="menu">
+      <div class="logo">
+        <div class="cuadro">🧾</div>
+        <div><b>SGF</b><span class="texto">Gestión de facturas</span></div>
+      </div>
+      <div class="item activo" data-pantalla="inicio" onclick="ir('inicio')"><span class="ico">▦</span><span class="texto">Inicio</span></div>
+      <div class="item" data-pantalla="servidor" onclick="ir('servidor')"><span class="ico">🖧</span><span class="texto">Servidor</span></div>
+      <div class="item" data-pantalla="facturas" onclick="ir('facturas')"><span class="ico">📄</span><span class="texto">Facturas</span></div>
+      <div class="item" data-pantalla="importar" onclick="ir('importar')"><span class="ico">📊</span><span class="texto">Importar Excel</span></div>
+      <div class="item" data-pantalla="usuarios" onclick="ir('usuarios')"><span class="ico">👥</span><span class="texto">Usuarios</span></div>
+      <div class="item" data-pantalla="ajustes" onclick="ir('ajustes')"><span class="ico">⚙</span><span class="texto">Ajustes y guía</span></div>
+      <div class="crecer"></div>
+      <div class="item" onclick="ir('asistente')"><span class="ico">✨</span><span class="texto">Ver el asistente inicial</span></div>
+    </nav>
+
+    <main class="pantalla" id="pantalla"></main>
+  </div>
+
+  <div class="pie">Funciona sin internet · Los datos no salen de este equipo</div>
+</div>
+
+<script>
+const pantallas = {};
+
+// ─────────────────────────────── INICIO ───────────────────────────────
+pantallas.inicio = () => `
+  <div class="cabecera">
+    <div class="crecer">
+      <h1>Todo listo para trabajar</h1>
+      <div class="sub">Este es el estado del sistema en este equipo. La aplicación arranca el servidor por usted:
+      no hay que abrir archivos .bat ni ventanas negras.</div>
+    </div>
+    <button class="boton">↻ Actualizar</button>
+  </div>
+  <div class="columnas">
+    <div class="tarjeta">
+      <span class="etiqueta ok">● Servidor en marcha</span>
+      <span class="etiqueta info" style="margin-left:6px">▤ Base de datos: SQLITE</span>
+      <div class="datos">
+        <div class="dato"><span>FACTURAS</span><b>128</b></div>
+        <div class="dato"><span>SERVICIOS</span><b>641</b></div>
+        <div class="dato"><span>LÍNEAS DEL EXCEL</span><b>668</b></div>
+        <div class="dato"><span>USUARIOS</span><b>3</b></div>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--borde);margin:14px 0">
+      <div style="font-size:14px">✓ Conexión con la base de datos correcta · 3 ms</div>
+      <div class="pista" style="margin-top:6px">Tiempo en marcha: 2 h 14 min · Memoria: 48 MB</div>
+    </div>
+    <div class="tarjeta">
+      <h3 style="font-size:17px;margin-bottom:6px">¿Qué desea hacer?</h3>
+      <div class="pista" style="margin-bottom:12px">Elija una tarea; cada pantalla explica los pasos.</div>
+      <div class="fila" onclick="ir('facturas')"><span>⬆</span><div><b>Procesar facturas</b><small>Suba los PDF y el sistema los lee y guarda</small></div></div>
+      <div class="fila" onclick="ir('importar')"><span>📊</span><div><b>Cargar el Excel de líneas</b><small>Titular, unidad y cargo de cada número</small></div></div>
+      <div class="fila" onclick="abrirLogin()"><span>🔑</span><div><b>Iniciar sesión</b><small>Necesario para ver y procesar facturas</small></div></div>
+      <div class="fila" onclick="ir('servidor')"><span>🖧</span><div><b>Servidor y copias de seguridad</b><small>Iniciar, detener y proteger los datos</small></div></div>
+    </div>
+  </div>
+  <div class="aviso info" style="margin-top:16px">
+    <span>ℹ</span>
+    <div><b>Funciona sin internet</b>
+    Todo está en este equipo: la base de datos, las facturas y las líneas del Excel. Si el equipo se apaga de golpe,
+    la información no se pierde: la base se guarda de forma segura en cada cambio. Se recomienda crear una copia de
+    seguridad al final de cada jornada desde «Servidor».</div>
+  </div>
+`;
+
+// ─────────────────────────────── SERVIDOR ───────────────────────────────
+pantallas.servidor = () => `
+  <div class="cabecera"><div class="crecer">
+    <h1>Servidor</h1>
+    <div class="sub">Aquí se enciende y se apaga el motor que guarda los datos. Mientras la aplicación está abierta,
+    el servidor se inicia solo; estos botones son para cuando algo va mal o para hacer copias de seguridad.</div>
+  </div></div>
+  <div class="columnas">
+    <div>
+      <div class="tarjeta">
+        <div style="display:flex;gap:14px;align-items:center">
+          <div id="circulo" style="width:52px;height:52px;border-radius:50%;background:#EAF6EF;color:var(--verde-ok);
+            display:flex;align-items:center;justify-content:center;font-size:24px">✓</div>
+          <div class="crecer">
+            <h3 id="titulo-estado" style="font-size:21px">El servidor está funcionando</h3>
+            <div class="pista">Dirección: http://127.0.0.1:3000 · solo accesible desde este equipo</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+          <button class="boton primario" id="btn-iniciar" onclick="arrancar()" disabled>▶ Iniciar</button>
+          <button class="boton" id="btn-detener" onclick="detener()">■ Detener</button>
+          <button class="boton" onclick="reiniciar()">⟳ Reiniciar</button>
+        </div>
+      </div>
+      <div class="tarjeta" style="margin-top:16px">
+        <h3 style="font-size:17px;margin-bottom:5px">Copias de seguridad</h3>
+        <div class="pista">Una copia es una fotografía de la base de datos en este momento. Si algún día los datos se
+        dañan, se puede volver a esa fotografía. Se guardan las 10 más recientes.</div>
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+          <button class="boton primario" onclick="copia()">🛡 Crear copia ahora</button>
+          <button class="boton">📂 Abrir la carpeta de datos</button>
+        </div>
+        <div class="pista" id="ultima-copia" style="margin-top:12px">Última copia: copia-2026-10-27T08-15-02.db</div>
+      </div>
+    </div>
+    <div>
+      <div class="tarjeta">
+        <h3 style="font-size:17px;margin-bottom:12px">Dónde están los datos</h3>
+        <div class="pista">BASE DE DATOS</div><div><code>SQLITE</code></div><br>
+        <div class="pista">ARCHIVO</div><div><code>C:\\Users\\Ana\\AppData\\Roaming\\SGF\\datos</code></div><br>
+        <div class="pista">TAMAÑO</div><div><code>6,4 MB</code></div><br>
+        <div class="pista">FACTURAS GUARDADAS</div><div><code>128</code></div>
+        <div class="aviso info" style="margin-top:14px"><span>ℹ</span><div>
+          <b>Sus datos no salen de aquí</b>El servidor solo acepta conexiones desde este mismo equipo.
+          Otras computadoras de la red no pueden entrar, ni siquiera con la dirección y el puerto.</div></div>
+      </div>
+      <div class="tarjeta" style="margin-top:16px">
+        <div style="display:flex;align-items:center;margin-bottom:8px">
+          <h3 style="font-size:17px">Registro de actividad</h3><span class="crecer"></span>
+          <button class="boton pequeno" onclick="limpiarRegistro()">Limpiar</button>
+        </div>
+        <div class="terminal" id="registro">
+          <div><span class="hora">[08:02:11]</span> Servidor en marcha: http://127.0.0.1:3000</div>
+          <div><span class="hora">[08:02:11]</span> [SGF] SQLite cargado: C:\\Users\\Ana\\AppData\\Roaming\\SGF\\datos\\sgf-data.db</div>
+          <div><span class="hora">[08:02:12]</span> [SGF] BD: SQLITE OK</div>
+          <div><span class="hora">[08:14:40]</span> factura 990000009001 procesada · 5 servicios · confianza 96</div>
+          <div><span class="hora">[08:15:02]</span> Copia creada: copia-2026-10-27T08-15-02.db</div>
+          <div><span class="hora">[08:31:55]</span> [SGF] Aviso: PDF sin texto (posible escaneo) · 990000009002</div>
+          <div><span class="hora">[08:31:55]</span> <span class="warn">⚠ La factura se ha guardado solo con la cabecera; queda marcada para revisar.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+// ─────────────────────────────── FACTURAS ───────────────────────────────
+pantallas.facturas = () => `
+  <div class="cabecera"><div class="crecer">
+    <h1>Facturas</h1>
+    <div class="sub">Suelte los PDF aquí o búsquelos en el equipo. El sistema lee el texto, guarda la factura y cruza
+    las líneas con el Excel importado.</div>
+  </div>
+  <button class="boton">🕘 Ver historial</button></div>
+
+  <div style="display:flex;gap:0;border:1px solid var(--borde);border-radius:10px;overflow:hidden;margin-bottom:16px;background:#fff">
+    <div style="padding:12px 20px;font-weight:700;color:var(--verde);border-bottom:2.5px solid var(--verde)">⬆ Procesar PDF</div>
+    <div style="padding:12px 20px;color:var(--texto-2)">🧾 Historial</div>
+  </div>
+
+  <div class="columnas">
+    <div>
+      <div class="soltar" id="soltar"
+        ondragover="event.preventDefault();this.classList.add('activo')"
+        ondragleave="this.classList.remove('activo')"
+        ondrop="event.preventDefault();this.classList.remove('activo');procesar()">
+        <div style="font-size:44px;color:var(--verde)">⬆</div>
+        <b style="font-size:17px">Arrastre aquí los PDF de facturas</b>
+        <div class="pista">o pulse el botón para buscarlos en el equipo</div>
+        <button class="boton primario" onclick="procesar()">📂 Elegir archivos PDF</button>
+      </div>
+      <div class="aviso info" style="margin-top:14px"><span>ℹ</span><div>
+        <b>Qué ocurre al procesar un PDF</b>
+        1) Se lee el texto del documento. 2) Se guarda la factura con su número, cliente e importes.
+        3) Cada número de servicio se busca en el Excel de líneas para mostrar titular, unidad y cargo.
+        Si un PDF ya estaba registrado, el sistema avisa en lugar de duplicarlo.</div></div>
+    </div>
+    <div class="tarjeta">
+      <div style="display:flex;align-items:center;margin-bottom:10px">
+        <h3 style="font-size:17px">Resultado</h3><span class="crecer"></span>
+        <button class="boton pequeno" onclick="document.getElementById('resultados').innerHTML=''">Limpiar</button>
+      </div>
+      <div id="resultados">
+        <div class="pista" style="text-align:center;padding:26px 10px;line-height:1.5">
+          Todavía no ha procesado ninguna factura.<br>Pulse «Elegir archivos PDF» para ver el resultado aquí.
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+// ─────────────────────────────── IMPORTAR ───────────────────────────────
+pantallas.importar = () => `
+  <div class="cabecera"><div class="crecer">
+    <h1>Importar Excel de líneas</h1>
+    <div class="sub">Cargue el archivo con una fila por número de teléfono. Después, al procesar una factura,
+    el sistema mostrará el titular, la unidad y el cargo de cada línea.</div>
+  </div></div>
+  <div class="columnas">
+    <div class="tarjeta">
+      <h3 style="font-size:17px;margin-bottom:10px">1. Elija el archivo</h3>
+      <div class="fila" style="cursor:default">
+        <span>📄</span><div class="crecer"><b>lineas-2026-09.xlsx</b><small>668 filas · 25 columnas</small></div>
+        <button class="boton pequeno">Cambiar</button>
+      </div>
+      <h3 style="font-size:17px;margin:18px 0 8px">2. ¿Dónde se guarda?</h3>
+      <div class="fila" style="cursor:default;border-color:var(--verde);background:var(--verde-claro)">
+        <span>◉</span><div><b>Líneas de teléfono (recomendado)</b><small>SGF_LINEAS_IMPORTADAS</small></div>
+      </div>
+      <div class="fila" style="cursor:default">
+        <span>○</span><div><b>Facturas (¡cuidado: puede borrar el historial!)</b><small>SGF_FACTURAS</small></div>
+      </div>
+      <div class="interruptor">
+        <div style="width:44px;height:24px;border-radius:12px;background:#D7DEE3;position:relative">
+          <span style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff"></span>
+        </div>
+        <div><b style="font-size:14.5px">Borrar lo anterior antes de cargar</b>
+        <div class="pista">Normalmente NO hace falta: si no lo activa, las filas del Excel se añaden y actualizan.</div></div>
+      </div>
+      <button class="boton primario" style="width:100%;justify-content:center;margin-top:12px" onclick="importar()">
+        ☁ Importar ahora
+      </button>
+    </div>
+    <div>
+      <div class="tarjeta" id="resultado-importacion" style="display:none">
+        <div style="display:flex;gap:9px;align-items:center;margin-bottom:12px">
+          <span style="color:var(--verde-ok)">✔</span><h3 style="font-size:17px">Importación terminada</h3>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:14px">Filas importadas <b>668</b></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:14px">Filas fallidas <b>0</b></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:14px">Columnas nuevas <b>0</b></div>
+        <div class="barra"><i style="width:100%"></i></div>
+        <div class="pista" style="margin-top:8px">Tiempo: 0,7 s</div>
+      </div>
+      <div class="aviso info" style="margin-top:14px"><span>ℹ</span><div>
+        <b>Qué columnas se leen</b>
+        El sistema reconoce el número de teléfono (Número / Servicio), el titular (Usuario/Puesto), el Órgano,
+        la Unidad y el Cargo. Las demás columnas se guardan tal cual, así que no hace falta recortar el archivo.</div></div>
+    </div>
+  </div>
+`;
+
+// ─────────────────────────────── USUARIOS ───────────────────────────────
+pantallas.usuarios = () => `
+  <div class="cabecera"><div class="crecer">
+    <h1>Usuarios</h1>
+    <div class="sub">Cada persona debe tener su propia cuenta: así queda registrado quién procesó cada factura.</div>
+  </div>
+  <button class="boton primario">＋ Nuevo usuario</button></div>
+  <div class="tarjeta">
+    ${[
+      ['Administrador','ana','Administrador','Ana Pérez', true],
+      ['Operador','jperez','Usuario','Juan Pérez', true],
+      ['Operador','mlopez','Usuario','Marta López', false],
+    ].map(([r,u,rol,nombre,activo])=>`
+      <div class="fila" style="cursor:default">
+        <span style="width:36px;height:36px;border-radius:50%;background:${rol==='Administrador'?'#EAF2FA':'#F1F3F5'};
+          display:flex;align-items:center;justify-content:center">${rol==='Administrador'?'🛡':'👤'}</span>
+        <div class="crecer">
+          <b>${nombre} <span class="etiqueta ${rol==='Administrador'?'info':'gris'}" style="margin-left:6px">${rol}</span>
+          ${activo?'':'<span class="etiqueta rojo" style="margin-left:6px">Desactivado</span>'}</b>
+          <small>${u} · creado 2026-09-14</small>
+        </div>
+        <span style="font-size:22px;color:${activo?'var(--verde-ok)':'#C3CAD1'}">${activo?'⬤':'◯'}</span>
+        <button class="boton pequeno">✎</button>
+        <button class="boton pequeno peligro">🗑</button>
+      </div>`).join('')}
+  </div>
+  <div class="aviso info" style="margin-top:16px"><span>ℹ</span><div>
+    <b>Buena práctica</b>
+    Cree una cuenta para cada persona. Cuando alguien deja el puesto, desactívela en lugar de borrarla:
+    así el historial de facturas sigue mostrando quién hizo cada cosa.</div></div>
+`;
+
+// ─────────────────────────────── AJUSTES ───────────────────────────────
+pantallas.ajustes = () => `
+  <div class="cabecera"><div class="crecer">
+    <h1>Ajustes y guía</h1>
+    <div class="sub">Cómo se comporta la aplicación y un recordatorio de los pasos habituales.</div>
+  </div></div>
+  <div class="columnas">
+    <div>
+      <div class="tarjeta">
+        <h3 style="font-size:17px;margin-bottom:8px">Comportamiento</h3>
+        <div class="interruptor"><div style="width:44px;height:24px;border-radius:12px;background:var(--verde);position:relative">
+          <span style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:#fff"></span></div>
+          <div><b style="font-size:14.5px">Arrancar el servidor al abrir la aplicación</b>
+          <div class="pista">Recomendado: así el sistema está listo sin pulsar nada.</div></div></div>
+        <div class="interruptor"><div style="width:44px;height:24px;border-radius:12px;background:#D7DEE3;position:relative">
+          <span style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff"></span></div>
+          <div><b style="font-size:14.5px">Tema oscuro</b>
+          <div class="pista">Más cómodo con poca luz o pantallas brillantes.</div></div></div>
+        <hr style="border:none;border-top:1px solid var(--borde);margin:14px 0">
+        <h3 style="font-size:17px;margin-bottom:6px">Puerto del servidor</h3>
+        <div class="pista">Solo hace falta cambiarlo si otro programa del equipo ya usa el puerto 3000.</div>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+          <input value="3000" style="width:130px;height:44px;border-radius:10px;border:1px solid var(--borde);padding:0 12px;font-size:15px">
+          <button class="boton primario">💾 Guardar</button>
+        </div>
+      </div>
+      <div class="tarjeta" style="margin-top:16px">
+        <h3 style="font-size:17px;margin-bottom:12px">📖 Guía rápida</h3>
+        <div class="paso"><div class="num">1</div><div><b>Abra la aplicación</b>
+          <span>El servidor se inicia solo. En la barra de arriba debe verse «Servidor en marcha» en verde.</span></div></div>
+        <div class="paso"><div class="num">2</div><div><b>Inicie sesión</b>
+          <span>Pulse «Iniciar sesión» arriba a la derecha. La primera vez: usuario «admin» y la contraseña que
+          se indicó al instalar.</span></div></div>
+        <div class="paso"><div class="num">3</div><div><b>Cargue el Excel de líneas (una vez al mes)</b>
+          <span>En «Importar Excel», elija el archivo y pulse Importar.</span></div></div>
+        <div class="paso"><div class="num">4</div><div><b>Procese las facturas</b>
+          <span>En «Facturas», arrastre los PDF. Si ya existía, el sistema avisa.</span></div></div>
+        <div class="paso"><div class="num">5</div><div><b>Haga una copia al terminar el día</b>
+          <span>En «Servidor», pulse «Crear copia ahora». Se guardan las 10 últimas copias.</span></div></div>
+        <div class="aviso ambar"><span>⚠</span><div><b>Si algo va mal</b>
+          1) Mire el registro en «Servidor». 2) Pulse Reiniciar. 3) Si sigue igual, cierre la aplicación,
+          vuelva a abrirla y, si es necesario, restaure una copia de seguridad.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="tarjeta">
+        <h3 style="font-size:17px;margin-bottom:10px">Sobre esta aplicación</h3>
+        <div style="display:flex;gap:10px;font-size:13px;margin-bottom:6px"><b style="width:90px">Programa</b>SGF Escritorio 1.0</div>
+        <div style="display:flex;gap:10px;font-size:13px;margin-bottom:6px"><b style="width:90px">Motor</b><span>Incluido (no hace falta instalar nada más)</span></div>
+        <div style="display:flex;gap:10px;font-size:13px;margin-bottom:6px"><b style="width:90px">Datos</b><code>%APPDATA%\\SGF</code></div>
+        <div style="display:flex;gap:10px;font-size:13px"><b style="width:90px">Escucha en</b><code>http://127.0.0.1:3000</code></div>
+        <div class="pista" style="margin-top:10px">La aplicación funciona sin internet: todo se guarda en este equipo.</div>
+      </div>
+      <div class="tarjeta" style="margin-top:16px">
+        <h3 style="font-size:17px;margin-bottom:10px">Atajos de teclado</h3>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:7px"><code>Ctrl + R</code><span style="font-size:13px">Reiniciar el servidor</span></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:7px"><code>Ctrl + L</code><span style="font-size:13px">Iniciar sesión</span></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:7px"><code>Ctrl + B</code><span style="font-size:13px">Crear copia de seguridad</span></div>
+        <div style="display:flex;gap:10px;align-items:center"><code>F1</code><span style="font-size:13px">Abrir esta guía</span></div>
+      </div>
+    </div>
+  </div>
+`;
+
+// ─────────────────────────────── ASISTENTE ───────────────────────────────
+pantallas.asistente = () => `
+  <div style="max-width:980px;margin:0 auto">
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:22px">
+      <div style="width:46px;height:46px;border-radius:12px;background:var(--verde);color:#fff;display:flex;
+        align-items:center;justify-content:center;font-size:22px">🧾</div>
+      <div><h1 style="font-size:25px">Bienvenido a SGF</h1>
+      <div class="sub">Vamos a dejar el sistema listo en tres pasos. No hace falta saber informática.</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <div class="num" style="width:26px;height:26px;border-radius:50%;background:var(--verde);color:#fff;
+        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px">1</div>
+      <b style="font-size:13.5px">Datos</b>
+      <div style="flex:1;height:2px;background:var(--borde)"></div>
+      <div style="width:26px;height:26px;border-radius:50%;background:#E7ECEF;display:flex;align-items:center;
+        justify-content:center;font-weight:700;font-size:12.5px">2</div>
+      <span style="font-size:13.5px">Administrador</span>
+      <div style="flex:1;height:2px;background:var(--borde)"></div>
+      <div style="width:26px;height:26px;border-radius:50%;background:#E7ECEF;display:flex;align-items:center;
+        justify-content:center;font-weight:700;font-size:12.5px">3</div>
+      <span style="font-size:13.5px">Listo</span>
+    </div>
+    <h2 style="font-size:21px;margin-bottom:6px">Paso 1 · ¿Dónde se guardan los datos?</h2>
+    <div class="sub" style="margin-bottom:18px">Si no está seguro, deje la primera opción: funciona de inmediato y sin
+    configurar nada. Siempre se puede cambiar más adelante.</div>
+
+    <div class="fila" style="border:2px solid var(--verde);background:#F3FAF8;cursor:default">
+      <span style="color:var(--verde);font-size:20px">🖥</span>
+      <div class="crecer"><b>En este equipo (recomendado)</b>
+      <small>Los datos se guardan en este ordenador. No necesita internet ni un servidor de base de datos.
+      Es la opción para trabajar sin conexión.</small></div>
+      <span style="color:var(--verde);font-size:20px">✔</span>
+    </div>
+    <div class="fila" style="cursor:default">
+      <span style="font-size:20px">🗄</span>
+      <div class="crecer"><b>Base de datos Oracle de la empresa</b>
+      <small>Los datos se guardan en el servidor central. Necesita la dirección, el usuario y la contraseña
+      que le haya dado el administrador.</small></div>
+    </div>
+    <div class="fila" style="cursor:default">
+      <span style="font-size:20px">🖧</span>
+      <div class="crecer"><b>Base de datos SQL Server de la empresa</b>
+      <small>Igual que la anterior, pero con SQL Server.</small></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:18px">
+      <button class="boton primario" onclick="ir('inicio')">Continuar →</button>
+    </div>
+  </div>
+`;
+
+// ─────────────────────────────── lógica ───────────────────────────────
+function ir(nombre){
+  document.querySelectorAll('.item').forEach(e=>e.classList.toggle('activo', e.dataset.pantalla===nombre));
+  document.getElementById('pantalla').innerHTML = (pantallas[nombre]||pantallas.inicio)();
+  document.getElementById('pantalla').scrollTop = 0;
+}
+
+let enMarcha = true;
+function arrancar(){
+  enMarcha = true;
+  document.getElementById('btn-iniciar').disabled = true;
+  document.getElementById('btn-detener').disabled = false;
+  document.getElementById('circulo').style.background='#EAF6EF';
+  document.getElementById('circulo').style.color='#1B7F4B';
+  document.getElementById('circulo').textContent='✓';
+  document.getElementById('titulo-estado').textContent='El servidor está funcionando';
+  document.getElementById('estado-servidor').className='etiqueta ok';
+  document.getElementById('estado-servidor').textContent='● Servidor en marcha';
+  log('Servidor en marcha: http://127.0.0.1:3000');
+}
+function detener(){
+  if(!confirm('¿Detener el servidor?\n\nNadie podrá consultar ni procesar facturas hasta que lo vuelva a iniciar.\nLos datos ya guardados no se pierden.')) return;
+  enMarcha = false;
+  document.getElementById('btn-iniciar').disabled = false;
+  document.getElementById('btn-detener').disabled = true;
+  document.getElementById('circulo').style.background='#F1F3F5';
+  document.getElementById('circulo').style.color='#6B7280';
+  document.getElementById('circulo').textContent='❙❙';
+  document.getElementById('titulo-estado').textContent='El servidor está detenido';
+  document.getElementById('estado-servidor').className='etiqueta gris';
+  document.getElementById('estado-servidor').textContent='● Servidor detenido';
+  log('Servidor detenido.');
+}
+function reiniciar(){ log('Reiniciando el servidor…'); setTimeout(()=>{arrancar();log('Servidor reiniciado.');},700); }
+function copia(){
+  const ahora = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  document.getElementById('ultima-copia').textContent = 'Última copia: copia-' + ahora + '.db';
+  log('Copia creada: copia-' + ahora + '.db');
+  alert('Copia creada correctamente.\n\nSe guardan las 10 copias más recientes.');
+}
+function log(t){
+  const caja = document.getElementById('registro');
+  if(!caja) return;
+  const h = new Date().toTimeString().slice(0,8);
+  caja.insertAdjacentHTML('afterbegin', `<div><span class="hora">[${h}]</span> ${t}</div>`);
+}
+function limpiarRegistro(){ const c=document.getElementById('registro'); if(c) c.innerHTML=''; }
+
+function procesar(){
+  const caja = document.getElementById('resultados');
+  if(!caja) return;
+  caja.innerHTML = '<div class="pista" style="text-align:center;padding:20px">Leyendo el PDF…</div>';
+  setTimeout(()=>{
+    caja.innerHTML = `
+      <div class="resultado">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="color:var(--verde-ok)">✔</span><b>factura-octubre-990000009001.pdf</b>
+          <span class="crecer"></span><span class="etiqueta ok">Lectura 96%</span>
+        </div>
+        <div style="font-size:13.5px;margin-top:6px">Factura procesada: 5 servicios guardados y 5 líneas vinculadas con el Excel.</div>
+        <div class="chips">
+          <span><b>Factura:</b> 990000009001</span>
+          <span><b>Cliente:</b> EMPRESA DE PRUEBA S.A.</span>
+          <span><b>Servicios:</b> 5</span>
+          <span><b>Líneas vinculadas:</b> 5/5</span>
+        </div>
+      </div>
+      <div class="resultado">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="color:var(--verde-ok)">✔</span><b>factura-990000009002.pdf</b>
+          <span class="crecer"></span><span class="etiqueta ambar">Lectura 66%</span>
+        </div>
+        <div style="font-size:13.5px;margin-top:6px">Factura guardada con 0 servicios: el PDF parece un escaneo (imagen) y no tiene texto seleccionable.</div>
+        <div class="chips">
+          <span><b>Factura:</b> 990000009002</span>
+          <span><b>Servicios:</b> 0</span>
+          <span><b>Líneas vinculadas:</b> 0/0</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--ambar);margin-top:8px">
+          Esta factura necesita una revisión manual: puede que el PDF tenga una imagen (escaneo) o un formato poco habitual.
+        </div>
+      </div>
+      <div class="resultado malo">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="color:var(--rojo)">✖</span><b>factura-repetida.pdf</b>
+        </div>
+        <div style="font-size:13.5px;margin-top:6px">
+          Ya existe una factura con el número 990000009001 (registrada el 27/10/2026). No se ha duplicado.
+        </div>
+      </div>`;
+    log('3 PDF procesados · 1 con aviso de revisión · 1 duplicado evitado');
+  }, 900);
+}
+
+function importar(){
+  const caja = document.getElementById('resultado-importacion');
+  if(caja) caja.style.display='block';
+  alert('Importación completada: 668 filas importadas, 0 fallidas.');
+}
+
+function abrirLogin(){
+  const usuario = prompt('Iniciar sesión\n\nUsuario:', 'admin');
+  if(usuario === null) return;
+  document.getElementById('usuario-chip').textContent = usuario + ' · Administrador';
+  document.getElementById('usuario-chip').className = 'etiqueta info';
+  const boton = document.querySelector('.barra-estado .boton');
+  if(boton){ boton.textContent = 'Cerrar sesión'; boton.onclick = cerrarSesion; }
+}
+function cerrarSesion(){
+  document.getElementById('usuario-chip').textContent = 'Sin sesión';
+  document.getElementById('usuario-chip').className = 'etiqueta gris';
+  const boton = document.querySelector('.barra-estado .boton');
+  if(boton){ boton.textContent = 'Iniciar sesión'; boton.onclick = abrirLogin; }
+}
+
+ir('inicio');
+</script>
+</body>
+</html>
