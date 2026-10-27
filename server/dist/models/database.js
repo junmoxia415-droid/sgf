@@ -9,6 +9,7 @@ const DATA_DIR = path.resolve(__dirname, "../../../server-data");
 const DB_PATH = path.join(DATA_DIR, "sgf-data.db");
 let db = null;
 let saveTimer = null;
+let batchDepth = 0;
 let oraclePool = null;
 let mssqlPool = null;
 let mssqlDriver = null;
@@ -17,20 +18,60 @@ function ensureDir() {
     if (!fs.existsSync(DATA_DIR))
         fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+/**
+ * Guarda la BD SQLite en disco de forma ATOMICA: se escribe un fichero
+ * temporal en el mismo directorio y se renombra encima del original.
+ * Un corte de luz a mitad de escritura deja intacta la version anterior.
+ */
 function saveDisk() {
     if (!db)
         return;
+    const tmpPath = `${DB_PATH}.tmp-${process.pid}`;
     try {
-        fs.writeFileSync(DB_PATH, Buffer.from(db.export()));
+        fs.writeFileSync(tmpPath, Buffer.from(db.export()));
+        fs.renameSync(tmpPath, DB_PATH);
     }
     catch (error) {
         console.error("[SGF] Error guardando SQLite:", error.message);
+        try {
+            fs.unlinkSync(tmpPath);
+        }
+        catch { /* ignore */ }
     }
 }
-function scheduleSave() {
+function scheduleSave(delayMs = 1000) {
     if (saveTimer)
         clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveDisk, 1000);
+    saveTimer = setTimeout(saveDisk, delayMs);
+}
+/**
+ * Ejecuta las escrituras pendientes AHORA, sin esperar al temporizador.
+ * Se llama al terminar una importacion masiva y al cerrar el servidor.
+ */
+export function flushDisk() {
+    if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+    }
+    saveDisk();
+}
+/**
+ * Ejecuta un bloque de escrituras manteniendo los datos solo en memoria y
+ * guardando en disco UNA sola vez al final. Sin esto, una importacion de N
+ * filas dejaba el guardado pendiente (1 s) y un corte perdia todo el lote;
+ * ademas db.export() se disparaba en cada fila en modo normal.
+ */
+export async function conGuardadoFinal(fn) {
+    if (mode !== "sqlite")
+        return fn();
+    batchDepth += 1;
+    try {
+        return await fn();
+    }
+    finally {
+        batchDepth -= 1;
+        flushDisk();
+    }
 }
 const SQLITE_SCHEMA = [
     `CREATE TABLE IF NOT EXISTS PCELULAR_CARGARARCH (NUMERO TEXT, CUOTA TEXT, CONSUMO TEXT, COMISION TEXT, IMPUESTO TEXT, IMPORTE TEXT, TIRA TEXT, FECHA_PARTE TEXT)`,
@@ -249,7 +290,9 @@ async function sqliteExecute(sql, params = {}) {
     const values = paramNames(sql).map((key) => params[key]);
     db.run(converted, values);
     const affected = db.getRowsModified();
-    scheduleSave();
+    // Dentro de conGuardadoFinal() el guardado se hace una sola vez al final.
+    if (batchDepth === 0)
+        scheduleSave();
     return affected;
 }
 /**
@@ -677,6 +720,8 @@ export function isOracleLegacyTablesAvailable() {
     return mode === "oracle";
 }
 export async function query(sql, params = {}) {
+    if (txContext)
+        return (await txContext.all(sql, params));
     if (mode === "oracle" && oraclePool) {
         const oracledb = await import("oracledb");
         const conn = await oraclePool.getConnection();
@@ -694,6 +739,8 @@ export async function query(sql, params = {}) {
     return (await sqliteQuery(sql, params));
 }
 export async function execute(sql, params = {}) {
+    if (txContext)
+        return txContext.run(sql, params);
     if (mode === "oracle" && oraclePool) {
         const conn = await oraclePool.getConnection();
         try {
@@ -709,11 +756,43 @@ export async function execute(sql, params = {}) {
     }
     return sqliteExecute(sql, params);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// Transacciones reales.
+//
+// Antes: transaction() abria BEGIN y le pasaba la conexion al callback, pero las
+// rutas llamaban a execute()/query() globales, que usan el pool con autocommit.
+// El ROLLBACK no deshacia NADA. Ahora, dentro del callback se usan
+//   await db.run(sql, params)     -> escritura ligada a la transaccion
+//   await db.all(sql, params)     -> lectura ligada a la transaccion
+// que si forman parte de la transaccion; execute()/query() siguen funcionando
+// y, mientras haya una transaccion abierta en esta ejecucion, se enrutan por
+// ella (ver txContext mas arriba).
+// ─────────────────────────────────────────────────────────────────────────────
+let txContext = null;
 export async function transaction(fn) {
+    if (txContext) {
+        // Anidada: se une a la transaccion en curso.
+        return fn({ run: txContext.run, all: txContext.all });
+    }
     if (mode === "oracle" && oraclePool) {
         const conn = await oraclePool.getConnection();
+        const runner = {
+            run: async (sql, params = {}) => {
+                const result = await conn.execute(sql, params, { autoCommit: false });
+                return result.rowsAffected || 0;
+            },
+            all: async (sql, params = {}) => {
+                const oracledb = await import("oracledb");
+                const result = await conn.execute(sql, params, {
+                    outFormat: oracledb.default.OUT_FORMAT_OBJECT,
+                    autoCommit: false,
+                });
+                return result.rows || [];
+            },
+        };
+        txContext = runner;
         try {
-            const value = await fn(conn);
+            const value = await fn(runner);
             await conn.commit();
             return value;
         }
@@ -722,6 +801,7 @@ export async function transaction(fn) {
             throw error;
         }
         finally {
+            txContext = null;
             await conn.close();
         }
     }
@@ -730,16 +810,25 @@ export async function transaction(fn) {
             mssqlDriver = (await import('mssql')).default;
         const tx = new mssqlDriver.Transaction(mssqlPool);
         await tx.begin();
+        const runner = {
+            run: async (sql, params = {}) => {
+                const request = tx.request();
+                for (const [k, v] of Object.entries(params))
+                    request.input(k, v);
+                const result = await request.query(toMssql(sql));
+                return result.rowsAffected?.reduce((a, b) => a + b, 0) || 0;
+            },
+            all: async (sql, params = {}) => {
+                const request = tx.request();
+                for (const [k, v] of Object.entries(params))
+                    request.input(k, v);
+                const result = await request.query(toMssql(sql));
+                return result.recordset || [];
+            },
+        };
+        txContext = runner;
         try {
-            const value = await fn({
-                query: async (sql, params = {}) => {
-                    const request = tx.request();
-                    for (const [k, v] of Object.entries(params))
-                        request.input(k, v);
-                    const result = await request.query(toMssql(sql));
-                    return result.recordset || [];
-                },
-            });
+            const value = await fn(runner);
             await tx.commit();
             return value;
         }
@@ -747,12 +836,20 @@ export async function transaction(fn) {
             await tx.rollback();
             throw error;
         }
+        finally {
+            txContext = null;
+        }
     }
     if (!db)
         throw new Error("BD no inicializada");
+    const runner = {
+        run: async (sql, params = {}) => sqliteExecute(sql, params),
+        all: async (sql, params = {}) => sqliteQuery(sql, params),
+    };
     db.run("BEGIN TRANSACTION");
+    txContext = runner;
     try {
-        const value = await fn(db);
+        const value = await fn(runner);
         db.run("COMMIT");
         scheduleSave();
         return value;
@@ -765,6 +862,9 @@ export async function transaction(fn) {
             // ignore
         }
         throw error;
+    }
+    finally {
+        txContext = null;
     }
 }
 export async function pingDb() {
@@ -816,7 +916,7 @@ export async function closeDb() {
         mssqlPool = null;
     }
     if (db) {
-        saveDisk();
+        flushDisk();
         db.close();
         db = null;
     }
@@ -826,9 +926,18 @@ export async function closeDb() {
 // Helpers de traduccion SQL expuestos para tests y para scripts
 // externos que quieran validar la conversion a T-SQL o SQLite sin
 // inicializar el pool.
+const TIPOS_COLUMNA_PERMITIDOS = /^(TEXT|INTEGER|REAL|NUMERIC(\(\d+(,\s*\d+)?\))?|VARCHAR2?\(\d+\)|NVARCHAR\(\d+|MAX\)|NVARCHAR\(\d+\)|NUMBER(\(\d+(,\s*\d+)?\))?|DECIMAL\(\d+(,\s*\d+)?\)|INT|DATETIME2?|CLOB|TIMESTAMP)$/i;
 export async function ensureColumnExists(table, column, type) {
     const upperTable = table.toUpperCase();
     const upperCol = column.toUpperCase();
+    // El nombre de tabla/columna llega influido por el Excel del usuario: se
+    // valida antes de interpolarlo en ALTER TABLE (inyeccion SQL por encabezado).
+    if (!/^[A-Z][A-Z0-9_]*$/.test(upperTable) || !/^[A-Z][A-Z0-9_]*$/.test(upperCol)) {
+        throw new Error(`Identificador SQL no valido: ${table}.${column}`);
+    }
+    if (!TIPOS_COLUMNA_PERMITIDOS.test(String(type).trim())) {
+        throw new Error(`Tipo de columna no permitido: ${type}`);
+    }
     try {
         if (mode === "sqlite" && db) {
             const info = db.exec(`PRAGMA table_info(${table})`);

@@ -5,9 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   execute,
+  flushDisk,
   isOracleLegacyTablesAvailable,
   nowExpr,
   query,
+  transaction,
 } from "../models/database.js";
 import { sendJson } from "../middleware/auth.js";
 import { auditLog } from "../middleware/logger.js";
@@ -29,6 +31,24 @@ async function getPdfLib() {
     pdfParseFn = pdf.default || pdf;
   }
   return pdfParseFn;
+}
+
+/**
+ * Extrae el texto de un PDF.
+ *
+ * IMPORTANTE: pdf-parse/pdf.js REUTILIZA Y MODIFICA el buffer que se le pasa.
+ * Al pasarle el mismo Buffer de la peticion, dos sintomas aparecian:
+ *   - la primera extraccion de cada proceso fallaba ("bad XRef entry"),
+ *   - y en algunas secuencias devolvia el texto de la factura ANTERIOR.
+ * Lo comprobamos: un PDF sin texto devolvia la factura previa completa. Por eso
+ * se entrega siempre una COPIA con su propio ArrayBuffer, que es lo unico que
+ * dio resultados correctos y repetibles en todos los casos.
+ */
+async function extraerTextoPdf(pdfBuffer: Buffer): Promise<string> {
+  const pdfFn = await getPdfLib();
+  const copia = Uint8Array.from(pdfBuffer);
+  const pdfData = await pdfFn(copia);
+  return String(pdfData?.text || "");
 }
 
 
@@ -94,11 +114,18 @@ async function detectarDuplicadosFactura(factura: FacturaExtraida) {
   };
 }
 
-async function limpiarFacturaExistente(noFactura: string) {
+async function limpiarFacturaExistente(noFactura: string, userId: string) {
   if (!noFactura) return;
 
   try {
-    const existentes = await query<any>(`SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`, { nf: noFactura });
+    // Solo se reemplazan las facturas del MISMO usuario: antes se borraban las
+    // de cualquier usuario con el mismo numero de factura (reemplazo cruzado).
+    const existentes = await query<any>(
+      userId
+        ? `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND USER_ID = :uid`
+        : `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`,
+      { nf: noFactura, uid: userId },
+    );
     for (const fila of existentes) {
       const facturaId = String(fila?.ID ?? fila?.id ?? "");
       if (!facturaId) continue;
@@ -292,13 +319,30 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
   const startedAt = Date.now();
 
   try {
-    const pdfFn = await getPdfLib();
-    const pdfData = await pdfFn(pdfBuffer);
-    const texto = String(pdfData.text || "");
+    // Comprobar que es realmente un PDF antes de darselo al parser
+    if (!pdfBuffer.subarray(0, 5).toString("latin1").startsWith("%PDF-")) {
+      try { fs.unlinkSync(tmpFile); } catch {}
+      return sendJson(res, 400, { success: false, error: "El archivo no es un PDF valido (falta la cabecera %PDF-)." });
+    }
+
+    let texto = "";
+    try {
+      texto = await extraerTextoPdf(pdfBuffer);
+    } catch (error: any) {
+      try { fs.unlinkSync(tmpFile); } catch {}
+      return sendJson(res, 422, {
+        success: false,
+        error: `No se pudo leer el PDF (${error.message}). Si es un documento escaneado, guardelo como PDF con texto o suba el original.`,
+      });
+    }
 
     if (!texto || texto.length < 50) {
       try { fs.unlinkSync(tmpFile); } catch {}
-      return sendJson(res, 422, { success: false, error: "No se pudo extraer texto del PDF. Puede que sea una imagen escaneada." });
+      return sendJson(res, 422, {
+        success: false,
+        error: "No se pudo extraer texto del PDF. Puede que sea una imagen escaneada.",
+        data: { caracteresExtraidos: texto.length },
+      });
     }
 
     const factura = parseFacturaEtcsa(texto);
@@ -306,17 +350,35 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
 
     if (duplicateSummary.hasDuplicates && !forceDuplicate) {
       try { fs.unlinkSync(tmpFile); } catch {}
+      // Mensaje explicito: la UI solo mostraba "posibles duplicados" y no decia
+      // si el choque era por el numero de factura o por servicios repetidos.
+      const motivos: string[] = [];
+      if (duplicateSummary.sameInvoice.length > 0) {
+        const previas = duplicateSummary.sameInvoice
+          .slice(0, 3)
+          .map((d) => `${d.no_factura}${d.periodo_consumo ? ` (periodo ${d.periodo_consumo})` : ""}`)
+          .join(", ");
+        motivos.push(`ya existe la factura ${previas}`);
+      }
+      if (duplicateSummary.repeatedServices.length > 0) {
+        const nums = Array.from(new Set(duplicateSummary.repeatedServices.map((d) => d.numero_servicio))).slice(0, 5);
+        motivos.push(`servicios ya presentes en otras facturas: ${nums.join(", ")}`);
+      }
       return sendJson(res, 409, {
         success: false,
-        error: "Se detectaron posibles duplicados. Revise antes de continuar.",
+        error: `Esta factura parece duplicada: ${motivos.join("; ")}. Si es una factura de otro periodo, enviela con forceDuplicate=true para reemplazarla.`,
         data: {
           duplicateWarning: true,
+          resumen: motivos,
           duplicates: duplicateSummary,
           facturaPreview: {
             cliente: factura.cliente,
             noFactura: factura.noFactura,
+            periodoConsumo: factura.periodoConsumo,
             servicios: factura.servicios.length,
+            confidence: factura.confidence,
           },
+          comoForzar: "POST /api/facturas/upload con { file, forceDuplicate: true }",
         },
       });
     }
@@ -338,9 +400,17 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
       });
     }
 
-    await limpiarFacturaExistente(factura.noFactura);
-    const sgfFacturaId = await guardarFacturaCompleta(req, factura, texto, filename);
-    const guardados = await guardarEnCargararch(factura);
+    // Borrado + insercion + CARGARARCH en UNA transaccion: antes, si algo
+    // fallaba a mitad, la factura anterior ya estaba borrada y la nueva
+    // quedaba incompleta (sin servicios).
+    let guardados: string[] = [];
+    const sgfFacturaId = await transaction(async () => {
+      await limpiarFacturaExistente(factura.noFactura, req.currentUser?.id || "");
+      const id = await guardarFacturaCompleta(req, factura, texto, filename);
+      guardados = await guardarEnCargararch(factura);
+      return id;
+    });
+    flushDisk();
     const lineasEncontradas = await enriquecerLineas(guardados);
 
     try { fs.unlinkSync(tmpFile); } catch {}
@@ -354,9 +424,16 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
       `PDF procesado: factura ${factura.noFactura || filename}; servicios ${factura.servicios.length}; CARGARARCH ${guardados.length}; confianza ${factura.confidence}`,
     );
 
+    const extraccionVacia = factura.servicios.length === 0;
+    const avisoExtraccion = extraccionVacia
+      ? " ATENCION: no se han podido extraer servicios del PDF; la factura se ha guardado solo con la cabecera y queda marcada para revisar."
+      : factura.requiresReview
+        ? ` Aviso: extraccion con confianza ${factura.confidence}/100 (${factura.reviewLabel}); conviene revisarla.`
+        : "";
+
     return sendJson(res, 200, {
       success: true,
-      message: `Factura procesada: ${guardados.length} servicios en CARGARARCH (Oracle), ${factura.servicios.length} en SGF_SERVICIOS.`,
+      message: `Factura procesada: ${guardados.length} servicios en CARGARARCH (Oracle), ${factura.servicios.length} en SGF_SERVICIOS.${avisoExtraccion}`,
       data: {
         sgfFacturaId,
         factura: {
@@ -365,6 +442,8 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
         },
         guardados,
         totalServicios: factura.servicios.length,
+        extraccionVacia,
+        requiereRevision: factura.requiresReview,
         lineasEncontradas,
         duplicateSummary,
         cliente: factura.cliente,

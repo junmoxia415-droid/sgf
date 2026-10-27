@@ -47,6 +47,16 @@ type ImportResult = {
     importId: string;
     durationMs: number;
 };
+/**
+ * Tablas que el importador puede tocar. Sin esta lista, `table=` llegaba de la
+ * URL y se interpolaba directamente en DELETE/INSERT/ALTER (inyeccion SQL y
+ * borrado de tablas que no tienen nada que ver con la importacion).
+ */
+export declare const IMPORT_TABLES: readonly ["SGF_LINEAS_IMPORTADAS", "SGF_FACTURAS", "SGF_SERVICIOS", "PCELULAR_LINEA_TELEFONICA", "PCELULAR_PERSONA", "PCELULAR_TELEFONO_ASIGNADO", "PCELULAR_PROVINCIA", "PCELULAR_MUNICIPIO", "PCELULAR_ORGANO", "PCELULAR_UNIDAD", "PCELULAR_CARGO", "PCELULAR_GRADO"];
+/** Tablas que nunca se pueden vaciar con truncate=true. */
+export declare const TRUNCATE_PROHIBIDAS: string[];
+export declare function validarTablaImportacion(table: string): string;
+export declare function validarBatchSize(batchSize: number): number;
 export declare function importExcelToSGF(buffer: Buffer, options?: ImportOptions): Promise<{
     success: boolean;
     message: string;

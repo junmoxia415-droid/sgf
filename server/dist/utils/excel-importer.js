@@ -7,7 +7,7 @@
  * - Transacciones por lotes
  */
 import { randomUUID } from "node:crypto";
-import { query, execute, getDbMode, ensureColumnExists } from "../models/database.js";
+import { query, execute, getDbMode, ensureColumnExists, conGuardadoFinal } from "../models/database.js";
 import { suggestColumnMapping, suggestTable, inferColumnType } from "./excel-mapper.js";
 let XLSX = null;
 async function getXlsx() {
@@ -106,7 +106,61 @@ function mapTypeToDb(type, maxLength) {
         return "REAL";
     return "TEXT";
 }
+/**
+ * Tablas que el importador puede tocar. Sin esta lista, `table=` llegaba de la
+ * URL y se interpolaba directamente en DELETE/INSERT/ALTER (inyeccion SQL y
+ * borrado de tablas que no tienen nada que ver con la importacion).
+ */
+export const IMPORT_TABLES = [
+    "SGF_LINEAS_IMPORTADAS",
+    "SGF_FACTURAS",
+    "SGF_SERVICIOS",
+    "PCELULAR_LINEA_TELEFONICA",
+    "PCELULAR_PERSONA",
+    "PCELULAR_TELEFONO_ASIGNADO",
+    "PCELULAR_PROVINCIA",
+    "PCELULAR_MUNICIPIO",
+    "PCELULAR_ORGANO",
+    "PCELULAR_UNIDAD",
+    "PCELULAR_CARGO",
+    "PCELULAR_GRADO",
+];
+/** Tablas que nunca se pueden vaciar con truncate=true. */
+export const TRUNCATE_PROHIBIDAS = ["SGF_USUARIOS", "SGF_SESIONES", "SGF_LOGS"];
+export function validarTablaImportacion(table) {
+    const limpia = String(table || "").trim().toUpperCase();
+    if (!/^[A-Z0-9_]+$/.test(limpia))
+        throw new Error(`Nombre de tabla no valido: ${table}`);
+    if (!IMPORT_TABLES.includes(limpia)) {
+        throw new Error(`Tabla no permitida para importacion: ${limpia}. Permitidas: ${IMPORT_TABLES.join(", ")}`);
+    }
+    return limpia;
+}
+export function validarBatchSize(batchSize) {
+    const n = Number(batchSize);
+    // Con 0 o negativo el bucle `i += batchSize` no avanza NUNCA y bloquea el
+    // proceso entero (lo comprobamos: el servidor dejaba de responder y habia
+    // que matarlo). Forzamos un rango razonable.
+    if (!Number.isFinite(n) || n < 1 || n > 5000) {
+        throw new Error(`batchSize no valido: ${batchSize}. Debe estar entre 1 y 5000.`);
+    }
+    return Math.floor(n);
+}
+/** Solo nombres de columna seguros; el encabezado del Excel no se interpola tal cual. */
+function sanitizarColumna(columna) {
+    const limpia = String(columna || "").trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_").replace(/^_+|_+$/g, "");
+    if (!limpia || !/^[A-Z_][A-Z0-9_]*$/.test(limpia)) {
+        throw new Error(`Nombre de columna no valido: ${columna}`);
+    }
+    return limpia;
+}
 export async function importExcelToSGF(buffer, options = {}) {
+    // Todo el volcado se hace en memoria y se guarda UNA vez al final: antes el
+    // guardado quedaba pendiente (1 s por temporizador) y un cierre o un corte de
+    // luz en ese instante perdia el lote completo aunque la API habia respondido 200.
+    return conGuardadoFinal(() => importarExcelInterno(buffer, options));
+}
+async function importarExcelInterno(buffer, options = {}) {
     const started = Date.now();
     const importId = randomUUID();
     const xlsx = await getXlsx();
@@ -124,7 +178,7 @@ export async function importExcelToSGF(buffer, options = {}) {
     const headers = json[headerRow].map(h => String(h || "").trim()).filter(Boolean);
     if (headers.length === 0)
         throw new Error("No se encontraron encabezados en la fila " + headerRow);
-    const suggestedTable = options.table || suggestTable(headers);
+    const suggestedTable = validarTablaImportacion(options.table || suggestTable(headers));
     const mapping = suggestColumnMapping(headers);
     const table = suggestedTable;
     const rows = json.slice(dataStartRow);
@@ -134,8 +188,11 @@ export async function importExcelToSGF(buffer, options = {}) {
     const newColumnsAdded = [];
     const errors = [];
     const warnings = [];
-    // Truncar si se pide
+    // Truncar si se pide (nunca sobre usuarios/sesiones/logs)
     if (options.truncateBeforeImport) {
+        if (TRUNCATE_PROHIBIDAS.includes(table)) {
+            throw new Error(`Por seguridad no se puede vaciar la tabla ${table} desde el importador.`);
+        }
         try {
             await execute(`DELETE FROM ${table}`);
         }
@@ -153,9 +210,10 @@ export async function importExcelToSGF(buffer, options = {}) {
         });
     }
     for (const excelHeader of headers) {
-        const dbCol = mapping[excelHeader];
-        if (!dbCol)
+        const dbColRaw = mapping[excelHeader];
+        if (!dbColRaw)
             continue;
+        const dbCol = sanitizarColumna(dbColRaw);
         // Si la columna no existe, añadirla
         const inferred = inferColumnType(valuesByCol[excelHeader]);
         const schemaType = TABLE_SCHEMAS[table]?.[dbCol]?.type || inferred.type;
@@ -175,8 +233,12 @@ export async function importExcelToSGF(buffer, options = {}) {
         }
     }
     // Insertar por lotes
-    const batchSize = options.batchSize ?? 100;
+    const batchSize = validarBatchSize(options.batchSize ?? 100);
     for (let i = 0; i < rows.length; i += batchSize) {
+        // Ceder el bucle de eventos: con miles de filas el proceso dejaba de
+        // atender peticiones mientras duraba la importacion.
+        if (i > 0)
+            await new Promise((resolve) => setImmediate(resolve));
         const batch = rows.slice(i, i + batchSize);
         for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
             const globalRowIdx = i + rowIdx + dataStartRow + 1; // 1-based para reporte
