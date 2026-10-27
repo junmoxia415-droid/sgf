@@ -254,7 +254,7 @@ jobs:
           SGF_INTEGRACION: '1'
           SGF_BASE: http://127.0.0.1:3000
           SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
-        run: flutter test test/api_test.dart --reporter expanded
+        run: flutter test test_integracion/api_test.dart --reporter expanded
 
       - name: Registro si algo falla
         if: failure()

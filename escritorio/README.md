@@ -121,3 +121,30 @@ La guía completa está dentro de la app: **Ajustes y guía** (y `F1`).
 - Envío de la factura procesada a la impresora o exportación a PDF/Excel.
 - Modo “varios puestos”: un solo equipo con el servidor y otros en la red local
   (requiere cambiar `HOST` y añadir autenticación por certificado o VPN).
+
+---
+
+## 7. Pruebas: qué se comprueba y dónde
+
+| Comprobación | Archivo | Dónde se ejecuta |
+|---|---|---|
+| Interfaz: las 7 pantallas se pintan, los textos de ayuda están, la confirmación destructiva exige escribir la palabra | `escritorio/test/pruebas_widgets_test.dart` (8 pruebas) | Windows y Linux (GitHub Actions) |
+| Cliente HTTP contra el servidor real: panel, login, permisos | `escritorio/test_integracion/api_test.dart` (5 pruebas, **necesita servidor**) | Trabajo `integracion` |
+| Servidor: tipos, arranque real, rutas cerradas, panel | `.github/workflows/escritorio-windows.yml` → trabajo `servidor` | Ubuntu |
+| Secretos: que no haya `.env` ni claves versionadas | `.github/workflows/servidor-pruebas.yml` | Ubuntu |
+
+En local:
+
+```bash
+cd escritorio
+flutter analyze          # debe dar 0 errores
+flutter test             # 8 pruebas de interfaz (no necesita servidor)
+
+# integración (con el servidor arrancado en el puerto 3000)
+SGF_BASE=http://127.0.0.1:3000 SGF_CONSOLE_TOKEN=<token> \
+  flutter test test_integracion/api_test.dart
+```
+
+Si ves `Package file_picker ... does not provide an inline implementation`, es un
+aviso conocido de esa dependencia: no rompe nada y no aparece en las versiones
+compiladas.
