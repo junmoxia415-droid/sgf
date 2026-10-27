@@ -1,0 +1,67 @@
+eliminar_facturafactura
+
+Factura 310811312060 eliminada.
+127.0.0.122/10/2026, 13:49:28
+eliminar_facturafactura
+
+Factura 310811313858 eliminada.
+127.0.0.122/10/2026, 13:49:26
+procesar_pdffactura
+
+PDF procesado: factura 310811312060; servicios 0; CARGARARCH 0; confianza 66
+127.0.0.122/10/2026, 13:49:21
+procesar_pdffactura
+
+PDF procesado: factura 310811313858; servicios 0; CARGARARCH 0; confianza 66
+127.0.0.122/10/2026, 13:49:13
+procesar_pdffactura
+
+PDF procesado: factura 310811313858; servicios 0; CARGARARCH 0; confianza 66
+127.0.0.122/10/2026, 13:48:41
+procesar_pdffactura
+
+PDF procesado: factura 310811312060; servicios 0; CARGARARCH 0; confianza 66
+127.0.0.122/10/2026, 13:48:30
+procesar_pdffactura
+
+PDF procesado: factura 310811312060; servicios 0; CARGARARCH 0; confianza 66
+127.0.0.122/10/2026, 13:47:50
+loginusuario
+
+lizet - pc-local-2fcc45d1
+127.0.0.122/10/2026, 13:46:23
+importar_excelSGF_LINEAS_IMPORTADAS
+
+668 filas importadas a SGF_LINEAS_IMPORTADAS desde Excel
+127.0.0.122/10/2026, 13:45:59
+loginusuario
+
+lizet - pc-local-2fcc45d1
+127.0.0.122/10/2026, 13:45:15
+loginusuario
+
+lizet - pc-local-2fcc45d1
+127.0.0.122/10/2026, 13:45:07
+loginusuario
+
+lizet - pc-local-2fcc45d1
+127.0.0.122/10/2026, 13:44:23
+crear_usuariousuario
+
+lizet (admin)
+127.0.0.122/10/2026, 13:44:08
+loginusuario
+
+yolexis - pc-local-2fcc45d1
+127.0.0.122/10/2026, 13:42:55
+
+XHR 
+POST
+http://localhost:3000/api/facturas/upload
+[HTTP/1.1 409 Conflict 21ms]
+XHR 
+POST
+http://localhost:3000/api/facturas/upload
+[HTTP/1.1 409 Conflict 68ms]
+
+​
