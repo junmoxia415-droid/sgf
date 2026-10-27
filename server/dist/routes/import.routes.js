@@ -2,7 +2,7 @@
  * import.routes.ts - Endpoints para importador Excel masivo
  * Permite importar prueba.xlsx (25 columnas) y facturas desde Excel.
  */
-import { sendJson, readJsonBody } from "../middleware/auth.js";
+import { sendJson, readJsonBody, requireAdmin } from "../middleware/auth.js";
 import { analyzeExcelFile, importExcelToSGF, getAvailableTables } from "../utils/excel-importer.js";
 import { suggestColumnMapping } from "../utils/excel-mapper.js";
 import { auditLog } from "../middleware/logger.js";
@@ -54,6 +54,8 @@ async function getBufferFromRequest(req) {
     return raw;
 }
 export async function handleImportAnalyze(req, res) {
+    if (!requireAdmin(req, res))
+        return;
     try {
         const buffer = await getBufferFromRequest(req);
         if (buffer.length < 100) {
@@ -72,6 +74,10 @@ export async function handleImportAnalyze(req, res) {
     }
 }
 export async function handleImportExcel(req, res, url) {
+    // Escritura masiva y, con truncate=true, BORRADO de tablas completas:
+    // es una operacion de administracion, no de usuario.
+    if (!requireAdmin(req, res))
+        return;
     try {
         const buffer = await getBufferFromRequest(req);
         if (buffer.length < 100) {
@@ -101,6 +107,8 @@ export async function handleImportExcel(req, res, url) {
     }
 }
 export async function handleImportTables(req, res) {
+    if (!requireAdmin(req, res))
+        return;
     try {
         const tables = await getAvailableTables();
         return sendJson(res, 200, { success: true, data: { tables } });
@@ -110,6 +118,8 @@ export async function handleImportTables(req, res) {
     }
 }
 export async function handleImportMappingSuggestions(req, res) {
+    if (!requireAdmin(req, res))
+        return;
     try {
         const body = await readJsonBody(req);
         const columns = Array.isArray(body.columns) ? body.columns.map((c) => String(c)) : [];
@@ -124,6 +134,8 @@ export async function handleImportMappingSuggestions(req, res) {
     }
 }
 export async function handleImportStatus(req, res) {
+    if (!requireAdmin(req, res))
+        return;
     // Placeholder: en memoria no guardamos historial persistente, pero retornamos info básica
     return sendJson(res, 200, {
         success: true,

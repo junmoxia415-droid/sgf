@@ -133,6 +133,22 @@ export async function handleUpdateUser(req: AuthenticatedRequest, res: ServerRes
     }
 
     await execute(`UPDATE SGF_USUARIOS SET ${sets.join(", ")} WHERE ID = :id`, params);
+
+    // Cerrar las sesiones abiertas cuando la cuenta se desactiva, se degrada o
+    // se le cambia la contrasena: antes el token seguia valiendo hasta 8 h.
+    const cierraSesiones = body.active === false || body.role === "usuario" || Boolean(body.password);
+    if (cierraSesiones) {
+      try {
+        if (dbMode === "sqlite") {
+          await execute(`UPDATE SGF_SESIONES SET ACTIVO = 0 WHERE USER_ID = :id`, { id: userId });
+        } else {
+          await execute(`UPDATE SGF_SESIONES SET ACTIVE = 0 WHERE USER_ID = :id`, { id: userId });
+        }
+      } catch {
+        // si falla, no se bloquea la edicion
+      }
+    }
+
     await auditLog(req, "editar_usuario", "usuario", userId, "info", sets.join("; "));
     return sendJson(res, 200, { success: true, message: "Actualizado." });
   } catch (error: any) {
@@ -148,6 +164,15 @@ export async function handleDeleteUser(req: AuthenticatedRequest, res: ServerRes
 
   try {
     await execute(`DELETE FROM SGF_USUARIOS WHERE ID = :id`, { id: userId });
+    try {
+      if (getDbMode() === "sqlite") {
+        await execute(`UPDATE SGF_SESIONES SET ACTIVO = 0 WHERE USER_ID = :id`, { id: userId });
+      } else {
+        await execute(`UPDATE SGF_SESIONES SET ACTIVE = 0 WHERE USER_ID = :id`, { id: userId });
+      }
+    } catch {
+      // ignora: el usuario ya no existe, sus tokens caducan solos
+    }
     await auditLog(req, "eliminar_usuario", "usuario", userId, "warn", "Usuario eliminado.");
     return sendJson(res, 200, { success: true, message: "Eliminado." });
   } catch (error: any) {

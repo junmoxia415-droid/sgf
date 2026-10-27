@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
-import { authenticate, sendJson } from "./middleware/auth.js";
+import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import type { AuthenticatedRequest } from "./middleware/auth.js";
 import { handleLogin, handleLogout, handleMe } from "./routes/auth.routes.js";
 import { handleDbConfig, handleDbConnect, handleDbDisconnect, handleDbTest } from "./routes/dbconfig.routes.js";
@@ -118,6 +118,13 @@ const server = http.createServer(
       }
 
       if (requestPath === "/api/auth/login" && req.method === "POST") return handleLogin(req, res);
+
+      // Rutas de configuracion de BD: siguen fuera de authenticate() para permitir
+      // la configuracion inicial, pero se identifica al usuario si trae token y
+      // cada handler decide (admin / token de instalacion / solo instalacion nueva).
+      if (requestPath.startsWith("/api/db/") && ["/api/db/test", "/api/db/config", "/api/db/connect", "/api/db/disconnect"].includes(requestPath)) {
+        await authenticateOpcional(req, res);
+      }
       if (requestPath === "/api/db/test" && req.method === "POST") return handleDbTest(req, res);
       if (requestPath === "/api/db/config" && req.method === "GET") return handleDbConfig(req, res);
       if (requestPath === "/api/db/connect" && req.method === "POST") return handleDbConnect(req, res);

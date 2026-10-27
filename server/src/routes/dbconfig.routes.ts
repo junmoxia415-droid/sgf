@@ -9,7 +9,13 @@ import {
   getDbMode,
   initDatabase,
 } from "../models/database.js";
-import { sendJson, readJsonBody } from "../middleware/auth.js";
+import {
+  consumirTokenInstalacion,
+  denegarConfigBd,
+  evaluarAccesoConfigBd,
+  sendJson,
+  readJsonBody,
+} from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -238,6 +244,9 @@ async function testMssql(config: MssqlConnectPayload) {
 }
 
 export async function handleDbConfig(req: AuthenticatedRequest, res: ServerResponse) {
+  // Antes respondia a CUALQUIERA con el host, puerto y usuario de Oracle/MSSQL.
+  const acceso = await evaluarAccesoConfigBd(req, { installToken: String(req.headers["x-install-token"] || "") });
+  if (!acceso.permitido) return denegarConfigBd(res, acceso);
   return sendJson(res, 200, { success: true, data: { config: currentConfig(), mode: getDbMode() } });
 }
 
@@ -248,6 +257,12 @@ export async function handleDbTest(req: AuthenticatedRequest, res: ServerRespons
   } catch {
     return sendJson(res, 400, { success: false, error: "JSON invalido." });
   }
+
+  // Esta ruta hacia que el SERVIDOR se conectase a cualquier host:puerto que le
+  // pidiera un anonimo (sonda de la red interna / SSRF). Ahora exige admin o el
+  // flujo de instalacion.
+  const acceso = await evaluarAccesoConfigBd(req, body);
+  if (!acceso.permitido) return denegarConfigBd(res, acceso);
 
   const type = (String(body.type || "oracle").toLowerCase()) as DbType;
 
@@ -278,17 +293,16 @@ export async function handleDbTest(req: AuthenticatedRequest, res: ServerRespons
 }
 
 export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResponse) {
-  // Permitir desde login sin sesion: si hay usuario logueado, debe ser admin, si no hay sesion, permitir (flujo de login)
-  if (req.currentUser && req.currentUser.role !== 'admin') {
-    return sendJson(res, 403, { success: false, error: "Se requiere rol de administrador." });
-  }
-
   let body: any;
   try {
     body = await readJsonBody(req);
   } catch {
     return sendJson(res, 400, { success: false, error: "JSON invalido." });
   }
+
+  // Escribe server/.env y cambia la BD en caliente: solo admin o instalacion.
+  const acceso = await evaluarAccesoConfigBd(req, body);
+  if (!acceso.permitido) return denegarConfigBd(res, acceso);
 
   const type = (String(body.type || "oracle").toLowerCase()) as DbType;
 
@@ -362,10 +376,16 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
 }
 
 export async function handleDbDisconnect(req: AuthenticatedRequest, res: ServerResponse) {
-  // Permitir desconectar desde login o desde panel admin
-  if (req.currentUser && req.currentUser.role !== 'admin') {
-    return sendJson(res, 403, { success: false, error: "Se requiere rol de administrador." });
+  let body: any = {};
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    body = {};
   }
+
+  // Antes un anonimo podia dejar la instalacion en SQLite (y "perder" Oracle).
+  const acceso = await evaluarAccesoConfigBd(req, body);
+  if (!acceso.permitido) return denegarConfigBd(res, acceso);
   try {
     // Guardar DB_TYPE = sqlite
     saveEnvConfig({

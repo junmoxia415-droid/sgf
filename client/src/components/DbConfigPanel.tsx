@@ -57,6 +57,28 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
+  // Cuando se abre desde la pantalla de login no hay sesion: el servidor exige
+  // el token de instalacion (SGF_INSTALL_TOKEN) o, en una instalacion nueva, lo
+  // permite directamente. Si responde 403, se pide la clave al usuario.
+  const pedirClaveInstalacion = (): string | null => {
+    const clave = window.prompt(
+      "Configuracion de la base de datos sin sesion.\n\n" +
+        "Introduzca el token de instalacion (SGF_INSTALL_TOKEN del archivo server/.env).\n" +
+        "Si el sistema aun no tiene usuarios, puede dejarlo vacio.",
+      "",
+    );
+    return clave === null ? null : clave.trim();
+  };
+
+  const cabecerasConfig = (clave: string, extra: Record<string, string> = {}) => {
+    const token = getAuthToken();
+    return {
+      ...extra,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(clave ? { "x-install-token": clave } : {}),
+    };
+  };
+
   // Migracion
   const [migrateStatus, setMigrateStatus] = useState<SqliteInfo | null>(null);
   const [sqliteAvailable, setSqliteAvailable] = useState(false);
@@ -66,9 +88,14 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
     void refreshConfig();
   }, []);
 
-  async function refreshConfig() {
+  async function refreshConfig(clave = "") {
     try {
-      const res = await fetch("/api/db/config", { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+      const res = await fetch("/api/db/config", { headers: cabecerasConfig(clave) });
+      if (res.status === 403 && !getAuthToken() && !clave) {
+        const introducida = pedirClaveInstalacion();
+        if (introducida !== null) return refreshConfig(introducida);
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setCurrentMode((data.data.mode || "sqlite") as DbType);
@@ -113,19 +140,27 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
     }
   }
 
+  const ejecutarConAcceso = async (url: string, payload: any) => {
+    const enviar = (clave: string) =>
+      fetch(url, {
+        method: "POST",
+        headers: cabecerasConfig(clave, { "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+    let res = await enviar("");
+    if (res.status === 403 && !getAuthToken()) {
+      const clave = pedirClaveInstalacion();
+      if (clave !== null) res = await enviar(clave);
+    }
+    return res;
+  };
+
   const testDb = async () => {
     setTesting(true);
     setTestResult(null);
     try {
       const payload = dbType === "mssql" ? { type: "mssql", ...mssqlForm } : { type: "oracle", ...oracleForm };
-      const res = await fetch("/api/db/test", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await ejecutarConAcceso("/api/db/test", payload);
       const data = await res.json();
       setTestResult(data);
       if (data.success) {
@@ -143,14 +178,7 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
     setConnecting(true);
     try {
       const payload = dbType === "mssql" ? { type: "mssql", ...mssqlForm } : { type: "oracle", ...oracleForm };
-      const res = await fetch("/api/db/connect", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await ejecutarConAcceso("/api/db/connect", payload);
       const data = await res.json();
       if (data.success) {
         showToast("success", data.message || "Conexion aplicada. Debe iniciar sesion nuevamente.");
