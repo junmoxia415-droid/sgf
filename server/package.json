@@ -1,0 +1,32 @@
+{
+  "name": "sgf-server",
+  "version": "4.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:init": "tsx src/scripts/init-db.ts",
+    "parser:test": "tsx src/scripts/test-parser.ts",
+    "parser:fixtures": "tsx src/scripts/generate-synthetic-fixtures.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.7",
+    "jsonwebtoken": "^9.0.2",
+    "mssql": "^12.7.0",
+    "oracledb": "^6.7.1",
+    "pdf-parse": "^1.1.1",
+    "sql.js": "^1.12.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^22.19.17",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

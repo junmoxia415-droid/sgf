@@ -1,0 +1,19 @@
+Cliente:DELEGACION TERRITORIAL DEL MININT VILLA CLARA
+No. factura: 910811313864
+Moneda: CUP
+Resumen por Servicios
+Servicio
+52587423
+52214752
+52325147
+52962001
+Cuota
+245.00
+315.00
+Consumo
+179.56
+668.43
+Importe
+424.56
+983.43
+Documento dañado

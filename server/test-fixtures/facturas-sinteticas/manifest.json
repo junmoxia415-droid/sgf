@@ -1,0 +1,30 @@
+[
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/01-base-columnar.txt",
+    "size": 91
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/02-25-servicios-columnar.txt",
+    "size": 175
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/03-40-servicios-columnar.txt",
+    "size": 265
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/04-base-row-format.txt",
+    "size": 32
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/05-noisy-ocr.txt",
+    "size": 91
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/06-missing-fields.txt",
+    "size": 91
+  },
+  {
+    "file": "/home/user/sgf-refactor/server/test-fixtures/facturas-sinteticas/07-damaged-layout.txt",
+    "size": 20
+  }
+]

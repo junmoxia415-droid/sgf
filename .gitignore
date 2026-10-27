@@ -1,0 +1,77 @@
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.pnpm-store/
+.eslintcache
+.stylelintcache
+
+# --- Datos de runtime (BD local SQLite, etc.) ---
+server-data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Entorno / secretos ---
+server/.env
+server/.env.local
+client/.env
+client/.env.local
+.env
+.env.local
+*.pem
+*.key
+secrets/
+
+# --- Editores / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Logs ---
+*.log
+logs/
+launcher-logs/
+
+# --- Python (panel launcher) ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# --- TypeScript build info ---
+*.tsbuildinfo
+
+# --- Test artifacts ---
+coverage/
+.nyc_output/
+
+# --- Paquetes generados por build-exe.bat ---
+sgf-panel.exe
+dist/sgf-panel.exe
+
+# --- Zips generados por empaquetar-portable.bat ---
+# Se distribuyen via GitHub Releases (v4.0.0), no en el repo.
+sgf-*-modules.zip
+sgf-proyecto.zip
+
+# server/dist/ y client/dist/ se COMMITEAN precompilados.
+# Para regenerarlos desde una PC de desarrollo:
+#   cd server && npx tsc
+#   cd client && npx vite build
+# (El instalador .bat tambien los regenera si decides borrarlos.)

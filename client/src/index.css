@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --app-bg: #f3f4f6;
+  --app-surface: #ffffff;
+  --app-border: #e5e7eb;
+  --app-text: #111827;
+  --app-text-soft: #6b7280;
+  --app-placeholder: #9ca3af;
+}
+
+.dark {
+  --app-bg: #030712;
+  --app-surface: #0f172a;
+  --app-border: #1f2937;
+  --app-text: #f9fafb;
+  --app-text-soft: #cbd5e1;
+  --app-placeholder: #64748b;
+}
+
+html {
+  background-color: var(--app-bg);
+  color-scheme: light dark;
+  transition: background-color 0.15s ease;
+}
+
+body {
+  margin: 0;
+  background-color: inherit;
+  color: var(--app-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  color: var(--app-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--app-placeholder);
+}
+
+option {
+  color: #111827;
+}
+
+.dark option {
+  color: #f9fafb;
+  background: #111827;
+}
+
+.text-app-soft {
+  color: var(--app-text-soft);
+}

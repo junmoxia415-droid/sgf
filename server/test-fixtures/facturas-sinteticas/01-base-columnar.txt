@@ -1,0 +1,90 @@
+Cliente:DELEGACION TERRITORIAL DEL MININT VILLA CLARA
+Cuenta:DELEGACION TERRITORIAL DEL MININT VILLA CLARA
+Numero de Cliente:7162327 Numero de Cuenta: 2708712
+No. factura: 310811313858
+Fecha de Vencimiento: 31/01/24
+Periodo de consumo: 01/12/23 – 31/12/23
+Codigo de Pago en Banco: 0643641227459010
+Moneda: CUP
+Fecha Factura: 04/01/24
+NIT: 011001601946
+Cuota Consumo Comision Impuesto Facturado Estado Total
+Mensual de Cuenta a Pagar
+1,925.00 1,507.36 514.86 0.00 3,432.36 0.00 2,917.50
+Resumen por Servicios
+Servicio
+52587423
+52214752
+52325147
+52962001
+59101047
+59786523
+59201485
+59145639
+59002255
+59874152
+59485614
+Cuota
+0.00
+0.00
+0.00
+0.00
+245.00
+245.00
+245.00
+245.00
+315.00
+315.00
+315.00
+Consumo
+0.00
+0.00
+668.43
+179.56
+0.00
+0.00
+0.00
+0.00
+234.27
+327.50
+97.60
+Comision
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+Impuesto
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+Importe
+0.00
+0.00
+668.43
+179.56
+245.00
+245.00
+245.00
+245.00
+549.27
+642.50
+412.60
+Total 1,925.00 1,507.36 0.00 0.00 3,432.36
+Comisiones Importe
+Descuento Comercial (15) 514.86
+Total a la cuenta -514.86
