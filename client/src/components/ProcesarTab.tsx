@@ -249,21 +249,37 @@ export function ProcesarTab({ showToast, trig }: Props) {
               </div>
             </div>
 
-            {result.lineasEncontradas?.length > 0 && (
+            {(result.lineasEncontradas?.length > 0 || result.enriquecimiento?.sinVincular?.length > 0) && (
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
                   <Search className="w-4 h-4 text-blue-500" />
-                  Lineas Vinculadas ({result.lineasEncontradas.length})
+                  Lineas Vinculadas ({result.enriquecimiento?.encontradas ?? result.lineasEncontradas?.length ?? 0}
+                  {result.enriquecimiento?.total ? `/${result.enriquecimiento.total}` : ""})
+                  {result.enriquecimiento?.fuente && result.enriquecimiento.fuente !== "NINGUNA" && (
+                    <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                      {result.enriquecimiento.fuente === "EXCEL" ? "datos del Excel importado" : "datos del sistema (PCELULAR)"}
+                    </span>
+                  )}
                 </h3>
                 <div className="space-y-1">
-                  {result.lineasEncontradas.map((l: any, i: number) => (
+                  {(result.lineasEncontradas || []).map((l: any, i: number) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg text-xs gap-2">
                       <span className="font-mono text-blue-700 dark:text-blue-300">{l.NUMERO}</span>
-                      <span className="text-blue-600 dark:text-blue-400 text-center flex-1">{l.NOMBRE} {l.APELL1}</span>
-                      <span className="text-blue-500">{l.ORGANO || l.UNIDAD}</span>
+                      <span className="text-blue-600 dark:text-blue-400 text-center flex-1">
+                        {l.NOMBRE_COMPLETO || `${l.NOMBRE || ""} ${l.APELL1 || ""}`.trim() || "-"}
+                        {l.CARGO ? <span className="text-blue-400"> · {l.CARGO}</span> : null}
+                      </span>
+                      <span className="text-blue-500">{l.ORGANO || l.UNIDAD || l.MUNICIPIO || "-"}</span>
                     </div>
                   ))}
                 </div>
+                {result.enriquecimiento?.sinVincular?.length > 0 && (
+                  <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+                    Sin datos para {result.enriquecimiento.sinVincular.length} numero(s):{" "}
+                    {result.enriquecimiento.sinVincular.slice(0, 8).join(", ")}
+                    {result.enriquecimiento.sinVincular.length > 8 ? "…" : ""}. Importe el Excel de lineas actualizado para completarlos.
+                  </p>
+                )}
               </div>
             )}
           </div>

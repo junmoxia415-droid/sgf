@@ -18,7 +18,7 @@ import {
   handleUpdateFactura,
 } from "./routes/facturas.routes.js";
 import { handleClearLogs, handleGetLogs } from "./routes/logs.routes.js";
-import { handleSearchServicios } from "./routes/services.routes.js";
+import { handleBuscarLineas, handleSearchServicios } from "./routes/services.routes.js";
 import { handleUploadFactura } from "./routes/upload.routes.js";
 import { handleCreateUser, handleDeleteUser, handleGetUsers, handleUpdateUser } from "./routes/users.routes.js";
 import { handleMigrateFromSqlite, handleMigrateStatus } from "./routes/migrate.routes.js";
@@ -145,6 +145,7 @@ const server = http.createServer(
       if (facturaMatch && req.method === "DELETE") return handleDeleteFactura(req, res, decodeURIComponent(facturaMatch[1]));
 
       if (requestPath === "/api/services/search" && req.method === "GET") return handleSearchServicios(req, res, url);
+      if (requestPath === "/api/lineas" && req.method === "GET") return handleBuscarLineas(req, res, url);
 
       if (requestPath === "/api/logs" && req.method === "GET") return handleGetLogs(req, res, url);
       if (requestPath === "/api/logs" && req.method === "DELETE") return handleClearLogs(req, res);

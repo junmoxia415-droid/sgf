@@ -6,6 +6,7 @@ import { execute, flushDisk, isOracleLegacyTablesAvailable, nowExpr, query, tran
 import { sendJson } from "../middleware/auth.js";
 import { auditLog } from "../middleware/logger.js";
 import { normalizarNumero, packStoredFacturaText, parseFacturaEtcsa, } from "../utils/factura-parser.js";
+import { enriquecerLineasFactura } from "../utils/enriquecimiento.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DATA_DIR = path.resolve(__dirname, "../../../server-data");
 let pdfParseFn = null;
@@ -210,27 +211,15 @@ async function guardarEnCargararch(factura) {
     }
     return guardados;
 }
-async function enriquecerLineas(guardados) {
-    if (!isOracleLegacyTablesAvailable()) {
-        return [];
-    }
-    const lineasEncontradas = [];
-    for (const numero of guardados.slice(0, 30)) {
-        try {
-            const rows = await query(`SELECT l.NUMERO, l.IDENTID, p.NOMBRE, p.APELL1, p.APELL2, u.UNIDAD, o.ORGANO
-         FROM PCELULAR.LINEA_TELEFONICA l
-         LEFT JOIN PCELULAR.PERSONA p ON l.IDENTID = p.INDENTID
-         LEFT JOIN PCELULAR.UNIDAD u ON l.COD_UNIDAD = u.COD_UNIDAD
-         LEFT JOIN PCELULAR.ORGANO o ON u.COD_ORGANO = o.COD_ORGANO
-         WHERE l.NUMERO = :n`, { n: numero });
-            if (rows.length > 0)
-                lineasEncontradas.push(rows[0]);
-        }
-        catch {
-            // ignore enrichment errors
-        }
-    }
-    return lineasEncontradas;
+/**
+ * Vincula los servicios de la factura con los datos de la linea telefonica.
+ * Fuente 1: PCELULAR.* (Oracle). Fuente 2: SGF_LINEAS_IMPORTADAS (el Excel).
+ * Se usan los numeros de servicio extraidos del PDF, no solo los insertados en
+ * CARGARARCH: en SQLite/SQL Server esa tabla no existe y antes el resultado
+ * era siempre vacio.
+ */
+async function enriquecerLineas(factura) {
+    return enriquecerLineasFactura(factura.servicios.map((servicio) => servicio.numero));
 }
 export async function handleUploadFactura(req, res) {
     let body;
@@ -361,7 +350,7 @@ export async function handleUploadFactura(req, res) {
             return id;
         });
         flushDisk();
-        const lineasEncontradas = await enriquecerLineas(guardados);
+        const enriquecimiento = await enriquecerLineas(factura);
         try {
             fs.unlinkSync(tmpFile);
         }
@@ -386,7 +375,8 @@ export async function handleUploadFactura(req, res) {
                 totalServicios: factura.servicios.length,
                 extraccionVacia,
                 requiereRevision: factura.requiresReview,
-                lineasEncontradas,
+                lineasEncontradas: enriquecimiento.lineas,
+                enriquecimiento,
                 duplicateSummary,
                 cliente: factura.cliente,
                 noFactura: factura.noFactura,

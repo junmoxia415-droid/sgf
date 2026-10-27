@@ -2,6 +2,7 @@ import type { ServerResponse } from "node:http";
 import { getDbMode, paginationExpr, query } from "../models/database.js";
 import { sendJson } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
+import { buscarLineas } from "../utils/enriquecimiento.js";
 
 function normalizeServiceSearchRow(row: any) {
   const estado = String(row?.ESTADO ?? row?.estado ?? "pendiente");
@@ -88,6 +89,32 @@ export async function handleSearchServicios(req: AuthenticatedRequest, res: Serv
         totalPages: Math.max(1, Math.ceil(total / pageSize)),
         dbMode: getDbMode(),
       },
+    });
+  } catch (error: any) {
+    return sendJson(res, 503, { success: false, error: `Error: ${error.message}` });
+  }
+}
+
+/**
+ * GET /api/lineas?q=...
+ * Busca lineas telefonicas por numero, persona, unidad u organo.
+ * Primero en PCELULAR.* (Oracle) y luego en SGF_LINEAS_IMPORTADAS (Excel),
+ * que hasta ahora no se consultaba en ningun sitio.
+ */
+export async function handleBuscarLineas(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
+  const q = String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim();
+  const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+
+  if (!q) {
+    return sendJson(res, 200, { success: true, data: [], meta: { total: 0, fuentes: { pcelular: 0, excel: 0 } } });
+  }
+
+  try {
+    const { lineas, fuentes } = await buscarLineas(q, limite);
+    return sendJson(res, 200, {
+      success: true,
+      data: lineas,
+      meta: { total: lineas.length, fuentes, dbMode: getDbMode() },
     });
   } catch (error: any) {
     return sendJson(res, 503, { success: false, error: `Error: ${error.message}` });
