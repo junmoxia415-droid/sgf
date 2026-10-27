@@ -353,6 +353,11 @@ export async function evaluarAccesoConfigBd(
   req: AuthenticatedRequest,
   body?: any,
 ): Promise<AccesoConfigBd> {
+  // La consola local (app de escritorio) es el propio instalador.
+  if (String(req.headers["x-sgf-console-token"] || "") && String((req as any).consoleLocal) === "1") {
+    return { nivel: "admin", permitido: true };
+  }
+
   const usuario = (req as AuthenticatedRequest).currentUser;
   if (usuario) {
     if (usuario.role === "admin") return { nivel: "admin", permitido: true };

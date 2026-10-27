@@ -290,6 +290,10 @@ export function consumirTokenInstalacion() {
  *   de instalacion.
  */
 export async function evaluarAccesoConfigBd(req, body) {
+    // La consola local (app de escritorio) es el propio instalador.
+    if (String(req.headers["x-sgf-console-token"] || "") && String(req.consoleLocal) === "1") {
+        return { nivel: "admin", permitido: true };
+    }
     const usuario = req.currentUser;
     if (usuario) {
         if (usuario.role === "admin")

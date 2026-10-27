@@ -2,7 +2,8 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+// Archivo .env: se puede apuntar a otro sitio con SGF_ENV_FILE (lo usa la app de escritorio).
+dotenv.config({ path: process.env.SGF_ENV_FILE || path.resolve(__dirname, "../../.env") });
 export const APP_CONFIG = {
     name: "SGF", fullName: "Sistema de Gestion de Facturas",
     version: "4.0.0", description: "Facturas ETECSA - Cliente/Servidor Centralizado",

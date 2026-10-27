@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
+import { esConsolaLocal, esPeticionLocal } from "./middleware/local.js";
+import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPing } from "./routes/panel.routes.js";
 import { handleLogin, handleLogout, handleMe } from "./routes/auth.routes.js";
 import { handleDbConfig, handleDbConnect, handleDbDisconnect, handleDbTest } from "./routes/dbconfig.routes.js";
 import { handleCreateFactura, handleDeleteFactura, handleFacturaStats, handleGetFactura, handleGetFacturas, handleUpdateFactura, } from "./routes/facturas.routes.js";
@@ -100,8 +102,31 @@ const server = http.createServer({ requestTimeout: SERVER_CONFIG.requestTimeoutM
                 },
             });
         }
+        // ── Panel de la consola local (app de escritorio) ─────────────────────
+        // Solo responde a peticiones de este mismo equipo.
+        if (requestPath.startsWith("/api/panel/")) {
+            if (!esPeticionLocal(req)) {
+                return sendJson(res, 403, { success: false, error: "El panel solo responde en este equipo." });
+            }
+            if (requestPath === "/api/panel/bienvenida" && req.method === "GET")
+                return handlePanelBienvenida(req, res);
+            if (requestPath === "/api/panel/estado" && req.method === "GET")
+                return handlePanelEstado(req, res);
+            if (requestPath === "/api/panel/copia" && req.method === "POST")
+                return handlePanelCopia(req, res);
+            if (requestPath === "/api/panel/ping" && req.method === "GET")
+                return handlePanelPing(req, res);
+            return sendJson(res, 404, { success: false, error: "Ruta de panel desconocida." });
+        }
         if (requestPath === "/api/auth/login" && req.method === "POST")
             return handleLogin(req, res);
+        // La consola de escritorio (token en cabecera, solo loopback) puede
+        // administrar la base de datos sin sesion: es quien arranco el servidor.
+        // NO se le inventa un usuario, para que no pueda leer ni escribir las
+        // facturas de nadie: solo configuracion.
+        if (esConsolaLocal(req)) {
+            req.consoleLocal = "1";
+        }
         // Rutas de configuracion de BD: siguen fuera de authenticate() para permitir
         // la configuracion inicial, pero se identifica al usuario si trae token y
         // cada handler decide (admin / token de instalacion / solo instalacion nueva).
