@@ -43,15 +43,19 @@ export function ProcesarTab({ showToast, trig }: Props) {
       if (!res.success && (res.data as any)?.duplicateWarning) {
         const duplicateData: any = res.data;
         const sameInvoices = duplicateData?.duplicates?.sameInvoice || [];
-        const repeatedServices = duplicateData?.duplicates?.repeatedServices || [];
+        // Solo las lineas repetidas EN EL MISMO periodo son un problema; las que
+        // ya estaban en facturas de otros meses son lo normal y no bloquean.
+        const mismoPeriodo = duplicateData?.duplicates?.repeatedSamePeriod || [];
+        const otrosPeriodos = duplicateData?.duplicates?.repeatedOtherPeriod || [];
         const lines = [
           "Se detectaron posibles duplicados.",
           sameInvoices.length ? `- Facturas con el mismo numero: ${sameInvoices.length}` : "",
-          repeatedServices.length ? `- Servicios ya vistos en otras facturas: ${repeatedServices.length}` : "",
+          mismoPeriodo.length ? `- Servicios ya facturados en este mismo periodo: ${mismoPeriodo.length}` : "",
+          otrosPeriodos.length ? `- (Tambien aparecen en facturas de otros periodos, lo cual es normal: ${otrosPeriodos.length})` : "",
         ].filter(Boolean);
         const detail = [
           sameInvoices[0] ? `Factura existente: ${sameInvoices[0].no_factura} · ${sameInvoices[0].cliente}` : "",
-          repeatedServices[0] ? `Servicio repetido ejemplo: ${repeatedServices[0].numero_servicio} en factura ${repeatedServices[0].no_factura}` : "",
+          mismoPeriodo[0] ? `Servicio repetido en el mismo periodo: ${mismoPeriodo[0].numero_servicio} en factura ${mismoPeriodo[0].no_factura} (periodo ${mismoPeriodo[0].periodo_consumo})` : "",
         ].filter(Boolean).join("\n");
         const proceed = confirm(`${lines.join("\n")}\n\n${detail}\n\n¿Desea continuar y reemplazar/guardar de todas formas?`);
         if (!proceed) {
@@ -66,7 +70,7 @@ export function ProcesarTab({ showToast, trig }: Props) {
       if (res.success) {
         const data: any = res.data;
         setResult(data);
-        if ((data?.duplicateSummary?.sameInvoice?.length || 0) > 0 || (data?.duplicateSummary?.repeatedServices?.length || 0) > 0) {
+        if ((data?.duplicateSummary?.sameInvoice?.length || 0) > 0 || (data?.duplicateSummary?.repeatedSamePeriod?.length || 0) > 0) {
           showToast("info", "Factura guardada con advertencia de duplicados. Revise el diagnostico.");
         } else {
           showToast("success", `${data?.guardados?.length || 0} servicios en CARGARARCH y ${data?.factura?.servicios?.length || 0} servicios en SGF.`);

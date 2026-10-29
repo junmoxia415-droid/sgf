@@ -34,6 +34,45 @@ async function extraerTextoPdf(pdfBuffer) {
     const pdfData = await pdfFn(copia);
     return String(pdfData?.text || "");
 }
+/**
+ * Normaliza el periodo de consumo para poder compararlo entre facturas:
+ * "SEPTIEMBRE 2025", "Septiembre/2025" y "09/2025" deben considerarse iguales.
+ * Si no se reconoce el formato se devuelve el texto en mayusculas y sin espacios
+ * sobrantes, que sigue sirviendo para comparar "igual con igual".
+ */
+export function normalizarPeriodo(periodo) {
+    const texto = String(periodo ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+    if (!texto)
+        return "";
+    const meses = {
+        ENERO: "01", FEBRERO: "02", MARZO: "03", ABRIL: "04", MAYO: "05", JUNIO: "06",
+        JULIO: "07", AGOSTO: "08", SEPTIEMBRE: "09", SETIEMBRE: "09", OCTUBRE: "10",
+        NOVIEMBRE: "11", DICIEMBRE: "12",
+        ENE: "01", FEB: "02", MAR: "03", ABR: "04", MAY: "05", JUN: "06",
+        JUL: "07", AGO: "08", SEP: "09", SEPT: "09", OCT: "10", NOV: "11", DIC: "12",
+    };
+    // "SEPTIEMBRE 2026", "SEP-2026", "SEPTIEMBRE DEL 2026"
+    const conNombre = texto.match(/([A-ZÁÉÍÓÚ]{3,})[\s\/-]*(?:DEL\s+)?(\d{4})/);
+    if (conNombre && meses[conNombre[1]])
+        return `${conNombre[2]}-${meses[conNombre[1]]}`;
+    // Un rango de fechas cuenta por su primer día: "2026-09-01 - 2026-09-30" y
+    // "01/09/2026 - 30/09/2026" son el mismo periodo (septiembre de 2026).
+    const rango = texto.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (rango)
+        return `${rango[1]}-${rango[2]}`;
+    const rangoLatino = texto.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (rangoLatino)
+        return `${rangoLatino[3]}-${rangoLatino[2].padStart(2, "0")}`;
+    // "09/2026" y "2026/09"
+    const numerico = texto.match(/^(\d{1,2})[\s\/-](\d{4})$/);
+    if (numerico)
+        return `${numerico[2]}-${numerico[1].padStart(2, "0")}`;
+    const inverso = texto.match(/^(\d{4})[\s\/-](\d{1,2})$/);
+    if (inverso)
+        return `${inverso[1]}-${inverso[2].padStart(2, "0")}`;
+    // Sin formato reconocible: se compara igual con igual.
+    return texto;
+}
 async function detectarDuplicadosFactura(factura) {
     const sameInvoice = [];
     const repeatedServices = [];
@@ -51,6 +90,11 @@ async function detectarDuplicadosFactura(factura) {
         })));
     }
     const serviceNumbers = Array.from(new Set((factura.servicios || []).map((item) => item.numero).filter(Boolean)));
+    const periodoNuevo = normalizarPeriodo(factura.periodoConsumo);
+    // Repetido "en el mismo periodo" = la misma linea facturada dos veces ese mes
+    // (eso si es un problema). La misma linea en OTRO mes es lo normal.
+    const repeatedSamePeriod = [];
+    const repeatedOtherPeriod = [];
     if (serviceNumbers.length > 0) {
         const placeholders = serviceNumbers.map((_, index) => `:s${index}`).join(", ");
         const params = { nf: factura.noFactura || "" };
@@ -68,6 +112,19 @@ async function detectarDuplicadosFactura(factura) {
        WHERE s.NUMERO_SERVICIO IN (${placeholders})
          AND (:nf = '' OR f.NO_FACTURA <> :nf)
        ORDER BY f.CREATED_AT DESC`, params);
+        for (const row of rows) {
+            const datos = {
+                factura_id: String(row?.FACTURA_ID ?? row?.factura_id ?? ""),
+                no_factura: String(row?.NO_FACTURA ?? row?.no_factura ?? ""),
+                cliente: String(row?.CLIENTE ?? row?.cliente ?? ""),
+                periodo_consumo: String(row?.PERIODO_CONSUMO ?? row?.periodo_consumo ?? ""),
+                numero_servicio: String(row?.NUMERO_SERVICIO ?? row?.numero_servicio ?? ""),
+                importe: Number(row?.IMPORTE ?? row?.importe ?? 0),
+                created_at: String(row?.CREATED_AT ?? row?.created_at ?? ""),
+            };
+            const mismoPeriodo = periodoNuevo !== "" && normalizarPeriodo(datos.periodo_consumo) === periodoNuevo;
+            (mismoPeriodo ? repeatedSamePeriod : repeatedOtherPeriod).push(datos);
+        }
         repeatedServices.push(...rows.map((row) => ({
             factura_id: String(row?.FACTURA_ID ?? row?.factura_id ?? ""),
             no_factura: String(row?.NO_FACTURA ?? row?.no_factura ?? ""),
@@ -81,7 +138,12 @@ async function detectarDuplicadosFactura(factura) {
     return {
         sameInvoice,
         repeatedServices,
-        hasDuplicates: sameInvoice.length > 0 || repeatedServices.length > 0,
+        repeatedSamePeriod,
+        repeatedOtherPeriod,
+        // Solo se bloquea (409) si ya existe el numero de factura o si la misma
+        // linea se repite DENTRO del mismo periodo. Repetir linea en otro mes es lo
+        // normal (cada mes se factura) y solo se avisa.
+        hasDuplicates: sameInvoice.length > 0 || repeatedSamePeriod.length > 0,
     };
 }
 async function limpiarFacturaExistente(noFactura, userId) {
@@ -302,17 +364,19 @@ export async function handleUploadFactura(req, res) {
                     .join(", ");
                 motivos.push(`ya existe la factura ${previas}`);
             }
-            if (duplicateSummary.repeatedServices.length > 0) {
-                const nums = Array.from(new Set(duplicateSummary.repeatedServices.map((d) => d.numero_servicio))).slice(0, 5);
-                motivos.push(`servicios ya presentes en otras facturas: ${nums.join(", ")}`);
+            if (duplicateSummary.repeatedSamePeriod.length > 0) {
+                const nums = Array.from(new Set(duplicateSummary.repeatedSamePeriod.map((d) => d.numero_servicio))).slice(0, 5);
+                motivos.push(`las lineas ${nums.join(", ")} ya estan facturadas en el periodo ${factura.periodoConsumo || "(sin periodo)"}`);
             }
             return sendJson(res, 409, {
                 success: false,
-                error: `Esta factura parece duplicada: ${motivos.join("; ")}. Si es una factura de otro periodo, enviela con forceDuplicate=true para reemplazarla.`,
+                error: `Esta factura parece duplicada: ${motivos.join("; ")}. Compruebe el periodo de consumo; si aun asi quiere cargarla, use forceDuplicate=true.`,
                 data: {
                     duplicateWarning: true,
                     resumen: motivos,
                     duplicates: duplicateSummary,
+                    mismoPeriodo: duplicateSummary.repeatedSamePeriod.map((d) => d.numero_servicio),
+                    otrosPeriodos: Array.from(new Set(duplicateSummary.repeatedOtherPeriod.map((d) => d.numero_servicio))),
                     facturaPreview: {
                         cliente: factura.cliente,
                         noFactura: factura.noFactura,
@@ -331,12 +395,14 @@ export async function handleUploadFactura(req, res) {
                 message: `Ya existia una factura con el numero ${factura.noFactura}. Se reemplazara por la nueva carga.`,
             });
         }
-        if (duplicateSummary.repeatedServices.length > 0) {
-            const uniqueServices = Array.from(new Set(duplicateSummary.repeatedServices.map((item) => item.numero_servicio)));
+        if (duplicateSummary.repeatedOtherPeriod.length > 0) {
+            // La misma linea en otro mes es lo normal, no un error: se informa y se sigue.
+            const unicos = Array.from(new Set(duplicateSummary.repeatedOtherPeriod.map((item) => item.numero_servicio)));
+            const periodos = Array.from(new Set(duplicateSummary.repeatedOtherPeriod.map((item) => item.periodo_consumo).filter(Boolean)));
             factura.diagnostics.push({
-                level: "warn",
-                code: "duplicate-services-detected",
-                message: `Se detectaron servicios repetidos en otras facturas: ${uniqueServices.slice(0, 8).join(", ")}${uniqueServices.length > 8 ? "..." : ""}.`,
+                level: "info",
+                code: "lineas-ya-facturadas-en-otro-periodo",
+                message: `Estas lineas ya estaban en facturas de otros periodos (${periodos.slice(0, 4).join(", ")}${periodos.length > 4 ? "..." : ""}): ${unicos.slice(0, 8).join(", ")}${unicos.length > 8 ? "..." : ""}. Se carga igualmente porque el periodo es distinto.`,
             });
         }
         // Borrado + insercion + CARGARARCH en UNA transaccion: antes, si algo

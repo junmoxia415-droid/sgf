@@ -142,10 +142,10 @@ class Api {
   Future<Map<String, dynamic>> detalleFactura(String id) async =>
       (await get('/api/facturas/${Uri.encodeComponent(id)}'));
 
-  Future<Map<String, dynamic>> subirFactura(List<int> bytes, String nombre) async {
+  Future<Map<String, dynamic>> subirFactura(List<int> bytes, String nombre, {bool forzar = false}) async {
     final b64 = base64Encode(bytes);
     return (await _pedir('POST', '/api/facturas/upload',
-        cuerpo: {'file': b64, 'filename': nombre, 'forceDuplicate': false},
+        cuerpo: {'file': b64, 'filename': nombre, 'forceDuplicate': forzar},
         espera: const Duration(minutes: 2)));
   }
 

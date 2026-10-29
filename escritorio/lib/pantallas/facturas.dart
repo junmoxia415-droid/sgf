@@ -146,12 +146,57 @@ class _ProcesarState extends State<_Procesar> {
       } on ApiError catch (e) {
         if (!mounted) return;
         setState(() {
+          // Un 409 puede ser un duplicado real (misma factura o mismas líneas en el
+          // mismo periodo) o que la factura ya se cargó antes. Se guarda la opción
+          // de forzarla, para no obligar a volver a buscarla y arrastrarla.
           _resultados.insert(
             0,
-            _Resultado(archivo: nombre, exito: false, mensaje: e.mensaje),
+            _Resultado(
+              archivo: nombre,
+              exito: false,
+              mensaje: e.codigo == 409
+                  ? '${e.mensaje}\n\nSi es correcto, use «Cargar de todas formas» para forzar la carga.'
+                  : e.mensaje,
+              archivoForzable: e.codigo == 409 ? archivo : null,
+            ),
           );
         });
       }
+    }
+    if (mounted) setState(() => _procesando = false);
+  }
+
+  /// Vuelve a subir la factura rechazada por duplicado, esta vez forzando.
+  Future<void> _forzar(File archivo) async {
+    final nombre = archivo.path.split(Platform.pathSeparator).last;
+    setState(() => _procesando = true);
+    try {
+      final bytes = await archivo.readAsBytes();
+      final r = await widget.api.subirFactura(bytes, nombre, forzar: true);
+      final datos = r['data'] as Map<String, dynamic>? ?? {};
+      final factura = datos['factura'] as Map<String, dynamic>? ?? {};
+      if (!mounted) return;
+      setState(() {
+        _resultados.removeWhere((x) => !x.exito && x.archivo == nombre);
+        _resultados.insert(
+          0,
+          _Resultado(
+            archivo: nombre,
+            exito: true,
+            mensaje: (r['message'] ?? 'Factura cargada forzando el duplicado.').toString(),
+            noFactura: (datos['noFactura'] ?? factura['noFactura'] ?? '').toString(),
+            cliente: (datos['cliente'] ?? factura['cliente'] ?? '').toString(),
+            servicios: (datos['totalServicios'] ?? 0) as int? ?? 0,
+            confianza: ((factura['confidence'] ?? 0) as num).toInt(),
+            revisar: datos['requiereRevision'] == true || datos['extraccionVacia'] == true,
+          ),
+        );
+      });
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _resultados.insert(0, _Resultado(archivo: nombre, exito: false, mensaje: e.mensaje));
+      });
     }
     if (mounted) setState(() => _procesando = false);
   }
@@ -287,7 +332,7 @@ class _ProcesarState extends State<_Procesar> {
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                           itemCount: _resultados.length,
                           separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) => _TarjetaResultado(resultado: _resultados[i]),
+                          itemBuilder: (context, i) => _TarjetaResultado(resultado: _resultados[i], onForzar: _forzar),
                         ),
                 ),
               ],
@@ -311,6 +356,7 @@ class _Resultado {
     this.totalLineas = 0,
     this.confianza = 0,
     this.revisar = false,
+    this.archivoForzable,
   });
 
   final String archivo;
@@ -322,12 +368,16 @@ class _Resultado {
   final int vinculadas;
   final int totalLineas;
   final int confianza;
+  /// Si la carga se rechazó por posible duplicado, el archivo queda aquí para
+  /// poder forzarla sin tener que volver a buscarlo.
+  final File? archivoForzable;
   final bool revisar;
 }
 
 class _TarjetaResultado extends StatelessWidget {
-  const _TarjetaResultado({required this.resultado});
+  const _TarjetaResultado({required this.resultado, required this.onForzar});
   final _Resultado resultado;
+  final Future<void> Function(File archivo) onForzar;
 
   @override
   Widget build(BuildContext context) {
@@ -356,6 +406,14 @@ class _TarjetaResultado extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(r.mensaje, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          if (r.archivoForzable != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => onForzar(r.archivoForzable!),
+              icon: const Icon(Icons.published_with_changes, size: 18),
+              label: const Text('Cargar de todas formas'),
+            ),
+          ],
           if (r.exito) ...[
             const SizedBox(height: 8),
             Wrap(

@@ -402,6 +402,27 @@ function computeConfidence(factura) {
     score -= factura.diagnostics.filter((item) => item.level === "error").length * 8;
     return Math.max(1, Math.min(99, score));
 }
+/**
+ * Extrae el periodo de consumo del encabezado. Devuelve "" si no lo encuentra.
+ * Formatos admitidos: "dd/mm/aaaa - dd/mm/aaaa", "aaaa-mm-dd - aaaa-mm-dd",
+ * "mes de aaaa", "mes aaaa", "mm/aaaa".
+ */
+function extraerPeriodo(encabezado) {
+    const patrones = [
+        /periodo\s+de\s+consumo\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
+        /periodo\s+de\s+consumo\s*:?\s*(\d{4}-\d{2}-\d{2})\s*[-–]\s*(\d{4}-\d{2}-\d{2})/i,
+        /periodo\s+de\s+consumo\s*:?\s*(\d{1,2}\s*\/\s*\d{4})/i,
+        /periodo\s+de\s+consumo\s*:?\s*([A-Za-zÁÉÍÓÚáéíóúñ]+\s+(?:de\s+|del\s+)?\d{4})/i,
+    ];
+    for (const patron of patrones) {
+        const m = encabezado.match(patron);
+        if (m) {
+            const texto = m[2] ? `${m[1]} - ${m[2]}` : m[1];
+            return texto.replace(/\s+/g, " ").trim();
+        }
+    }
+    return "";
+}
 export function parseFacturaEtcsa(text) {
     const diagnostics = [];
     const lines = getLines(text);
@@ -445,8 +466,11 @@ export function parseFacturaEtcsa(text) {
         /fecha\s+vencimiento\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
         /fech\s*a\s+de\s+vencimiento\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
     ]);
-    const periodoMatch = normalizedHeader.match(/periodo\s+de\s+consumo\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s*[–-]\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-    const periodoConsumo = periodoMatch ? `${periodoMatch[1]} - ${periodoMatch[2]}` : "";
+    // El periodo de consumo se acepta en varios formatos: antes solo se reconocía
+    // "dd/mm/aaaa - dd/mm/aaaa", así que con "2026-09-01 - 2026-09-30" o
+    // "SEPTIEMBRE 2025" quedaba vacío y no había forma de distinguir la factura de
+    // un mes de la del siguiente.
+    const periodoConsumo = extraerPeriodo(normalizedHeader);
     const codigoPago = firstMatch(normalizedHeader, [
         /codigo\s+de\s+pago\s+en\s+banco\s*:?\s*([\d\s-]{6,})/i,
         /codigo\s+de\s+pago\s*:?\s*([\d\s-]{6,})/i,
