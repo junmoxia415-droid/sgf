@@ -8,11 +8,12 @@ import 'pantalla_principal.dart';
 
 /// Puerta de entrada: el contenido y el menú no se muestran sin sesión válida.
 class AccesoSgf extends StatefulWidget {
-  const AccesoSgf({super.key, required this.servidor, required this.api, required this.ajustes, this.alCambiarTema});
+  const AccesoSgf({super.key, required this.servidor, required this.api, required this.ajustes, this.alCambiarTema, this.alComprobarInstalacion});
   final ControladorServidor servidor;
   final Api api;
   final Ajustes ajustes;
   final VoidCallback? alCambiarTema;
+  final VoidCallback? alComprobarInstalacion;
   @override
   State<AccesoSgf> createState() => _AccesoSgfState();
 }
@@ -78,7 +79,10 @@ class _AccesoSgfState extends State<AccesoSgf> {
             ),
             if (!widget.servidor.enMarcha) ...[
               Aviso(titulo: 'El servidor no está disponible', mensaje: widget.servidor.ultimoError ?? 'Inicie el servidor para acceder.', tipo: TipoAviso.error,
-                accion: OutlinedButton.icon(onPressed: () async => widget.servidor.arrancar(), icon: const Icon(Icons.refresh), label: const Text('Intentar iniciar'))),
+                accion: OutlinedButton.icon(onPressed: () async {
+                  final ok = await widget.servidor.arrancar();
+                  if (ok && mounted) widget.alComprobarInstalacion?.call();
+                }, icon: const Icon(Icons.refresh), label: const Text('Intentar iniciar'))),
               const SizedBox(height: 16),
             ],
             if (_error != null) ...[Aviso(titulo: 'Inicio de sesión', mensaje: _error!, tipo: TipoAviso.aviso), const SizedBox(height: 16)],

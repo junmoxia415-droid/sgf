@@ -196,7 +196,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
                     alTerminar: () => setState(() => _primeraVez = Future.value(false)),
                   );
                 }
-                return AccesoSgf(servidor: servidor, api: api, ajustes: widget.ajustes, alCambiarTema: () => setState(() {}));
+                return AccesoSgf(servidor: servidor, api: api, ajustes: widget.ajustes, alCambiarTema: () => setState(() {}), alComprobarInstalacion: () => setState(() => _primeraVez = servidor.esPrimeraVez()));
               },
             ),
     );
