@@ -126,8 +126,19 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
   }
 
   Future<void> _crearAdmin() async {
-    if (_adminClave.text.length < 6) {
-      setState(() => _error = 'La contraseña debe tener al menos 6 caracteres.');
+    final usuario = _adminUsuario.text.trim();
+    final nombre = _adminNombre.text.trim();
+    if (usuario.length < 3) {
+      setState(() => _error = 'El usuario debe tener al menos 3 caracteres.');
+      return;
+    }
+    if (nombre.length < 2) {
+      setState(() => _error = 'Escriba el nombre de la persona.');
+      return;
+    }
+    // El servidor exige 8: se avisa aquí para no dar el viaje en balde.
+    if (_adminClave.text.length < 8) {
+      setState(() => _error = 'La contraseña debe tener al menos 8 caracteres.');
       return;
     }
     if (_adminClave.text != _adminClave2.text) {
@@ -139,49 +150,28 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
       _error = null;
     });
     try {
-      // Primero se intenta crear la cuenta en el servidor.
-      await widget.api.post('/api/users', {
-        'username': _adminUsuario.text.trim(),
-        'password': _adminClave.text,
-        'name': _adminNombre.text.trim(),
-        'role': 'admin',
-      });
-    } on ApiError catch (e) {
-      // Ya existe ese usuario. Antes se intentaba entrar con una contraseña de
-      // fábrica escrita en el código; eso permitía entrar a cualquiera que
-      // leyera el repositorio. Ahora la contraseña de cada instalación es única
-      // (está en el escritorio, archivo "CONTRASENA INICIAL DE SGF.txt").
-      if (e.codigo == 409) {
-        try {
-          final lista = await widget.api.usuarios();
-          final existente = lista.firstWhere(
-            (u) => '${u['username']}' == _adminUsuario.text.trim(),
-            orElse: () => null,
-          );
-          if (existente != null) {
-            await widget.api.actualizarUsuario('${existente['id']}', {
-              'password': _adminClave.text,
-              'name': _adminNombre.text.trim(),
-            });
-          }
-        } catch (_) {
-          if (mounted) {
-            setState(() {
-              _guardando = false;
-              _error = 'Ya existe un usuario con ese nombre. Elija otro nombre de usuario.';
-            });
-          }
-          return;
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _guardando = false;
-            _error = e.mensaje;
-          });
-        }
-        return;
+      // Ruta de configuración inicial: NO pide sesión, porque todavía no hay
+      // ninguna cuenta (antes se llamaba a /api/users, que exige ser
+      // administrador, y por eso salía "Token no proporcionado").
+      final respuesta = await widget.api.configurarPrimeraCuenta(
+        usuario: usuario,
+        nombre: nombre,
+        clave: _adminClave.text,
+      );
+      final token = '${(respuesta['data'] as Map?)?['token'] ?? ''}';
+      if (token.isNotEmpty) {
+        await widget.api.usarToken(token, usuario);
       }
+    } on ApiError catch (e) {
+      if (mounted) {
+        setState(() {
+          _guardando = false;
+          _error = e.codigo == 409
+              ? 'Ya existe una cuenta en este equipo. Inicie sesión con ella.'
+              : e.mensaje;
+        });
+      }
+      return;
     }
 
     widget.ajustes
@@ -358,7 +348,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
         const SizedBox(height: 6),
         const Text(
           'Esta cuenta sirve para entrar al sistema, importar el Excel de líneas y crear las cuentas del resto del personal. '
-          'Anote la contraseña en un lugar seguro: no se puede recuperar, solo cambiar.',
+          'Esta es la cuenta con la que entrará siempre. Anote la contraseña en un lugar seguro.',
           style: TextStyle(fontSize: 14),
         ),
         const SizedBox(height: 18),

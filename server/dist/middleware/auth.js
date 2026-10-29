@@ -315,28 +315,18 @@ export async function hayUsuariosRegistrados() {
     }
 }
 /**
- * ¿Es una instalacion recien hecha, sin usuarios propios?
+ * ¿Es una instalacion recien hecha, sin ninguna cuenta?
  *
- * No basta con que SGF_USUARIOS este vacia: ensureAdmin() crea el usuario
- * DEFAULT_ADMIN_USER en cada arranque, asi que la tabla casi nunca esta vacia.
- * Se considera "instalacion nueva" cuando el unico usuario es ese
- * administrador por defecto, esta activo y conserva su rol; en cuanto se crea
- * cualquier otra cuenta o se cambia la del admin, la ventana se cierra.
+ * Ya no se crea un administrador de fabrica al arrancar: la base empieza vacia y
+ * la primera cuenta la crea el usuario en el asistente (POST /api/setup/admin).
+ * Por eso basta con mirar si la tabla de usuarios esta vacia; en cuanto hay una
+ * cuenta, la ventana de configuracion se cierra para siempre.
  * Las sesiones no cuentan: un instalador las abre para probar.
  */
 export async function esInstalacionNueva() {
     try {
-        const adminUser = String(process.env.DEFAULT_ADMIN_USER || "yolexis").trim();
-        const rows = await query(`SELECT USERNAME, ROL, ACTIVO FROM SGF_USUARIOS`);
-        if (!rows || rows.length === 0)
-            return true;
-        if (rows.length > 1)
-            return false;
-        const fila = rows[0];
-        const username = String(fila?.USERNAME ?? fila?.username ?? "");
-        const rol = String(fila?.ROL ?? fila?.ROLE ?? fila?.rol ?? "").toLowerCase();
-        const activo = Number(fila?.ACTIVO ?? fila?.ACTIVE ?? 0);
-        return username === adminUser && rol === "admin" && activo === 1;
+        const rows = await query(`SELECT USERNAME FROM SGF_USUARIOS`);
+        return !rows || rows.length === 0;
     }
     catch {
         // Si no se puede comprobar, se asume instalacion YA configurada.

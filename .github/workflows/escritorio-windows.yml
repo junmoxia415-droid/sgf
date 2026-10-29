@@ -16,10 +16,10 @@ on:
       version:
         description: 'Versión a compilar (ej. 1.0.0)'
         required: false
-        default: '1.0.0'
+        default: '4.0.0'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '1.0.0' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.0' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -63,8 +63,6 @@ jobs:
           PORT: '3000'
           HOST: '127.0.0.1'
           JWT_SECRET: secreto-solo-para-pruebas-123456
-          DEFAULT_ADMIN_USER: admin
-          DEFAULT_ADMIN_PASSWORD: Admin123!
           SGF_DATA_DIR: ${{ github.workspace }}/datos-prueba
           SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
         run: |
@@ -91,13 +89,18 @@ jobs:
             -d '{"type":"oracle","host":"x","port":"1","service":"x","user":"x","password":"x"}' \
             http://127.0.0.1:3000/api/db/test)
           echo "   db/test=$codigo_test"
-          # En una instalacion recien creada (solo el admin de fabrica) el asistente
+          # En una instalacion recien creada (sin ninguna cuenta) el asistente
           # inicial SI puede configurar la BD; por eso aqui no se exige 403 todavia.
 
-          echo "3) En cuanto hay un segundo usuario, /api/db/config debe exigir credenciales"
+          echo "2b) La cuenta inicial se crea por la ruta de configuración (sin sesión)"
+          # La base arranca SIN usuarios: igual que en la app, la cuenta se crea
+          # desde /api/setup/admin.
           TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"Admin123!","machineId":"ci"}' \
-            http://127.0.0.1:3000/api/auth/login | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
+            -d '{"username":"admin","name":"Administrador","password":"Admin123!"}' \
+            http://127.0.0.1:3000/api/setup/admin | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
+          test -n "$TOKEN"
+
+          echo "3) En cuanto hay un segundo usuario, /api/db/config debe exigir credenciales"
           curl -s -o /dev/null -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
             -d '{"username":"operador_ci","password":"Operador-123!","name":"Operador CI","role":"usuario"}' \
             http://127.0.0.1:3000/api/users
@@ -340,7 +343,6 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/datos-ci"
           DB_TYPE=sqlite PORT=3000 HOST=127.0.0.1 \
           JWT_SECRET=secreto-ci-1234567890 \
-          DEFAULT_ADMIN_USER=admin DEFAULT_ADMIN_PASSWORD=Admin123! \
           SGF_DATA_DIR="$GITHUB_WORKSPACE/datos-ci" \
           SGF_CONSOLE_TOKEN=token-consola-ci-1234567890 \
           node dist/index.js > servidor.log 2>&1 &

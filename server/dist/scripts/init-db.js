@@ -1,5 +1,3 @@
-import bcrypt from "bcryptjs";
-import { randomUUID } from "node:crypto";
 import { getPool, execute, closePool } from "../models/oracle.js";
 const TABLES = [
     `CREATE TABLE SGF_USUARIOS (ID VARCHAR2(36) PRIMARY KEY, USERNAME VARCHAR2(50) NOT NULL UNIQUE, NAME VARCHAR2(200) NOT NULL, ROLE VARCHAR2(20) DEFAULT 'usuario' NOT NULL, PASSWORD_HASH VARCHAR2(255) NOT NULL, ACTIVE NUMBER(1) DEFAULT 1 NOT NULL, CREATED_AT TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL, UPDATED_AT TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL)`,
@@ -49,18 +47,9 @@ async function main() {
                 console.error(`  [FAIL] ${err.message}`);
         }
     }
-    const adminId = randomUUID();
-    const adminHash = await bcrypt.hash("123", 12);
-    try {
-        await execute("INSERT INTO SGF_USUARIOS (ID, USERNAME, NAME, ROLE, PASSWORD_HASH, ACTIVE, CREATED_AT, UPDATED_AT) VALUES (:id, 'yolexis', 'Administrador SGF', 'admin', :hash, 1, SYSTIMESTAMP, SYSTIMESTAMP)", { id: adminId, hash: adminHash });
-        console.log("  [OK] Usuario admin: yolexis / 123");
-    }
-    catch (err) {
-        if (err.message?.includes("ORA-00001") || err.message?.includes("unique"))
-            console.log("  [SKIP] Admin ya existe");
-        else
-            console.error(`  [FAIL] ${err.message}`);
-    }
+    // No se crea ningun usuario de fabrica: la primera cuenta se crea desde la
+    // aplicacion (asistente de primera vez -> POST /api/setup/admin).
+    console.log("  [OK] Sin usuarios de fabrica: la cuenta se crea al abrir la aplicacion.");
     console.log("\n[SGF] Inicializacion completada.");
     await closePool();
     process.exit(0);

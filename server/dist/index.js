@@ -13,6 +13,7 @@ import { handleDbConfig, handleDbConnect, handleDbDisconnect, handleDbTest } fro
 import { handleCreateFactura, handleDeleteFactura, handleFacturaStats, handleGetFactura, handleGetFacturas, handleUpdateFactura, } from "./routes/facturas.routes.js";
 import { handleClearLogs, handleGetLogs } from "./routes/logs.routes.js";
 import { handleEstadisticasMeses } from "./routes/estadisticas.routes.js";
+import { handleSetupAdmin, handleSetupEstado } from "./routes/setup.routes.js";
 import { handleBuscarLineas, handleSearchServicios } from "./routes/services.routes.js";
 import { handleUploadFactura } from "./routes/upload.routes.js";
 import { handleCreateUser, handleDeleteUser, handleGetUsers, handleUpdateUser } from "./routes/users.routes.js";
@@ -129,6 +130,14 @@ const server = http.createServer({ requestTimeout: SERVER_CONFIG.requestTimeoutM
                 return handlePanelPeriodos(req, res);
             return sendJson(res, 404, { success: false, error: "Ruta de panel desconocida." });
         }
+        // ── Configuracion de la primera vez ───────────────────────────────────
+        // Estas dos rutas NO piden sesión: son las que crean la primera cuenta en
+        // una instalación nueva (la base arranca sin usuarios). En cuanto existe
+        // una cuenta, POST /api/setup/admin responde 409.
+        if (requestPath === "/api/setup/estado" && req.method === "GET")
+            return handleSetupEstado(req, res);
+        if (requestPath === "/api/setup/admin" && req.method === "POST")
+            return handleSetupAdmin(req, res);
         if (requestPath === "/api/auth/login" && req.method === "POST")
             return handleLogin(req, res);
         // La consola de escritorio (token en cabecera, solo loopback) puede

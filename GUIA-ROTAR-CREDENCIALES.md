@@ -20,7 +20,7 @@ hay que cambiar las claves.
 | Contraseña de **SQL Server** (si se usa) | `server/.env` → `DB_PASSWORD` | Igual |
 | **`JWT_SECRET`** | `server/.env` | Cualquiera puede fabricar un token de administrador válido |
 | **Token de instalación** (`SGF_INSTALL_TOKEN`) | `server/.env` | Cualquiera puede instalar/registrar equipos |
-| Contraseña del **administrador** `yolexis` | Base de datos | Acceso directo al panel |
+| Contraseña del **administrador** (el usuario que se creó en el asistente) | Base de datos | Acceso directo al panel |
 | **Token de GitHub** compartido | Fuera del repositorio | Cualquiera puede subir cambios al repositorio |
 
 ---
@@ -78,7 +78,7 @@ JWT_SECRET=el-valor-que-acaba-de-generar
 ## 4. Cambiar la contraseña del administrador
 
 1. Abra SGF (la app de escritorio o la web) e inicie sesión como administrador.
-2. Menú **Usuarios** → el usuario `yolexis` → **Editar**.
+2. Menú **Usuarios** → su usuario de administrador → **Editar**.
 3. Escriba la contraseña nueva y guarde.
 
 Desde la versión con el arreglo de sesiones, al cambiar la contraseña **se cierran
@@ -145,7 +145,7 @@ Cambiar las claves resuelve el daño; esto evita que vuelva a pasar:
 
 - [ ] Entrar en la base con la **contraseña vieja** falla.
 - [ ] El servidor arranca con la contraseña nueva y el panel dice "BD: OK".
-- [ ] El usuario `yolexis` entra con la contraseña nueva; la vieja no funciona.
+- [ ] El usuario de administrador entra con la contraseña nueva; la vieja no funciona.
 - [ ] Al cambiar `JWT_SECRET`, una sesión anterior deja de valer (401).
 - [ ] El token de GitHub viejo ya no puede hacer push.
 - [ ] `git grep -n "ghp_"` y una búsqueda de la contraseña vieja en el repositorio

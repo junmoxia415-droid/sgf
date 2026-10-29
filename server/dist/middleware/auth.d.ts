@@ -45,13 +45,12 @@ export declare function checkRateLimit(key: string, opts: RateLimitOptions): Rat
 /** ¿Hay ya algun usuario en la base de datos actual? */
 export declare function hayUsuariosRegistrados(): Promise<boolean>;
 /**
- * ¿Es una instalacion recien hecha, sin usuarios propios?
+ * ¿Es una instalacion recien hecha, sin ninguna cuenta?
  *
- * No basta con que SGF_USUARIOS este vacia: ensureAdmin() crea el usuario
- * DEFAULT_ADMIN_USER en cada arranque, asi que la tabla casi nunca esta vacia.
- * Se considera "instalacion nueva" cuando el unico usuario es ese
- * administrador por defecto, esta activo y conserva su rol; en cuanto se crea
- * cualquier otra cuenta o se cambia la del admin, la ventana se cierra.
+ * Ya no se crea un administrador de fabrica al arrancar: la base empieza vacia y
+ * la primera cuenta la crea el usuario en el asistente (POST /api/setup/admin).
+ * Por eso basta con mirar si la tabla de usuarios esta vacia; en cuanto hay una
+ * cuenta, la ventana de configuracion se cierra para siempre.
  * Las sesiones no cuentan: un instalador las abre para probar.
  */
 export declare function esInstalacionNueva(): Promise<boolean>;

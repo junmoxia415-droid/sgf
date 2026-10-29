@@ -419,142 +419,32 @@ export function nullableCoalesce(...args: string[]) {
  *     emergencia, y se avisa por consola;
  *   - una contrasena ya establecida JAMAS se sobrescribe automaticamente.
  */
-async function ensureAdmin() {
-  const adminUser = String(process.env.DEFAULT_ADMIN_USER || "yolexis").trim();
-  const adminPass = String(process.env.DEFAULT_ADMIN_PASSWORD || "").trim();
-  const adminName = String(process.env.DEFAULT_ADMIN_NAME || "Administrador SGF").trim();
-
-  const hayAdminActivo = async (): Promise<boolean> => {
-    try {
-      if (mode === "sqlite") {
-        const filas: any[] = await sqliteQuery(
-          "SELECT COUNT(*) AS CNT FROM SGF_USUARIOS WHERE ROL = 'admin' AND ACTIVO = 1",
-        );
-        return Number(filas?.[0]?.CNT ?? 0) > 0;
-      }
-      const filas = await query<any>(
-        "SELECT COUNT(*) AS CNT FROM SGF_USUARIOS WHERE ROL = 'admin' AND ACTIVE = 1",
-      );
-      return Number(filas?.[0]?.CNT ?? filas?.[0]?.CNT ?? 0) > 0;
-    } catch {
-      // Si no se puede comprobar (tabla recien creada), se asume que no hay.
-      return false;
-    }
-  };
-
-  const existeUsuario = async (usuario: string): Promise<any | null> => {
-    try {
-      if (mode === "sqlite") {
-        const filas: any[] = await sqliteQuery(
-          "SELECT ID, ROL, ACTIVO FROM SGF_USUARIOS WHERE USERNAME = :u",
-          { u: usuario },
-        );
-        return filas?.[0] ?? null;
-      }
-      const filas = await query<any>(
-        "SELECT ID, ROLE, ACTIVE FROM SGF_USUARIOS WHERE USERNAME = :u",
-        { u: usuario },
-      );
-      return filas?.[0] ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const crearAdmin = async (contrasena: string) => {
-    const hash = await bcrypt.hash(contrasena, 12);
-    const id = randomUUID();
-    if (mode === "oracle") {
-      await execute(
-        `INSERT INTO SGF_USUARIOS (ID, USERNAME, NAME, ROLE, PASSWORD_HASH, ACTIVE, CREATED_AT, UPDATED_AT)
-         VALUES (:id, :u, :n, :r, :h, 1, SYSTIMESTAMP, SYSTIMESTAMP)`,
-        { id, u: adminUser, n: adminName, r: "admin", h: hash },
-      );
-    } else if (mode === "mssql") {
-      await execute(
-        `INSERT INTO SGF_USUARIOS (ID, USERNAME, NAME, ROLE, PASSWORD_HASH, ACTIVE, CREATED_AT, UPDATED_AT)
-         VALUES (:id, :u, :n, :r, :h, 1, SYSUTCDATETIME(), SYSUTCDATETIME())`,
-        { id, u: adminUser, n: adminName, r: "admin", h: hash },
-      );
-    } else {
-      await sqliteExecute(
-        `INSERT INTO SGF_USUARIOS (ID, USERNAME, NOMBRE, ROL, PASSWORD_HASH, ACTIVO, CREADO)
-         VALUES (:id, :u, :n, :r, :h, 1, datetime('now'))`,
-        { id, u: adminUser, n: adminName, r: "admin", h: hash },
-      );
-    }
-    console.log(`[SGF] Administrador inicial creado: ${adminUser}`);
-    console.log("[SGF] Cambie la contrasena en el primer acceso (menu Usuarios).");
-  };
-
-  // 1) Si ya hay un administrador activo, no se toca nada.
-  if (await hayAdminActivo()) {
-    // Solo se avisa si sigue existiendo el usuario por defecto con la contrasena
-    // de fabrica, para que nadie se olvide de cambiarla.
-    if (adminPass && ["yolexis", "admin"].includes(adminUser)) {
-      const fila = await existeUsuario(adminUser);
-      if (fila) {
-        try {
-          if (await bcrypt.compare(adminPass, String((fila as any).PASSWORD_HASH ?? ""))) {
-            console.warn(
-              "[SGF] AVISO DE SEGURIDAD: el administrador conserva la contrasena por defecto. " +
-                "Cambiela desde la aplicacion (Usuarios) o edite DEFAULT_ADMIN_PASSWORD.",
-            );
-          }
-        } catch {
-          // hash ilegible: se ignora
-        }
-      }
-    }
-    return;
-  }
-
-  // 2) No queda ningun administrador activo.
-  const existente = await existeUsuario(adminUser);
-  const contrasena = adminPass || "5421915432";
-
-  if (!existente) {
-    if (!adminPass) {
-      console.warn(
-        "[SGF] No se ha definido DEFAULT_ADMIN_PASSWORD: se crea el administrador inicial con la contrasena por defecto. " +
-          "Cambiela en el primer acceso.",
-      );
-    }
-    await crearAdmin(contrasena);
-    return;
-  }
-
-  // 3) El usuario existe pero no es administrador activo: solo se recupera si de
-  // verdad no queda ningun administrador (acceso perdido). Si simplemente lo
-  // desactivaron a proposito y hay otros administradores, el paso 1 ya salio.
-  console.warn(
-    `[SGF] No hay ningun administrador activo. Se recupera la cuenta "${adminUser}" con DEFAULT_ADMIN_PASSWORD.`,
-  );
+/**
+ * ANTES: al arrancar se creaba un administrador de fabrica ("yolexis" o "admin")
+ * con una contrasena por defecto. Eso significaba que toda instalacion nueva
+ * tenia un usuario conocido por cualquiera que leyera el codigo, y que el
+ * asistente de primera vez no podia crear la cuenta que el usuario queria.
+ *
+ * AHORA: la base arranca SIN usuarios. La primera vez que se abre la aplicacion,
+ * el asistente pide nombre, usuario y contrasena, y crea la cuenta de
+ * administrador (POST /api/setup/admin, que solo funciona si no hay ningun
+ * usuario). Este registro solo se escribe por consola para saber el estado.
+ */
+async function registrarEstadoDeUsuarios() {
   try {
-    if (mode === "oracle") {
-      const hash = await bcrypt.hash(contrasena, 12);
-      await execute(
-        `UPDATE SGF_USUARIOS SET PASSWORD_HASH = :h, ACTIVE = 1, ROLE = 'admin', UPDATED_AT = SYSTIMESTAMP WHERE USERNAME = :u`,
-        { h: hash, u: adminUser },
-      );
-    } else if (mode === "mssql") {
-      const hash = await bcrypt.hash(contrasena, 12);
-      await execute(
-        `UPDATE SGF_USUARIOS SET PASSWORD_HASH = :h, ACTIVE = 1, ROLE = 'admin', UPDATED_AT = SYSUTCDATETIME() WHERE USERNAME = :u`,
-        { h: hash, u: adminUser },
-      );
+    const filas: any[] = await query<any>(`SELECT COUNT(*) AS CNT FROM SGF_USUARIOS`);
+    const cuantos = Number(filas?.[0]?.CNT ?? filas?.[0]?.cnt ?? 0);
+    if (cuantos === 0) {
+      console.log("[SGF] Base de datos sin usuarios: la cuenta de administrador se crea en el asistente de primera vez.");
     } else {
-      const hash = await bcrypt.hash(contrasena, 12);
-      await sqliteExecute(
-        `UPDATE SGF_USUARIOS SET PASSWORD_HASH = :h, ACTIVO = 1, ROL = 'admin' WHERE USERNAME = :u`,
-        { h: hash, u: adminUser },
-      );
+      console.log(`[SGF] Usuarios en la base: ${cuantos}.`);
     }
-    console.warn("[SGF] Cuenta de administrador recuperada. Cambie la contrasena cuanto antes.");
-  } catch (error: any) {
-    console.error("[SGF] No se pudo recuperar el administrador:", error?.message);
+  } catch {
+    // Tabla recien creada: nada que informar.
   }
 }
+
+
 
 async function initSqlite() {
   const SQL = await initSqlJs();
@@ -581,10 +471,12 @@ async function initSqlite() {
 
   for (const sql of SQLITE_INDEXES) db.run(sql);
   mode = "sqlite";
-  await ensureAdmin();
+  await registrarEstadoDeUsuarios();
   saveDisk();
   return { mode: "sqlite" as const, ok: true };
 }
+
+
 
 
 async function ensureOracleSchema(pool: any) {
@@ -704,7 +596,7 @@ export async function connectOracleRuntime(config?: Partial<OracleRuntimeConfig>
   process.env.ORACLE_PORT = String(nextConfig.port);
   process.env.ORACLE_SERVICE = nextConfig.service;
   mode = 'oracle';
-  await ensureAdmin();
+  await registrarEstadoDeUsuarios();
   return { ok: true, config: nextConfig };
 }
 
@@ -784,7 +676,7 @@ export async function connectMssqlRuntime(config?: Partial<MssqlRuntimeConfig>) 
   process.env.MSSQL_ENCRYPT = String(encrypt);
   process.env.MSSQL_TRUST_CERT = String(trustServerCertificate);
   mode = 'mssql';
-  await ensureAdmin();
+  await registrarEstadoDeUsuarios();
   return { ok: true, config: { server, port, database, user } };
 }
 

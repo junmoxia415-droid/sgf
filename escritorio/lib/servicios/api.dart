@@ -114,6 +114,35 @@ class Api {
     rol = (datos['user']?['role'] ?? 'usuario').toString();
   }
 
+  /// ¿Falta configurar la aplicación? (todavía no hay ninguna cuenta)
+  Future<bool> requiereConfiguracionInicial() async {
+    try {
+      final r = await get('/api/setup/estado');
+      return ((r['data'] as Map?)?['requiereConfiguracion'] ?? false) == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Crea la cuenta de administrador la primera vez.
+  ///
+  /// Va por /api/setup/admin, que NO pide sesión: en una instalación nueva no hay
+  /// ninguna cuenta con la que iniciarla (antes se llamaba a /api/users y el
+  /// servidor respondía "Token no proporcionado").
+  Future<Map<String, dynamic>> configurarPrimeraCuenta({
+    required String usuario,
+    required String nombre,
+    required String clave,
+  }) =>
+      post('/api/setup/admin', {'username': usuario, 'name': nombre, 'password': clave});
+
+  /// Deja la sesión lista con el token que devuelve la configuración inicial.
+  Future<void> usarToken(String token, String usuario) async {
+    _tokenSesion = token;
+    this.usuario = usuario;
+    rol = 'admin';
+  }
+
   Future<void> cerrarSesion() async {
     try {
       if (_tokenSesion != null) await post('/api/auth/logout');

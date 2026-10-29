@@ -36,6 +36,22 @@ void main() {
     );
   });
 
+  test('la primera vez se crea la cuenta desde la configuración inicial', () async {
+    // En un servidor recién creado no hay ninguna cuenta: así se crea la del
+    // administrador, igual que hace el asistente de la aplicación.
+    final responde = await api.requiereConfiguracionInicial();
+    if (responde) {
+      final r = await api.configurarPrimeraCuenta(
+        usuario: 'admin',
+        nombre: 'Administrador',
+        clave: 'Admin123!',
+      );
+      expect(r['success'], isTrue);
+      await api.usarToken('${(r['data'] as Map)['token']}', 'admin');
+      expect(api.conSesion, isTrue);
+    }
+  });
+
   test('iniciar sesión con el administrador de pruebas funciona', () async {
     await api.iniciarSesion('admin', 'Admin123!');
     expect(api.conSesion, isTrue);
