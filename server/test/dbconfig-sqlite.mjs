@@ -7,11 +7,11 @@ const server=spawn(process.execPath,['dist/index.js'],{env:{...process.env,HOST:
 const req=async(path,body,token)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{'x-sgf-console-token':'consola-ficticia-test-123'})},body:body?JSON.stringify(body):undefined});return [r.status,await r.json()];};
 try {
  let listo=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/api/health')).ok){listo=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert(listo);
- let [status,setup]=await req('/api/setup/admin',{username:'admin_ci',name:'Cuenta ficticia',password:'clave-ficticia-123'});assert.equal(status,201);let token=setup.data.token;
+ let [status,setup]=await req('/api/setup/admin',{username:'admin_ci',name:'Cuenta ficticia',password:'clave-para-pruebas-123'});assert.equal(status,201);let token=setup.data.token;
  const antes=readFileSync(envfile,'utf8');const [invalido]=await req('/api/db/connect',{type:'no-implementada',confirmarCambio:true},token);assert.equal(invalido,400);assert.equal(readFileSync(envfile,'utf8'),antes);
  const [sinConfirmar]=await req('/api/db/disconnect',{},token);assert.equal(sinConfirmar,409);assert.equal(readFileSync(envfile,'utf8'),antes);
  const [ok]=await req('/api/db/disconnect',{confirmarCambio:true},token);assert.equal(ok,200);
  const text=readFileSync(envfile,'utf8');assert.match(text,/PERSONALIZADO=conservar/);assert.match(text,/JWT_SECRET=secreto-ficticio-para-ci-12345/);assert.match(text,/DB_TYPE=['"]?sqlite/);assert(!readdirSync(join(dir,'config')).some(x=>x.includes('.tmp-')));
- const [login,resp]=await req('/api/auth/login',{username:'admin_ci',password:'clave-ficticia-123'});assert.equal(login,200);token=resp.data.token;const [config,r]=await req('/api/db/config',null,token);assert.equal(config,200);assert.equal(r.data.mode,'sqlite');
+ const [login,resp]=await req('/api/auth/login',{username:'admin_ci',password:'clave-para-pruebas-123'});assert.equal(login,200);token=resp.data.token;const [config,r]=await req('/api/db/config',null,token);assert.equal(config,200);assert.equal(r.data.mode,'sqlite');
  console.log('OK: configuración persistida en SGF_ENV_FILE y cuenta SQLite conservada.');
 } finally {server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));rmSync(dir,{recursive:true,force:true});}

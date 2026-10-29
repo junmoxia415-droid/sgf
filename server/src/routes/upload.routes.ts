@@ -180,8 +180,8 @@ export async function limpiarFacturaExistente(noFactura: string, userId: string)
     // de cualquier usuario con el mismo numero de factura (reemplazo cruzado).
     const existentes = await query<any>(
       userId
-        ? `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND USER_ID = :uid`
-        : `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`,
+        ? `SELECT ID, CLIENTE FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND USER_ID = :uid`
+        : `SELECT ID, CLIENTE FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`,
       { nf: noFactura, uid: userId },
     );
     for (const fila of existentes) {
@@ -194,7 +194,13 @@ export async function limpiarFacturaExistente(noFactura: string, userId: string)
     // esa tabla existe. En SQL Server o SQLite no existe ese esquema
     // y cualquier intento de DELETE fallaria con error de tabla inexistente.
     if (existentes.length > 0 && isOracleLegacyTablesAvailable()) {
-      await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA LIKE :t`, { t: `Factura ${noFactura} - %` });
+      for (const fila of existentes) {
+        const cliente = String(fila?.CLIENTE ?? fila?.cliente ?? "");
+        const similares = await query<any>(`SELECT COUNT(*) AS CNT FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND CLIENTE = :cliente`, {nf:noFactura, cliente});
+        if (Number(similares[0]?.CNT ?? similares[0]?.cnt ?? 0) > 0) throw new Error("La referencia Oracle coincide con otra factura; no se ha sustituido.");
+        const tira = `Factura ${noFactura} - ${cliente.slice(0, 40)}`;
+        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA = :t`, {t:tira});
+      }
     }
 }
 

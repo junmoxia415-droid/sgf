@@ -384,10 +384,12 @@ export async function handleUpdateFactura(req: AuthenticatedRequest, res: Server
         }
       }
 
-      if (current.no_factura) {
-        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA LIKE :t`, { t: `Factura ${current.no_factura}%` });
-      }
-      if (servicios.length) {
+      if (isOracleLegacyTablesAvailable() && (servicios.length > 0 || updated.no_factura !== current.no_factura || updated.cliente !== current.cliente)) {
+        if (!servicios.length) throw new Error("Para cambiar el número o cliente en Oracle debe proporcionar todos los servicios para conservar su sincronización.");
+        const similares = await query<any>(`SELECT COUNT(*) AS CNT FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND CLIENTE = :cliente AND ID <> :id`, {nf:current.no_factura, cliente:current.cliente, id:facturaId});
+        if (Number(similares[0]?.CNT ?? similares[0]?.cnt ?? 0) > 0) throw new Error("La referencia Oracle coincide con otra factura; revise ambas antes de editar.");
+        const tira = `Factura ${current.no_factura || "SIN-NO-FACTURA"} - ${(current.cliente || "Cliente").slice(0, 40)}`;
+        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA = :t`, {t:tira});
         await syncCargararch(updated.no_factura, updated.cliente, servicios);
       }
     });
@@ -403,19 +405,20 @@ export async function handleDeleteFactura(req: AuthenticatedRequest, res: Server
   if (!requirePermiso(req, res, "editar_facturas")) return;
 
   try {
-    const rows = await query<any>(`SELECT ID, NO_FACTURA FROM SGF_FACTURAS WHERE ID = :id`, { id: facturaId });
+    const rows = await query<any>(`SELECT ID, NO_FACTURA, CLIENTE FROM SGF_FACTURAS WHERE ID = :id`, { id: facturaId });
     if (rows.length === 0) return sendJson(res, 404, { success: false, error: "Factura no encontrada." });
-
     const noFactura = String(rows[0]?.NO_FACTURA ?? rows[0]?.no_factura ?? "");
-    await execute(`DELETE FROM SGF_SERVICIOS WHERE FACTURA_ID = :id`, { id: facturaId });
-    await execute(`DELETE FROM SGF_FACTURAS WHERE ID = :id`, { id: facturaId });
-    if (noFactura && isOracleLegacyTablesAvailable()) {
-      try {
-        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA LIKE :t`, { t: `Factura ${noFactura}%` });
-      } catch (error: any) {
-        console.warn(`[SGF] No se pudo limpiar PCELULAR.CARGARARCH: ${error.message}`);
+    const cliente = String(rows[0]?.CLIENTE ?? rows[0]?.cliente ?? "");
+    await transaction(async () => {
+      if (isOracleLegacyTablesAvailable()) {
+        const similares = await query<any>(`SELECT COUNT(*) AS CNT FROM SGF_FACTURAS WHERE NO_FACTURA = :nf AND CLIENTE = :cliente AND ID <> :id`, {nf:noFactura,cliente,id:facturaId});
+        if (Number(similares[0]?.CNT ?? similares[0]?.cnt ?? 0) > 0) throw new Error("La referencia Oracle coincide con otra factura; revise ambas antes de eliminar.");
+        const tira = `Factura ${noFactura || "SIN-NO-FACTURA"} - ${(cliente || "Cliente").slice(0, 40)}`;
+        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA = :t`, {t:tira});
       }
-    }
+      await execute(`DELETE FROM SGF_SERVICIOS WHERE FACTURA_ID = :id`, { id: facturaId });
+      await execute(`DELETE FROM SGF_FACTURAS WHERE ID = :id`, { id: facturaId });
+    });
 
     await auditLog(req, "eliminar_factura", "factura", facturaId, "warn", `Factura ${noFactura || facturaId} eliminada.`);
     return sendJson(res, 200, { success: true, message: "Factura eliminada." });
