@@ -28,6 +28,9 @@ UninstallDisplayName={#MiApp}
 ; Los datos NO se borran al desinstalar: van en %LOCALAPPDATA%\SGF
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+; Instalacion por usuario: no depende de permisos de administrador.
+; Nunca instalar dos veces a la vez sobre la misma carpeta.
+SetupMutex=SGF_Escritorio_Instalador
 
 [Languages]
 Name: "espanol"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -56,16 +59,15 @@ begin
   faltan := '';
 
   if not FileExists(ExpandConstant('{src}\..\distribucion\sgf_escritorio.exe')) then
-    faltan := faltan + '- El programa principal (sgf_escritorio.exe)' + NewLine;
+    faltan := faltan + '- El programa principal (sgf_escritorio.exe)' + Chr(13) + Chr(10);
   if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\runtime\node.exe')) then
-    faltan := faltan + '- El componente interno (node.exe)' + NewLine;
+    faltan := faltan + '- El componente interno (node.exe)' + Chr(13) + Chr(10);
   if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\dist\index.js')) then
-    faltan := faltan + '- El servicio interno del programa (index.js)' + NewLine;
+    faltan := faltan + '- El servicio interno del programa (index.js)' + Chr(13) + Chr(10);
 
   if faltan <> '' then
   begin
-    MsgBox('El paquete esta incompleto; faltan estos archivos:' + NewLine + faltan +
-      NewLine + 'Vuelva a generar el paquete con GitHub Actions.', mbError, MB_OK);
+    MsgBox('El paquete esta incompleto; faltan estos archivos:' + Chr(13) + Chr(10) + faltan + Chr(13) + Chr(10) + 'Vuelva a generar el paquete con GitHub Actions.', mbError, MB_OK);
     Result := False;
   end;
 end;
@@ -74,8 +76,8 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    MsgBox('SGF se ha instalado correctamente.' + NewLine + NewLine +
-      'Al abrirlo por primera vez, el asistente le guiara paso a paso.' + NewLine +
+    MsgBox('SGF se ha instalado correctamente.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
+      'Al abrirlo por primera vez, el asistente le guiara paso a paso.' + Chr(13) + Chr(10) +
       'La cuenta inicial es "admin" con la contrasena "Admin123!" y el programa le ' +
       'pedira cambiarla: hagalo antes de usar datos reales.',
       mbInformation, MB_OK);
