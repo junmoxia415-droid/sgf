@@ -13,6 +13,10 @@ import 'package:sgf_escritorio/servicios/api.dart';
 
 void main() {
   final avisos = <String>[];
+  // Contraseña de la cuenta de pruebas: la pone el entorno (en CI se define en el
+  // flujo de trabajo). El valor por defecto es un marcador de pruebas, no una
+  // credencial real.
+  final clavePruebas = Platform.environment['SGF_CLAVE_PRUEBAS'] ?? 'para-pruebas-123';
   final api = Api()
     ..base = Platform.environment['SGF_BASE'] ?? 'http://127.0.0.1:3000'
     ..tokenConsola = Platform.environment['SGF_CONSOLE_TOKEN'];
@@ -44,7 +48,7 @@ void main() {
       final r = await api.configurarPrimeraCuenta(
         usuario: 'admin',
         nombre: 'Administrador',
-        clave: 'Admin123!',
+        clave: clavePruebas,
       );
       expect(r['success'], isTrue);
       await api.usarToken('${(r['data'] as Map)['token']}', 'admin');
@@ -53,7 +57,7 @@ void main() {
   });
 
   test('iniciar sesión con el administrador de pruebas funciona', () async {
-    await api.iniciarSesion('admin', 'Admin123!');
+    await api.iniciarSesion('admin', clavePruebas);
     expect(api.conSesion, isTrue);
     expect(api.esAdmin, isTrue);
     final lista = await api.listarFacturas();
@@ -63,20 +67,21 @@ void main() {
   test('si el administrador desactiva la cuenta, la app se entera al instante', () async {
     // Un segundo cliente hace de administrador y desactiva a un usuario nuevo.
     final admin = Api()..base = api.base;
-    await admin.iniciarSesion('admin', 'Admin123!');
+    await admin.iniciarSesion('admin', clavePruebas);
 
     final operador = Api()
       ..base = api.base
       ..alCaducarSesion = ((m) => avisos.add(m));
     // Nombre único por ejecución: la prueba se puede repetir contra el mismo servidor.
     final nombre = 'temporal${DateTime.now().millisecondsSinceEpoch % 100000}';
+    final claveTemporal = 'temporal-${DateTime.now().millisecondsSinceEpoch}';
     await admin.crearUsuario({
       'username': nombre,
-      'password': 'Temporal-123!',
+      'password': claveTemporal,
       'name': 'Usuario temporal',
       'role': 'usuario',
     });
-    await operador.iniciarSesion(nombre, 'Temporal-123!');
+    await operador.iniciarSesion(nombre, claveTemporal);
     expect(operador.conSesion, isTrue);
     expect((await operador.listarFacturas())['success'], isTrue);
 

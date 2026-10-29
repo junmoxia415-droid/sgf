@@ -96,7 +96,7 @@ jobs:
           # La base arranca SIN usuarios: igual que en la app, la cuenta se crea
           # desde /api/setup/admin.
           TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-            -d '{"username":"admin","name":"Administrador","password":"Admin123!"}' \
+            -d '{"username":"admin","name":"Administrador","password":"para-pruebas-123"}' \
             http://127.0.0.1:3000/api/setup/admin | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
           test -n "$TOKEN"
 
@@ -362,6 +362,7 @@ jobs:
           SGF_INTEGRACION: '1'
           SGF_BASE: http://127.0.0.1:3000
           SGF_CONSOLE_TOKEN: token-consola-ci-1234567890
+          SGF_CLAVE_PRUEBAS: para-pruebas-123
         run: flutter test test_integracion/api_test.dart --reporter expanded
 
       - name: Registro si algo falla
