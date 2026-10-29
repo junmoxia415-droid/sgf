@@ -41,6 +41,46 @@ Name: "inicio"; Description: "Iniciar SGF al encender el equipo"; GroupDescripti
 ; las dependencias.
 Source: "..\distribucion\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Code]
+// El instalador comprueba lo imprescindible para que el usuario no se encuentre
+// con una app que "no arranca" sin explicacion:
+//   1) que el ejecutable de la aplicacion exista,
+//   2) que Node portatil vaya dentro (el usuario no tiene que instalar nada),
+//   3) que el servidor compilado este.
+// Si falta algo, se avisa y se cancela en vez de instalar a medias.
+function InitializeSetup(): Boolean;
+var
+  faltan: String;
+begin
+  Result := True;
+  faltan := '';
+
+  if not FileExists(ExpandConstant('{src}\..\distribucion\sgf_escritorio.exe')) then
+    faltan := faltan + #13#10 + '- El programa principal (sgf_escritorio.exe)';
+  if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\runtime\node.exe')) then
+    faltan := faltan + #13#10 + '- El componente interno (node.exe)';
+  if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\dist\index.js')) then
+    faltan := faltan + #13#10 + '- El servicio interno del programa (index.js)';
+
+  if faltan <> '' then
+  begin
+    MsgBox('El paquete esta incompleto; faltan estos archivos:' + #13#10 + faltan +
+      #13#10#13#10 + 'Vuelva a generar el paquete con GitHub Actions.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
+// Aviso de la contrasena de fabrica, para que nadie se quede con ella puesta.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    MsgBox('SGF se ha instalado correctamente.' + #13#10#13#10 +
+      'Al abrirlo por primera vez, el asistente le guiara paso a paso.' + #13#10 +
+      'La cuenta inicial es "admin" con la contrasena "Admin123!" y el programa le ' +
+      'pedira cambiarla: hagalo antes de usar datos reales.',
+      mbInformation, MB_OK);
+end;
+
 [Icons]
 Name: "{group}\SGF Escritorio"; Filename: "{app}\sgf_escritorio.exe"
 Name: "{group}\Guia de uso"; Filename: "{app}\LEEME-PRIMERO.txt"

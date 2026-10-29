@@ -53,6 +53,11 @@ type ImportResult = {
  * borrado de tablas que no tienen nada que ver con la importacion).
  */
 export declare const IMPORT_TABLES: readonly ["SGF_LINEAS_IMPORTADAS", "SGF_FACTURAS", "SGF_SERVICIOS", "PCELULAR_LINEA_TELEFONICA", "PCELULAR_PERSONA", "PCELULAR_TELEFONO_ASIGNADO", "PCELULAR_PROVINCIA", "PCELULAR_MUNICIPIO", "PCELULAR_ORGANO", "PCELULAR_UNIDAD", "PCELULAR_CARGO", "PCELULAR_GRADO"];
+/**
+ * Tablas en las que el importador tiene que generar ID/USER_ID. Las del sistema
+ * original (PCELULAR_*) usan sus propias claves y no tienen esas columnas.
+ */
+export declare const TABLAS_CON_ID_PROPIOS: string[];
 /** Tablas que nunca se pueden vaciar con truncate=true. */
 export declare const TRUNCATE_PROHIBIDAS: string[];
 export declare function validarTablaImportacion(table: string): string;

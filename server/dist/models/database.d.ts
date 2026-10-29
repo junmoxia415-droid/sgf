@@ -92,5 +92,14 @@ export declare function pingDb(): Promise<{
     ms: number;
 }>;
 export declare function closeDb(): Promise<void>;
+/**
+ * Tablas en las que el importador puede añadir columnas nuevas.
+ *
+ * Antes bastaba con que el nombre pasara el filtro de caracteres, así que un
+ * encabezado de Excel podía acabar creando columnas en SGF_USUARIOS o
+ * SGF_SESIONES (por ejemplo `EMAIL`, `ACTIVO` o `PASSWORD_HASH`) y desde ahí
+ * alterar el comportamiento del sistema. Ahora solo se tocan las tablas de datos.
+ */
+export declare const TABLAS_CON_COLUMNAS_AMPLIABLES: string[];
 export declare function ensureColumnExists(table: string, column: string, type: string): Promise<void>;
 export { toMssql, toSqlite };

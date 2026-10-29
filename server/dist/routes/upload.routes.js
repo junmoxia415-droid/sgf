@@ -73,11 +73,11 @@ export function normalizarPeriodo(periodo) {
     // Sin formato reconocible: se compara igual con igual.
     return texto;
 }
-async function detectarDuplicadosFactura(factura) {
+async function detectarDuplicadosFactura(factura, usuarioActual = "") {
     const sameInvoice = [];
     const repeatedServices = [];
     if (factura.noFactura) {
-        const rows = await query(`SELECT ID, NO_FACTURA, CLIENTE, PERIODO_CONSUMO, CREATED_AT
+        const rows = await query(`SELECT ID, NO_FACTURA, CLIENTE, PERIODO_CONSUMO, CREATED_AT, USER_ID
        FROM SGF_FACTURAS
        WHERE NO_FACTURA = :nf
        ORDER BY CREATED_AT DESC`, { nf: factura.noFactura });
@@ -87,6 +87,7 @@ async function detectarDuplicadosFactura(factura) {
             cliente: String(row?.CLIENTE ?? row?.cliente ?? ""),
             periodo_consumo: String(row?.PERIODO_CONSUMO ?? row?.periodo_consumo ?? ""),
             created_at: String(row?.CREATED_AT ?? row?.created_at ?? ""),
+            user_id: String(row?.USER_ID ?? row?.user_id ?? ""),
         })));
     }
     const serviceNumbers = Array.from(new Set((factura.servicios || []).map((item) => item.numero).filter(Boolean)));
@@ -133,10 +134,15 @@ async function detectarDuplicadosFactura(factura) {
             numero_servicio: String(row?.NUMERO_SERVICIO ?? row?.numero_servicio ?? ""),
             importe: Number(row?.IMPORTE ?? row?.importe ?? 0),
             created_at: String(row?.CREATED_AT ?? row?.created_at ?? ""),
+            user_id: String(row?.USER_ID ?? row?.user_id ?? ""),
         })));
     }
+    // Facturas con el mismo numero que pertenecen a OTRA persona: forzar la carga
+    // no debe borrarlas (reemplazo cruzado), asi que se separan.
+    const sameInvoiceOtrosUsuarios = sameInvoice.filter((f) => f.user_id && usuarioActual && f.user_id !== usuarioActual);
     return {
         sameInvoice,
+        sameInvoiceOtrosUsuarios,
         repeatedServices,
         repeatedSamePeriod,
         repeatedOtherPeriod,
@@ -149,6 +155,12 @@ async function detectarDuplicadosFactura(factura) {
 async function limpiarFacturaExistente(noFactura, userId) {
     if (!noFactura)
         return;
+    // Sin usuario no se borra nada: la version anterior borraba las facturas de
+    // TODOS los usuarios con ese numero cuando no habia usuario en la peticion.
+    if (!userId) {
+        console.warn("[SGF] No se reemplaza la factura anterior: la peticion no tiene usuario.");
+        return;
+    }
     try {
         // Solo se reemplazan las facturas del MISMO usuario: antes se borraban las
         // de cualquier usuario con el mismo numero de factura (reemplazo cruzado).
@@ -348,7 +360,7 @@ export async function handleUploadFactura(req, res) {
             });
         }
         const factura = parseFacturaEtcsa(texto);
-        const duplicateSummary = await detectarDuplicadosFactura(factura);
+        const duplicateSummary = await detectarDuplicadosFactura(factura, req.currentUser?.id || "");
         if (duplicateSummary.hasDuplicates && !forceDuplicate) {
             try {
                 fs.unlinkSync(tmpFile);
@@ -386,6 +398,39 @@ export async function handleUploadFactura(req, res) {
                     },
                     comoForzar: "POST /api/facturas/upload con { file, forceDuplicate: true }",
                 },
+            });
+        }
+        // Forzar sobre una factura de OTRA persona: solo un administrador, y queda
+        // registrado en el historial. Antes se borraba la factura del otro sin avisar.
+        if (forceDuplicate && duplicateSummary.sameInvoiceOtrosUsuarios.length > 0) {
+            const esAdmin = req.currentUser?.role === "admin";
+            if (!esAdmin) {
+                try {
+                    fs.unlinkSync(tmpFile);
+                }
+                catch { }
+                return sendJson(res, 409, {
+                    success: false,
+                    error: "Ese numero de factura ya lo ha cargado otro usuario. Solo un administrador puede reemplazarlo; " +
+                        "si la factura es suya, compruebe el numero o pida ayuda al administrador.",
+                    data: {
+                        duplicateWarning: true,
+                        propietarioDistinto: true,
+                        duplicates: {
+                            sameInvoiceOtrosUsuarios: duplicateSummary.sameInvoiceOtrosUsuarios.map((d) => ({
+                                no_factura: d.no_factura,
+                                periodo_consumo: d.periodo_consumo,
+                                created_at: d.created_at,
+                            })),
+                        },
+                    },
+                });
+            }
+            await auditLog(req, "reemplazo_factura_de_otro_usuario", "factura", factura.noFactura, "warn", `El administrador reemplaza la factura ${factura.noFactura} de otro usuario (forzado).`);
+            factura.diagnostics.push({
+                level: "warn",
+                code: "reemplazo-de-otro-usuario",
+                message: "Esta factura reemplaza una cargada por otro usuario; la accion ha quedado registrada.",
             });
         }
         if (duplicateSummary.sameInvoice.length > 0) {

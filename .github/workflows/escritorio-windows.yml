@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: server/package-lock.json
 
@@ -138,7 +138,7 @@ jobs:
       # ── Montaje del paquete: .exe + servidor + Node + dependencias ─────────
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Preparar Node portatil
         shell: pwsh
@@ -149,11 +149,15 @@ jobs:
           Copy-Item $nodeExe (Join-Path $nodeDir 'node.exe')
           Write-Host "Node copiado desde $nodeExe"
 
-      - name: Preparar el servidor (solo dependencias de produccion)
+      # Se instalan TODAS las dependencias porque el .js compilado se genera aqui
+      # (necesita typescript). Las de desarrollo se quitan despues, antes de
+      # empaquetar, para que el instalador no las lleve.
+      - name: Preparar el servidor
         working-directory: server
         run: |
-          npm ci --omit=dev --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npx tsc
+          npm prune --omit=dev --no-audit --no-fund
 
       - name: Montar la carpeta de distribucion
         shell: pwsh
@@ -171,6 +175,14 @@ jobs:
           Copy-Item -Recurse 'server/dist' (Join-Path $servidor 'dist')
           Copy-Item 'server/package.json' $servidor
           Copy-Item -Recurse 'server/node_modules' (Join-Path $servidor 'node_modules')
+          # Comprobacion: el instalador no debe llevar dependencias de desarrollo
+          $devSobra = Get-ChildItem (Join-Path $servidor 'node_modules') -Directory |
+            Where-Object { $_.Name -in @('typescript','@types','vite','tailwindcss') }
+          if ($devSobra) {
+            Write-Error "Hay dependencias de desarrollo en el paquete: $($devSobra.Name -join ', ')"
+            exit 1
+          }
+          Write-Host "node_modules de produccion: $((Get-ChildItem (Join-Path $servidor 'node_modules') -Directory).Count) paquetes"
           $runtime = Join-Path $servidor 'runtime'
           New-Item -ItemType Directory -Force -Path $runtime | Out-Null
           Copy-Item (Join-Path $env:RUNNER_TEMP 'node-portatil/node.exe') $runtime
@@ -182,12 +194,28 @@ jobs:
       - name: Instalar Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Comprobar que el paquete esta completo
+        shell: pwsh
+        run: |
+          # El instalador exige estos tres archivos; si falta alguno, mejor saberlo
+          # aqui que en el equipo del usuario.
+          $obligatorios = @(
+            'distribucion\sgf_escritorio.exe',
+            'distribucion\servidor\runtime\node.exe',
+            'distribucion\servidor\dist\index.js',
+            'distribucion\LEEME-PRIMERO.txt'
+          )
+          $faltan = $obligatorios | Where-Object { -not (Test-Path $_) }
+          if ($faltan) { Write-Error "Faltan en el paquete: $($faltan -join ', ')"; exit 1 }
+          Write-Host "Paquete completo. Tamaño: $([math]::Round((Get-ChildItem distribucion -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)) MB"
+
       - name: Generar instalador
         shell: pwsh
         run: |
           $iss = 'instalador/sgf.iss'
           (Get-Content $iss) -replace '@VERSION@', '${{ env.VERSION }}' | Set-Content $iss
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
+          if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup fallo (codigo $LASTEXITCODE)"; exit 1 }
           Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
 
       - name: Comprimir version portable
@@ -216,7 +244,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: server/package-lock.json
 

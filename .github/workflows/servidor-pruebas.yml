@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: server/package-lock.json
 
@@ -34,6 +34,16 @@ jobs:
       - name: Compilar
         working-directory: server
         run: npx tsc
+
+      # Falla si aparece una vulnerabilidad conocida (alta o crítica) en las
+      # dependencias del servidor o del cliente. Los paquetes con aviso sin
+      # parche quedan fijados por "overrides" en cada package.json.
+      - name: Dependencias sin vulnerabilidades conocidas
+        run: |
+          echo "== servidor =="
+          (cd server && npm audit --audit-level=high)
+          echo "== cliente =="
+          (cd client && npm ci --no-audit --no-fund && npm audit --audit-level=high)
 
       - name: Buscar secretos en el repositorio
         run: |

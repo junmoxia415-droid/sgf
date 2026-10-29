@@ -1052,6 +1052,39 @@ export async function closeDb() {
 
 const TIPOS_COLUMNA_PERMITIDOS = /^(TEXT|INTEGER|REAL|NUMERIC(\(\d+(,\s*\d+)?\))?|VARCHAR2?\(\d+\)|NVARCHAR\(\d+|MAX\)|NVARCHAR\(\d+\)|NUMBER(\(\d+(,\s*\d+)?\))?|DECIMAL\(\d+(,\s*\d+)?\)|INT|DATETIME2?|CLOB|TIMESTAMP)$/i;
 
+/**
+ * Tablas en las que el importador puede añadir columnas nuevas.
+ *
+ * Antes bastaba con que el nombre pasara el filtro de caracteres, así que un
+ * encabezado de Excel podía acabar creando columnas en SGF_USUARIOS o
+ * SGF_SESIONES (por ejemplo `EMAIL`, `ACTIVO` o `PASSWORD_HASH`) y desde ahí
+ * alterar el comportamiento del sistema. Ahora solo se tocan las tablas de datos.
+ */
+export const TABLAS_CON_COLUMNAS_AMPLIABLES = [
+  "SGF_LINEAS_IMPORTADAS",
+  "SGF_FACTURAS",
+  "SGF_SERVICIOS",
+  "PCELULAR_LINEA_TELEFONICA",
+  "PCELULAR_PERSONA",
+  "PCELULAR_TELEFONO_ASIGNADO",
+  "PCELULAR_PROVINCIA",
+  "PCELULAR_MUNICIPIO",
+  "PCELULAR_ORGANO",
+  "PCELULAR_UNIDAD",
+  "PCELULAR_CARGO",
+  "PCELULAR_GRADO",
+];
+
+/**
+ * Columnas con significado de seguridad: una importación no puede crearlas ni
+ * escribirlas. Ojo: ID y USER_ID NO están aquí porque el propio importador las
+ * necesita para sus filas (en las tablas PCELULAR_* las crea él).
+ */
+const COLUMNAS_RESERVADAS = new Set([
+  "ACTIVO", "ACTIVE", "ROL", "ROLE", "PASSWORD_HASH",
+  "TOKEN", "SESSION_TOKEN", "EXPIRA", "EXPIRES_AT",
+]);
+
 export async function ensureColumnExists(table: string, column: string, type: string) {
   const upperTable = table.toUpperCase();
   const upperCol = column.toUpperCase();
@@ -1059,6 +1092,12 @@ export async function ensureColumnExists(table: string, column: string, type: st
   // valida antes de interpolarlo en ALTER TABLE (inyeccion SQL por encabezado).
   if (!/^[A-Z][A-Z0-9_]*$/.test(upperTable) || !/^[A-Z][A-Z0-9_]*$/.test(upperCol)) {
     throw new Error(`Identificador SQL no valido: ${table}.${column}`);
+  }
+  if (!TABLAS_CON_COLUMNAS_AMPLIABLES.includes(upperTable)) {
+    throw new Error(`No se pueden añadir columnas a la tabla ${upperTable} desde una importación.`);
+  }
+  if (COLUMNAS_RESERVADAS.has(upperCol)) {
+    throw new Error(`La columna ${upperCol} es del sistema y no se puede modificar desde una importación.`);
   }
   if (!TIPOS_COLUMNA_PERMITIDOS.test(String(type).trim())) {
     throw new Error(`Tipo de columna no permitido: ${type}`);

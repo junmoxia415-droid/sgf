@@ -153,6 +153,12 @@ export const IMPORT_TABLES = [
   "PCELULAR_GRADO",
 ] as const;
 
+/**
+ * Tablas en las que el importador tiene que generar ID/USER_ID. Las del sistema
+ * original (PCELULAR_*) usan sus propias claves y no tienen esas columnas.
+ */
+export const TABLAS_CON_ID_PROPIOS = ["SGF_LINEAS_IMPORTADAS", "SGF_FACTURAS", "SGF_SERVICIOS"];
+
 /** Tablas que nunca se pueden vaciar con truncate=true. */
 export const TRUNCATE_PROHIBIDAS = ["SGF_USUARIOS", "SGF_SESIONES", "SGF_LOGS"];
 
@@ -284,9 +290,14 @@ async function importarExcelInterno(buffer: Buffer, options: ImportOptions = {})
         if (val === undefined || val === null) val = "";
         data[dbCol] = String(val).trim();
       });
-      // Campos obligatorios según tabla
-      data.ID = randomUUID();
-      if (options.userId) data.USER_ID = options.userId;
+      // Campos obligatorios según tabla. Ojo: las tablas PCELULAR_* del sistema
+      // original NO tienen ID ni USER_ID (su clave es NUMERO, INDENTID, etc.);
+      // antes se añadían igualmente y todas las filas fallaban con
+      // "table PCELULAR_LINEA_TELEFONICA has no column named ID".
+      if (TABLAS_CON_ID_PROPIOS.includes(table)) {
+        data.ID = randomUUID();
+        if (options.userId) data.USER_ID = options.userId;
+      }
       // Para facturas, generar cliente si falta
       if (table === "SGF_FACTURAS" && !data.CLIENTE) data.CLIENTE = data.NO_FACTURA || "Cliente importado Excel";
       if (table === "SGF_FACTURAS" && !data.USER_ID) data.USER_ID = options.userId || "import-excel";
