@@ -60,7 +60,7 @@ Resultado en la pestaña *Actions* → *Artifacts*:
 - `SGF-Escritorio-Portable-<version>.zip` — carpeta que arranca sin instalar
 
 Para publicar una versión: `Actions` → *Compilar e instalar SGF (Windows)* →
-*Run workflow* → versión (ej. `1.0.0`).
+*Run workflow* → versión (ej. `4.0.0`).
 
 ### Compilar en tu PC (opcional)
 
