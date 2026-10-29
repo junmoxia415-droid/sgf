@@ -47,14 +47,62 @@ jobs:
 
       - name: Buscar secretos en el repositorio
         run: |
-          # Nunca debe subirse un .env ni claves reales.
-          if git ls-files | grep -E '(^|/)\.env$'; then
-            echo "ERROR: hay un archivo .env versionado"; exit 1
-          fi
-          if git grep -nE "(JWT_SECRET|ORACLE_PASSWORD|MSSQL_PASSWORD)=[^ ]{8,}" -- ':!*.md' ':!*.example'; then
-            echo "ERROR: parece haber una credencial escrita en el codigo"; exit 1
-          fi
-          echo "Sin secretos visibles."
+          # Nunca debe subirse un .env ni una credencial real escrita en el código.
+          # Este paso ya detectó dos fallos reales del proyecto:
+          #   - la contraseña de Oracle escrita en launcher/sgf-launcher.py
+          #     (ahora se pide en la ventana y se guarda en el .env del equipo);
+          #   - la contraseña de fábrica del administrador, igual en todas las
+          #     instalaciones (ahora se genera al azar en cada equipo).
+          #
+          # Solo se considera secreto un valor ESCRITO (entre comillas, o tal cual
+          # en un archivo de configuración). Asignar una variable desde otra
+          # variable o desde una función NO es un secreto.
+          python3 - <<'PY'
+          import re, subprocess, sys
+
+          CLAVES = r'(PASSWORD|SECRET|PASSWD|CLAVE|API_KEY|TOKEN)'
+          # Archivos donde una clave va suelta, sin comillas: archivos de configuracion.
+          CONFIG = ('.env', '.iss', '.bat', '.cmd', '.ps1', '.yml', '.yaml', '.conf', '.ini', '.properties')
+
+          LITERAL = re.compile(CLAVES + r'\s*[=:]\s*["\']([^"\']{8,})["\']', re.I)
+          SUELTA = re.compile(r'^\s*' + CLAVES + r'\s*=\s*([^\s"\']{8,})\s*$', re.I)
+
+          # Plantillas que NO son secretos: valores que salen de una variable,
+          # marcadores evidentes de prueba, o textos de ayuda.
+          PLANTILLA = re.compile(
+              r'\$\{|\$[a-z_]|env_entries|process\.env|os\.environ|token_hex|generar|aleatori|'
+              r'cambiar-en|secreto-ci|para-pruebas|pruebas123|x{6,}|\*{3,}|<[^>]+>|getItem|prompt',
+              re.I,
+          )
+
+          archivos = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, check=True).stdout.split()
+          fallos = []
+
+          for ruta in archivos:
+              if ruta.startswith('.github/workflows/') or ruta.startswith('node_modules/'):
+                  continue
+              if ruta.endswith('.env'):
+                  fallos.append(f'{ruta}: hay un archivo .env versionado')
+                  continue
+              es_config = ruta.endswith(CONFIG)
+              try:
+                  with open(ruta, encoding='utf-8', errors='ignore') as f:
+                      lineas = f.readlines()
+              except OSError:
+                  continue
+              for numero, linea in enumerate(lineas, 1):
+                  if PLANTILLA.search(linea):
+                      continue
+                  if LITERAL.search(linea) or (es_config and SUELTA.search(linea)):
+                      fallos.append(f'{ruta}:{numero}: {linea.strip()[:110]}')
+
+          if fallos:
+              print('ERROR: parece haber credenciales escritas en el codigo:')
+              for f in fallos:
+                  print('  ' + f)
+              sys.exit(1)
+          print('Sin secretos visibles.')
+          PY
 
       # Genera datos INVENTADOS (Excel de lineas, oficiales, 3 meses de consumo,
       # facturas PDF de 1 a 120 servicios) y comprueba el flujo completo:

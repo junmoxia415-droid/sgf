@@ -81,10 +81,77 @@ class ControladorServidor extends ChangeNotifier {
     return base64Url.encode(bytes).replaceAll('=', '');
   }
 
+  /// Contraseña inicial legible pero impredecible: 4 grupos de 4 caracteres
+  /// (sin los que se confunden al copiar: 0/O, 1/l/I). Se genera en cada
+  /// instalación, así que no hay ninguna contraseña "de fábrica" común.
+  String _generarClaveInicial() {
+    const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final grupos = <String>[];
+    for (var g = 0; g < 4; g++) {
+      var grupo = '';
+      for (var i = 0; i < 4; i++) {
+        grupo += alfabeto[_aleatorio.nextInt(alfabeto.length)];
+      }
+      grupos.add(grupo);
+    }
+    return grupos.join('-');
+  }
+
+  /// Deja la contraseña inicial a la vista del usuario, en el escritorio, y la
+  /// genera una sola vez. Así no se pierde y no hay que adivinarla.
+  Future<void> _guardarClaveDeFabricacion(String clave) async {
+    try {
+      final escritorio = await _carpetaEscritorio();
+      if (escritorio == null) return;
+      final nota = File('${escritorio.path}${Platform.pathSeparator}CONTRASENA INICIAL DE SGF.txt');
+      if (await nota.exists()) return;
+      await nota.writeAsString(
+        'SGF Escritorio\n'
+        '================\n\n'
+        'Usuario: admin\n'
+        'Contraseña inicial: $clave\n\n'
+        'Esta contraseña se creó solo para este equipo. El programa pedirá\n'
+        'cambiarla en el primer acceso. Después de cambiarla, borre este archivo.\n\n'
+        'Si la pierde: abra Ajustes y vuelva a ejecutar el asistente, o borre el\n'
+        'archivo de configuración para que se genere una nueva.\n',
+      );
+      anotar('Contraseña inicial escrita en: ${nota.path}');
+    } catch (_) {
+      // Si no se puede escribir en el escritorio, no pasa nada: la clave sigue
+      // en el archivo de configuración del equipo.
+    }
+  }
+
+  Future<Directory?> _carpetaEscritorio() async {
+    try {
+      if (Platform.isWindows) {
+        final perfil = Platform.environment['USERPROFILE'];
+        if (perfil != null) return Directory('$perfil\\Desktop');
+        final publico = Platform.environment['PUBLIC'];
+        if (publico != null) return Directory('$publico\\Desktop');
+        return null;
+      }
+      final casa = Platform.environment['HOME'];
+      if (casa == null) return null;
+      final candidatos = ['$casa/Desktop', '$casa/Escritorio', casa];
+      for (final c in candidatos) {
+        if (await Directory(c).exists()) return Directory(c);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _asegurarEnv() async {
     await carpetaDatos.create(recursive: true);
     if (!await archivoEnv.exists()) {
       final secreto = _generarToken();
+      // La contraseña del administrador se genera al azar en cada instalación y
+      // se guarda SOLO en este equipo (.env + acceso directo en el escritorio).
+      // Antes era una contraseña fija escrita en el código, igual en todas las
+      // instalaciones: cualquiera que leyera el repositorio podía entrar.
+      final claveInicial = _generarClaveInicial();
       await archivoEnv.writeAsString('''
 # Configuracion del servidor SGF (generada por la aplicacion)
 DB_TYPE=${ajustes.modoBd}
@@ -93,12 +160,15 @@ HOST=127.0.0.1
 JWT_SECRET=$secreto
 JWT_EXPIRES_IN=8h
 DEFAULT_ADMIN_USER=admin
-DEFAULT_ADMIN_PASSWORD=Admin123!
+DEFAULT_ADMIN_PASSWORD=$claveInicial
 MAX_FILE_SIZE_MB=25
 LOGIN_RATE_PER_MIN=60
 LOGIN_RATE_PER_15MIN=300
 ''');
+      await _guardarClaveDeFabricacion(claveInicial);
       anotar('Creada la configuración inicial (${archivoEnv.path}).');
+      anotar('Contraseña inicial del administrador guardada en el escritorio '
+          '("CONTRASENA INICIAL DE SGF.txt"). El programa pedirá cambiarla.');
     }
   }
 

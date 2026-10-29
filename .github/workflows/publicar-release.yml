@@ -58,8 +58,9 @@ jobs:
           Aplicacion instalable para Windows. El instalador trae todo dentro: no hace
           falta instalar Node ni ningun otro programa.
 
-          Al abrir por primera vez, un asistente guia los pasos. La cuenta inicial es
-          `admin` / `Admin123!` y el programa pide cambiarla.
+          Al abrir por primera vez, un asistente guia los pasos. La contrasena inicial
+          se genera para cada equipo y queda anotada en el escritorio; el programa
+          pide cambiarla en el primer acceso.
           EOF
           if gh release view "$etiqueta" > /dev/null 2>&1; then
             gh release upload "$etiqueta" "$ruta" --clobber

@@ -49,7 +49,9 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
   const [dbType, setDbType] = useState<DbType>("oracle");
 
   // Formularios por motor
-  const [oracleForm, setOracleForm] = useState({ host: "25", port: "1521", service: "PCELULAR", user: "pcelular", password: "pcelular" });
+  // Sin credenciales rellenas: la contraseña se escribe en el formulario (antes
+  // venía escrita aquí, a la vista de cualquiera que abriera el código).
+  const [oracleForm, setOracleForm] = useState({ host: "25", port: "1521", service: "PCELULAR", user: "", password: "" });
   const [mssqlForm, setMssqlForm] = useState({ server: "localhost", port: "1433", database: "sgf", user: "sa", password: "", encrypt: false, trustServerCertificate: true });
   const [currentMode, setCurrentMode] = useState<DbType>("sqlite");
   const [currentDbType, setCurrentDbType] = useState<string>("");

@@ -147,10 +147,12 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
         'role': 'admin',
       });
     } on ApiError catch (e) {
-      // Si ya existe el usuario por defecto, se actualiza su contraseña.
+      // Ya existe ese usuario. Antes se intentaba entrar con una contraseña de
+      // fábrica escrita en el código; eso permitía entrar a cualquiera que
+      // leyera el repositorio. Ahora la contraseña de cada instalación es única
+      // (está en el escritorio, archivo "CONTRASENA INICIAL DE SGF.txt").
       if (e.codigo == 409) {
         try {
-          await widget.api.iniciarSesion('admin', 'Admin123!');
           final lista = await widget.api.usuarios();
           final existente = lista.firstWhere(
             (u) => '${u['username']}' == _adminUsuario.text.trim(),

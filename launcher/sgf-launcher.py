@@ -13,7 +13,7 @@ El launcher debe estar en la RAIZ del proyecto:
     client/
 """
 
-import os, sys, subprocess, threading, time, socket, shutil, webbrowser
+import os, sys, subprocess, threading, time, socket, shutil, webbrowser, secrets
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from pathlib import Path
@@ -383,6 +383,7 @@ class SGFLauncher:
             ("Oracle Puerto","port",cfg["port"]),
             ("Oracle Servicio","service",cfg["service"]),
             ("Oracle Usuario","user",cfg["user"]),
+            ("Oracle Clave","oracle_password",cfg.get("oracle_password","")),
             ("SQL Srv Server","mssql_server",cfg["mssql_server"]),
             ("SQL Srv Puerto","mssql_port",cfg["mssql_port"]),
             ("SQL Srv Base","mssql_db",cfg["mssql_db"]),
@@ -392,7 +393,8 @@ class SGFLauncher:
         for label,key,default in fields:
             r=tk.Frame(c,bg=self.WHITE);r.pack(fill="x",padx=14,pady=2)
             tk.Label(r,text=label+":",font=("Segoe UI",9),bg=self.WHITE,fg=self.DARK,width=16,anchor="w").pack(side="left")
-            e=tk.Entry(r,font=("Consolas",9),width=40);e.insert(0,default);e.pack(side="left");self.env_entries[key]=e
+            e=tk.Entry(r,font=("Consolas",9),width=40,show="*" if "password" in key else "")
+            e.insert(0,default);e.pack(side="left");self.env_entries[key]=e
         bf=tk.Frame(c,bg=self.WHITE);bf.pack(padx=14,pady=(8,10))
         tk.Button(bf,text="Guardar Configuracion",command=self.save_env,bg=self.GREEN,fg="white",font=("Segoe UI",9,"bold"),width=22,bd=0,cursor="hand2").pack(side="left",padx=(0,6))
         tk.Button(bf,text="Restaurar Valores",command=self.reset_env,bg=self.GRAY,fg="white",font=("Segoe UI",9),width=18,bd=0,cursor="hand2").pack(side="left")
@@ -408,7 +410,8 @@ class SGFLauncher:
     def save_env(self):
         c=(f"# SGF v4.0\nPORT={self.env_entries['http'].get().strip()}\nHOST=0.0.0.0\n\n"
            f"DB_TYPE={self.env_entries['db_type'].get().strip()}\n\n"
-           f"ORACLE_USER={self.env_entries['user'].get().strip()}\nORACLE_PASSWORD=pcelular\n"
+           f"ORACLE_USER={self.env_entries['user'].get().strip()}\n"
+           f"ORACLE_PASSWORD={self.env_entries['oracle_password'].get().strip()}\n"
            f"ORACLE_HOST={self.env_entries['host'].get().strip()}\nORACLE_PORT={self.env_entries['port'].get().strip()}\n"
            f"ORACLE_SERVICE={self.env_entries['service'].get().strip()}\n"
            f"ORACLE_POOL_MIN=2\nORACLE_POOL_MAX=20\nORACLE_POOL_INCREMENT=2\nORACLE_POOL_TIMEOUT=60\n\n"
@@ -417,7 +420,7 @@ class SGFLauncher:
            f"MSSQL_DATABASE={self.env_entries['mssql_db'].get().strip()}\n"
            f"MSSQL_ENCRYPT=false\nMSSQL_TRUST_CERT=true\n"
            f"MSSQL_POOL_MIN=0\nMSSQL_POOL_MAX=10\nMSSQL_POOL_IDLE_MS=30000\n\n"
-           f"JWT_SECRET=sgf-jwt-secret-cambiar-en-produccion\nJWT_EXPIRES_IN=8h\n\n"
+           f"JWT_SECRET={secrets.token_hex(32)}\nJWT_EXPIRES_IN=8h\n\n"
            f"REQUEST_TIMEOUT_MS=30000\nMAX_FILE_SIZE_MB=10\n"
            f"LOGIN_RATE_PER_MIN=5\nLOGIN_RATE_PER_15MIN=30\n")
         (SERVER_DIR/".env").write_text(c,encoding="utf-8")

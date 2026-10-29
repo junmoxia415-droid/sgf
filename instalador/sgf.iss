@@ -143,8 +143,9 @@ begin
   if CurStep = ssPostInstall then
     MsgBox('SGF se ha instalado correctamente.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'Al abrirlo por primera vez, el asistente le guiará paso a paso.' + Chr(13) + Chr(10) +
-      'Cuenta inicial: usuario "yolexis".' + Chr(13) + Chr(10) +
-      'La contraseña se pide cambiarla en el primer acceso: hágalo antes de ' +
+      'La contraseña inicial se crea para ESTE equipo y queda anotada en el' + Chr(13) + Chr(10) +
+      'escritorio, en el archivo "CONTRASENA INICIAL DE SGF.txt".' + Chr(13) + Chr(10) +
+      'El programa pedirá cambiarla en el primer acceso: hágalo antes de ' +
       'introducir datos reales.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'Sus datos se guardan en la carpeta del usuario y NO se borran al desinstalar.',
       mbInformation, MB_OK);

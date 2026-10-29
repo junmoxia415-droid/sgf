@@ -37,7 +37,7 @@ ALTER USER NOMBRE_DEL_USUARIO IDENTIFIED BY "NuevaClaveLarga-2026";
 → Propiedades → Cambiar contraseña), o por SQL:
 
 ```sql
-ALTER LOGIN [usuario] WITH PASSWORD = 'NuevaClaveLarga-2026';
+ALTER LOGIN [usuario] WITH PASSWORD = '<clave-nueva-que-elija>';
 ```
 
 Regla práctica: **20 caracteres o más**, sin palabras del diccionario, distinta de
