@@ -204,11 +204,19 @@ jobs:
           Copy-Item -Recurse 'server/dist' (Join-Path $servidor 'dist')
           Copy-Item 'server/package.json' $servidor
           Copy-Item -Recurse 'server/node_modules' (Join-Path $servidor 'node_modules')
-          # Comprobacion: el instalador no debe llevar dependencias de desarrollo
+          # Comprobacion: el instalador no debe llevar HERRAMIENTAS de desarrollo.
+          # Ojo: @types/node SI debe ir, porque mssql -> tedious -> bl la necesitan
+          # en produccion (son solo declaraciones de tipos, pesan poco).
           $devSobra = Get-ChildItem (Join-Path $servidor 'node_modules') -Directory |
-            Where-Object { $_.Name -in @('typescript','@types','vite','tailwindcss') }
+            Where-Object { $_.Name -in @('typescript','vite','tailwindcss','@vitejs','terser') }
+          $devSobra += Get-ChildItem (Join-Path $servidor 'node_modules/@types') -Directory -ErrorAction Ignore |
+            Where-Object { $_.Name -in @('express','cors','jsonwebtoken') }
           if ($devSobra) {
-            Write-Error "Hay dependencias de desarrollo en el paquete: $($devSobra.Name -join ', ')"
+            Write-Error "Hay herramientas de desarrollo en el paquete: $($devSobra.Name -join ', ')"
+            exit 1
+          }
+          if (Test-Path (Join-Path $servidor 'node_modules/typescript')) {
+            Write-Error "typescript no deberia estar en el paquete (solo se necesita para compilar)"
             exit 1
           }
           Write-Host "node_modules de produccion: $((Get-ChildItem (Join-Path $servidor 'node_modules') -Directory).Count) paquetes"
