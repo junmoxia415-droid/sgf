@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { getDbMode, paginationExpr, query } from "../models/database.js";
-import { sendJson } from "../middleware/auth.js";
+import { requirePermiso, sendJson } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { buscarLineas } from "../utils/enriquecimiento.js";
 
@@ -46,7 +46,7 @@ export async function handleSearchServicios(req: AuthenticatedRequest, res: Serv
     const clauses = ["UPPER(s.NUMERO_SERVICIO) LIKE :q"];
     const params: Record<string, any> = { q: `%${numero.toUpperCase()}%` };
 
-    if (req.currentUser?.role !== "admin") {
+    if ((req.currentUser?.role !== "admin" && !req.currentUser?.permisos?.includes("editar_facturas"))) {
       clauses.push("f.USER_ID = :uid");
       params.uid = req.currentUser?.id;
     }
@@ -102,6 +102,7 @@ export async function handleSearchServicios(req: AuthenticatedRequest, res: Serv
  * que hasta ahora no se consultaba en ningun sitio.
  */
 export async function handleBuscarLineas(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
+  if (!requirePermiso(req, res, "importar_excel")) return;
   const q = String(url.searchParams.get("q") || url.searchParams.get("search") || "").trim();
   const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
 

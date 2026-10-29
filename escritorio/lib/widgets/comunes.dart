@@ -9,20 +9,28 @@ class PantallaCarga extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 46,
-              height: 46,
-              child: CircularProgressIndicator(strokeWidth: 4),
-            ),
-            const SizedBox(height: 18),
-            Text(mensaje, style: Theme.of(context).textTheme.titleMedium),
-          ],
-        ),
+      body: Container(
+        decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [colores.primaryContainer, Theme.of(context).scaffoldBackgroundColor],
+        )),
+        child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.7, end: 1), duration: const Duration(milliseconds: 650),
+            curve: Curves.easeOutBack,
+            builder: (context, escala, child) => Transform.scale(scale: escala, child: child),
+            child: CircleAvatar(radius: 42, backgroundColor: colores.primary,
+              child: Icon(Icons.receipt_long, size: 45, color: colores.onPrimary)),
+          ),
+          const SizedBox(height: 18),
+          Text('SGF', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(mensaje, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 20),
+          const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 3)),
+        ])),
       ),
     );
   }

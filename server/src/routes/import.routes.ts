@@ -4,7 +4,7 @@
  */
 
 import type { ServerResponse } from "node:http";
-import { sendJson, readJsonBody, requireAdmin } from "../middleware/auth.js";
+import { sendJson, readJsonBody, requirePermiso } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { analyzeExcelFile, importExcelToSGF, getAvailableTables } from "../utils/excel-importer.js";
 import { suggestColumnMapping } from "../utils/excel-mapper.js";
@@ -57,7 +57,7 @@ async function getBufferFromRequest(req: AuthenticatedRequest): Promise<Buffer> 
 }
 
 export async function handleImportAnalyze(req: AuthenticatedRequest, res: ServerResponse) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "importar_excel")) return;
   try {
     const buffer = await getBufferFromRequest(req);
     if (buffer.length < 100) {
@@ -78,7 +78,7 @@ export async function handleImportAnalyze(req: AuthenticatedRequest, res: Server
 export async function handleImportExcel(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
   // Escritura masiva y, con truncate=true, BORRADO de tablas completas:
   // es una operacion de administracion, no de usuario.
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "importar_excel")) return;
   try {
     const buffer = await getBufferFromRequest(req);
     if (buffer.length < 100) {
@@ -112,7 +112,7 @@ export async function handleImportExcel(req: AuthenticatedRequest, res: ServerRe
 }
 
 export async function handleImportTables(req: AuthenticatedRequest, res: ServerResponse) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "importar_excel")) return;
   try {
     const tables = await getAvailableTables();
     return sendJson(res, 200, { success: true, data: { tables } });
@@ -122,7 +122,7 @@ export async function handleImportTables(req: AuthenticatedRequest, res: ServerR
 }
 
 export async function handleImportMappingSuggestions(req: AuthenticatedRequest, res: ServerResponse) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "importar_excel")) return;
   try {
     const body = await readJsonBody(req);
     const columns = Array.isArray(body.columns) ? body.columns.map((c: any) => String(c)) : [];
@@ -137,7 +137,7 @@ export async function handleImportMappingSuggestions(req: AuthenticatedRequest, 
 }
 
 export async function handleImportStatus(req: AuthenticatedRequest, res: ServerResponse) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "importar_excel")) return;
   // Placeholder: en memoria no guardamos historial persistente, pero retornamos info básica
   return sendJson(res, 200, {
     success: true,

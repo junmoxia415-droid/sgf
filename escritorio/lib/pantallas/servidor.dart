@@ -102,7 +102,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                                       style: Theme.of(context).textTheme.titleLarge),
                                   Text(
                                     enMarcha
-                                        ? 'Dirección: ${widget.ajustes.urlBaseLocal} · solo accesible desde este equipo'
+                                        ? 'Dirección: ${widget.ajustes.urlBaseLocal} · acceso desde redes privadas autorizadas'
                                         : 'La aplicación y los datos están seguros; solo el motor está parado.',
                                     style: TextStyle(
                                         fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -235,10 +235,10 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         _Fila(etiqueta: 'Equipo', valor: '${_estado?['equipo']?['nombre'] ?? '-'}'),
                         const SizedBox(height: 12),
                         const Aviso(
-                          titulo: 'Sus datos no salen de aquí',
-                          mensaje: 'El servidor solo acepta conexiones desde este mismo equipo. Otras computadoras de '
-                              'la red no pueden entrar, ni siquiera con la dirección y el puerto.',
-                          tipo: TipoAviso.info,
+                          titulo: 'Acceso por red privada',
+                          mensaje: 'Otras computadoras de redes privadas pueden conectarse con una cuenta. '
+                              'HTTP no cifra contraseñas ni datos; use solo una red confiable y no exponga el puerto en Internet.',
+                          tipo: TipoAviso.aviso,
                         ),
                       ],
                     ),

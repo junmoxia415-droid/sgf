@@ -10,7 +10,7 @@ import {
   transaction,
 } from "../models/database.js";
 import { unpackStoredFacturaText } from "../utils/factura-parser.js";
-import { sendJson, readJsonBody, requireAdmin } from "../middleware/auth.js";
+import { sendJson, readJsonBody, requirePermiso } from "../middleware/auth.js";
 import { auditLog } from "../middleware/logger.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 
@@ -77,7 +77,7 @@ function buildFilters(req: AuthenticatedRequest, url: URL) {
   const clauses: string[] = [];
   const params: Record<string, any> = {};
 
-  if (req.currentUser?.role !== "admin") {
+  if ((req.currentUser?.role !== "admin" && !req.currentUser?.permisos?.includes("editar_facturas"))) {
     clauses.push(`f.USER_ID = :uid`);
     params.uid = req.currentUser?.id;
   }
@@ -187,7 +187,7 @@ export async function handleGetFactura(req: AuthenticatedRequest, res: ServerRes
     if (rows.length === 0) return sendJson(res, 404, { success: false, error: "Factura no encontrada." });
 
     const factura = normalizeInvoice(rows[0]);
-    if (req.currentUser?.role !== "admin" && factura.user_id !== req.currentUser?.id) {
+    if ((req.currentUser?.role !== "admin" && !req.currentUser?.permisos?.includes("editar_facturas")) && factura.user_id !== req.currentUser?.id) {
       return sendJson(res, 403, { success: false, error: "Sin permiso para ver esta factura." });
     }
 
@@ -291,7 +291,7 @@ export async function handleCreateFactura(req: AuthenticatedRequest, res: Server
 }
 
 export async function handleUpdateFactura(req: AuthenticatedRequest, res: ServerResponse, facturaId: string) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "editar_facturas")) return;
 
   let body: any;
   try {
@@ -400,7 +400,7 @@ export async function handleUpdateFactura(req: AuthenticatedRequest, res: Server
 }
 
 export async function handleDeleteFactura(req: AuthenticatedRequest, res: ServerResponse, facturaId: string) {
-  if (!requireAdmin(req, res)) return;
+  if (!requirePermiso(req, res, "editar_facturas")) return;
 
   try {
     const rows = await query<any>(`SELECT ID, NO_FACTURA FROM SGF_FACTURAS WHERE ID = :id`, { id: facturaId });
@@ -425,6 +425,7 @@ export async function handleDeleteFactura(req: AuthenticatedRequest, res: Server
 }
 
 export async function handleFacturaStats(req: AuthenticatedRequest, res: ServerResponse) {
+  if (!requirePermiso(req, res, "ver_estadisticas")) return;
   try {
     const totalQuery = `SELECT
             COUNT(*) AS TOTAL,

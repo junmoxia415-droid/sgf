@@ -6,7 +6,7 @@ export interface User {
   id: string; username: string; name: string; role: Role;
   passwordHash: string; active: boolean; createdAt: string; updatedAt: string;
 }
-export type SessionUser = Omit<User, "passwordHash" | "updatedAt">;
+export type SessionUser = Omit<User, "passwordHash" | "updatedAt"> & { permisos?: string[] };
 
 export interface ServiceRow {
   id: string; facturaId: string; numeroServicio: string;

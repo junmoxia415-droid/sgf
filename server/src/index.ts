@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
-import { esConsolaLocal, esPeticionLocal } from "./middleware/local.js";
+import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
 import type { AuthenticatedRequest } from "./middleware/auth.js";
 import { handleLogin, handleLogout, handleMe } from "./routes/auth.routes.js";
@@ -92,6 +92,7 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
 const server = http.createServer(
   { requestTimeout: SERVER_CONFIG.requestTimeoutMs },
   async (req: AuthenticatedRequest, res: http.ServerResponse) => {
+    if (!esRedPrivada(req)) return sendJson(res, 403, { success: false, error: "Acceso permitido solo desde redes privadas." });
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
@@ -134,6 +135,11 @@ const server = http.createServer(
         if (!esPeticionLocal(req)) {
           return sendJson(res, 403, { success: false, error: "El panel solo responde en este equipo." });
         }
+        if (requestPath !== "/api/panel/ping" && req.headers.authorization) {
+          const sesionPanel = await authenticate(req, res);
+          if (!sesionPanel) return;
+          if (sesionPanel.role !== "admin") return sendJson(res, 403, { success: false, error: "Se requiere rol de administrador." });
+        }
         if (requestPath === "/api/panel/bienvenida" && req.method === "GET") return handlePanelBienvenida(req, res);
         if (requestPath === "/api/panel/estado" && req.method === "GET") return handlePanelEstado(req, res);
         if (requestPath === "/api/panel/copia" && req.method === "POST") return handlePanelCopia(req, res);
@@ -146,6 +152,9 @@ const server = http.createServer(
       // Estas dos rutas NO piden sesión: son las que crean la primera cuenta en
       // una instalación nueva (la base arranca sin usuarios). En cuanto existe
       // una cuenta, POST /api/setup/admin responde 409.
+      if (requestPath.startsWith("/api/setup/") && (!esPeticionLocal(req) || (tokenConsolaConfigurado() && !esConsolaLocal(req)))) {
+        return sendJson(res, 403, { success: false, error: "La configuración inicial solo se permite en la consola de este equipo." });
+      }
       if (requestPath === "/api/setup/estado" && req.method === "GET") return handleSetupEstado(req as AuthenticatedRequest, res);
       if (requestPath === "/api/setup/admin" && req.method === "POST") return handleSetupAdmin(req as AuthenticatedRequest, res);
 

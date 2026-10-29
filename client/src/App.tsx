@@ -71,7 +71,8 @@ export default function App() {
     }
   }, []);
 
-  const visibleTabs = useMemo(() => TABS.filter((t) => (t.adminOnly ? auth.user?.role === "admin" : true)), [auth.user]);
+  const puede = (permiso: string) => auth.user?.role === "admin" || !!auth.user?.permisos?.includes(permiso);
+  const visibleTabs = useMemo(() => TABS.filter((t) => (!t.adminOnly || auth.user?.role === "admin") && (!t.permiso || auth.user?.role === "admin" || auth.user?.permisos?.includes(t.permiso))), [auth.user]);
 
   if (server.status === "offline") return <ServerOfflineScreen onRetry={server.recheck} />;
   if (server.status === "checking" || auth.checking) {
@@ -131,15 +132,15 @@ export default function App() {
             <HistorialTab
               showToast={showToast}
               refresh={refresh}
-              canEdit={auth.user.role === "admin"}
+              canEdit={puede("editar_facturas")}
               onEdit={setEditingInvoice}
             />
           )}
-          {tab === "servicios" && <ServiciosTab showToast={showToast} onEdit={auth.user.role === "admin" ? setEditingInvoice : undefined} />}
+          {tab === "servicios" && <ServiciosTab showToast={showToast} onEdit={puede("editar_facturas") ? setEditingInvoice : undefined} />}
           {tab === "revision" && auth.user.role === "admin" && (
             <RevisionQueueTab showToast={showToast} refresh={refresh} onEdit={setEditingInvoice} />
           )}
-          {tab === "estadisticas" && <EstadisticasTab />}
+          {tab === "estadisticas" && puede("ver_estadisticas") && <EstadisticasTab />}
           {tab === "usuarios" && auth.user.role === "admin" && (
             <UsuariosTab
               currentUser={auth.user}
@@ -150,7 +151,7 @@ export default function App() {
             />
           )}
           {tab === "logs" && auth.user.role === "admin" && <LogsTab />}
-          {tab === "importar" && auth.user.role === "admin" && <ImportarExcelTab showToast={showToast} />}
+          {tab === "importar" && puede("importar_excel") && <ImportarExcelTab showToast={showToast} />}
         </AnimatePresence>
       </main>
 

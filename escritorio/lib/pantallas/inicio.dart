@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../servicios/api.dart';
 import '../servicios/controlador_servidor.dart';
@@ -31,7 +32,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
   @override
   void initState() {
     super.initState();
-    _cargar();
+    if (widget.api.esAdmin || !widget.api.conSesion) _cargar();
   }
 
   Future<void> _cargar() async {
@@ -55,6 +56,16 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.api.conSesion && !widget.api.esAdmin) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Cabecera(titulo: 'Bienvenido, ${widget.api.usuario}', descripcion: 'Seleccione una tarea para empezar. Solo verá las opciones autorizadas para su cuenta.'),
+        Tarjeta(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _Acceso(icono: Icons.receipt_long, titulo: 'Procesar y consultar facturas', detalle: 'Abra sus facturas', alPulsar: () => widget.irA('Facturas')),
+          if (widget.api.tienePermiso('ver_estadisticas')) _Acceso(icono: Icons.insights, titulo: 'Estadísticas', detalle: 'Consulte los meses autorizados', alPulsar: () => widget.irA('Estadísticas')),
+          if (widget.api.tienePermiso('importar_excel')) _Acceso(icono: Icons.table_chart, titulo: 'Importar Excel', detalle: 'Cargue y actualice las líneas', alPulsar: () => widget.irA('Importar Excel')),
+        ])),
+      ]);
+    }
     final contadores = (_estado?['contadores'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final bd = (_estado?['bd'] ?? <String, dynamic>{}) as Map<String, dynamic>;
 
@@ -72,6 +83,26 @@ class _InicioPantallaState extends State<InicioPantalla> {
             ),
           ],
         ),
+        if (widget.api.esAdmin && widget.servidor.enMarcha) ...[
+          FutureBuilder<List<String>>(
+            future: widget.servidor.enlacesRed(),
+            builder: (context, snapshot) {
+              final enlaces = snapshot.data ?? const <String>[];
+              return Tarjeta(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Acceso desde otras computadoras', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                const Text('En la misma red privada, abra uno de estos enlaces en el navegador. Cada persona necesita una cuenta creada por el administrador.'),
+                if (enlaces.isEmpty) const Text('No se detectó una dirección de red privada; compruebe la conexión.')
+                else for (final enlace in enlaces) Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
+                  SelectableText(enlace, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlace)); if (context.mounted) avisar(context, 'Enlace copiado.'); }, icon: const Icon(Icons.copy, size: 16), label: const Text('Copiar')),
+                ]),
+                const Text('Aviso: HTTP no cifra contraseñas ni datos. Utilice únicamente una red privada confiable. El cortafuegos de Windows puede requerir permiso.', style: TextStyle(fontSize: 12)),
+              ]));
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
         if (_cargando)
           const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CircularProgressIndicator()))
         else if (_error != null)
@@ -212,7 +243,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
           const SizedBox(height: 16),
           Aviso(
             titulo: 'Funciona sin internet',
-            mensaje: 'Todo está en este equipo: la base de datos, las facturas y las líneas del Excel. '
+            mensaje: 'Los datos se guardan en este equipo; otros usuarios autorizados pueden entrar desde la red privada. '
                 'Si el equipo se apaga de golpe, la información no se pierde: la base se guarda de forma segura '
                 'en cada cambio. Se recomienda crear una copia de seguridad al final de cada jornada desde «Servidor».',
             tipo: TipoAviso.info,

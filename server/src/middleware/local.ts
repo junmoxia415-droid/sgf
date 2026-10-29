@@ -56,3 +56,14 @@ export function esConsolaLocal(req: IncomingMessage): boolean {
 export function requiereEquipoLocal(req: IncomingMessage): boolean {
   return esPeticionLocal(req);
 }
+
+/** Solo IPv4 de redes privadas o loopback; no confiar en cabeceras de proxy. */
+export function esRedPrivada(req: IncomingMessage): boolean {
+  let ip = String(req.socket?.remoteAddress || '').toLowerCase();
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  if (ip === '::1') return true;
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  return p[0] === 127 || p[0] === 10 || (p[0] === 192 && p[1] === 168) ||
+    (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 169 && p[1] === 254);
+}

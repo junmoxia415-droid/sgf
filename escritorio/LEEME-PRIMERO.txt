@@ -25,8 +25,13 @@ COMO EMPEZAR (3 pasos)
 
 USO DIARIO
 ----------
-- El servidor se enciende solo al abrir el programa. Arriba debe verse en verde
-  "Servidor en marcha".
+- El servidor se enciende solo al abrir el programa. Inicie sesion para ver
+  Inicio. En esta pantalla aparece la direccion para otras computadoras.
+- En otra PC de la misma red privada, escriba ese enlace en su navegador. Un
+  administrador debe crear primero una cuenta para cada persona en Usuarios.
+- El enlace usa HTTP: contrasenas y datos NO viajan cifrados. Utilicelo solo
+  en una red privada confiable; no lo exponga en Internet. Windows puede pedir
+  autorizar el acceso de Node en el cortafuegos para redes privadas.
 - Para procesar facturas: menu "Facturas" y arrastre los PDF a la ventana.
 - Si algun dia algo va mal: menu "Servidor" y revise el registro.
 - Si dice que el puerto esta ocupado, cierre las otras ventanas de SGF y abra
@@ -51,8 +56,8 @@ PREGUNTAS FRECUENTES
 - No tengo internet. ¿Funciona?  Si. Todo esta en este equipo.
 - ¿Puedo apagar el equipo de golpe?  Mejor cierre el programa primero, pero si
   se apaga de golpe no se pierden los datos ya guardados.
-- ¿Otra computadora puede entrar?  No. El servidor solo acepta conexiones de
-  este mismo equipo.
+- ¿Otra computadora puede entrar? Si, con el enlace de Inicio y su cuenta,
+  siempre que este en una red privada que pueda alcanzar este servidor.
 - ¿Como cambio la contrasena de un companero?  Menu "Usuarios".
 - Olvide la contrasena del administrador: consulte con el responsable del
   sistema; hay que restaurar desde una copia o crear una cuenta nueva.
@@ -86,3 +91,11 @@ se ha SUSTITUIDO por esta version". No hay que borrar nada antes.
 
 Un aviso: no se puede reemplazar una factura cargada por OTRO
 usuario; eso solo lo puede hacer un administrador.
+
+ACTUALIZACIONES Y DATOS
+-----------------------
+Al instalar una actualización se conservan los datos por defecto. Si elige
+empezar desde cero, se archiva la carpeta local SGF en una carpeta SGF-respaldo
+y aparece el asistente. Cierre todas las ventanas de SGF antes de instalar.
+Las bases de datos externas no se borran. Guarde una copia aparte antes de
+actualizar o elegir empezar de cero.

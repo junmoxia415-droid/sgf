@@ -16,6 +16,8 @@ class Api {
   String? _tokenSesion;
   String? usuario;
   String? rol;
+  Set<String> permisos = {};
+  bool tienePermiso(String permiso) => esAdmin || permisos.contains(permiso);
 
   /// Se dispara cuando el servidor rechaza el token que teníamos: la cuenta se
   /// desactivó o se eliminó, un administrador cambió la contraseña o la sesión
@@ -79,6 +81,7 @@ class Api {
       final quien = usuario;
       usuario = null;
       rol = null;
+      permisos = {};
       motivoCaducidad = motivo.isNotEmpty ? motivo : 'La sesión ha caducado.';
       final aviso = alCaducarSesion;
       if (aviso != null) {
@@ -112,6 +115,7 @@ class Api {
     _tokenSesion = datos['token'] as String?;
     this.usuario = (datos['user']?['username'] ?? usuario).toString();
     rol = (datos['user']?['role'] ?? 'usuario').toString();
+    permisos = ((datos['user']?['permisos'] as List?) ?? const []).map((e) => e.toString()).toSet();
   }
 
   /// ¿Falta configurar la aplicación? (todavía no hay ninguna cuenta)
@@ -141,6 +145,7 @@ class Api {
     _tokenSesion = token;
     this.usuario = usuario;
     rol = 'admin';
+    permisos = {};
   }
 
   Future<void> cerrarSesion() async {
@@ -152,6 +157,7 @@ class Api {
     _tokenSesion = null;
     usuario = null;
     rol = null;
+    permisos = {};
     motivoCaducidad = null;
   }
 

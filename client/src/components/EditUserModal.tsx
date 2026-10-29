@@ -6,10 +6,10 @@ import type { Role, User } from "../types/api.ts";
 type Props = { user: User; onClose: () => void; onSaved: () => void; showToast: (t:"success"|"error"|"info",m:string)=>void };
 
 export function EditUserModal({ user, onClose, onSaved, showToast }: Props) {
-  const [form, setForm] = useState({ name: user.name, role: user.role, active: user.active===1, password: "" });
+  const [form, setForm] = useState({ name: user.name, role: user.role, active: user.active===1, password: "", permisos: user.permisos ?? [] });
 
   const save = async () => {
-    const body: Record<string,unknown> = { name: form.name, role: form.role, active: form.active };
+    const body: Record<string,unknown> = { name: form.name, role: form.role, active: form.active, permisos: form.permisos };
     if (form.password) body.password = form.password;
     const r = await api.updateUser(user.id, body);
     if (r.success) {
@@ -32,6 +32,10 @@ export function EditUserModal({ user, onClose, onSaved, showToast }: Props) {
         <input className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-sm" placeholder="Nombre completo" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
         <select value={form.role} onChange={e=>setForm({...form,role:e.target.value as Role})} className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-sm"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select>
         <input type="password" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-sm" placeholder="Nueva contrasena (dejar vacio)" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/>
+        {form.role === "usuario" && <fieldset className="space-y-2 text-sm"><legend className="font-semibold">Permisos adicionales</legend>
+          {[["importar_excel", "Importar y modificar líneas del Excel"], ["ver_estadisticas", "Ver estadísticas globales"], ["editar_facturas", "Editar o eliminar cualquier factura"]].map(([id, label]) =>
+            <label key={id} className="flex items-center gap-2"><input type="checkbox" checked={form.permisos.includes(id)} onChange={e => setForm({...form, permisos: e.target.checked ? [...form.permisos, id] : form.permisos.filter(p => p !== id)})}/>{label}</label>)}
+        </fieldset>}
         <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.active} onChange={e=>setForm({...form,active:e.target.checked})} className="w-4 h-4 rounded text-emerald-600"/>Usuario activo</label>
         <div className="flex justify-end gap-2 pt-2"><button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Cancelar</button><button onClick={save} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">Guardar</button></div>
       </motion.div>

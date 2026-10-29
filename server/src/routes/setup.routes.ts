@@ -76,6 +76,7 @@ async function registrarSesion(id: string, userId: string, token: string, maquin
 }
 
 /** Crea la cuenta de administrador en una instalación nueva. */
+let altaInicialEnCurso = false;
 export async function handleSetupAdmin(req: AuthenticatedRequest, res: ServerResponse) {
   let body: any;
   try {
@@ -88,6 +89,10 @@ export async function handleSetupAdmin(req: AuthenticatedRequest, res: ServerRes
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
 
+  // Serializar la creación para impedir dos primeras cuentas concurrentes.
+  if (altaInicialEnCurso) return sendJson(res, 409, { success: false, error: "Ya hay una configuración inicial en curso." });
+  altaInicialEnCurso = true;
+  try {
   // Solo si no hay nadie: así esta ruta no sirve para crear cuentas después.
   if ((await contarUsuarios()) > 0) {
     return sendJson(res, 409, {
@@ -157,5 +162,8 @@ export async function handleSetupAdmin(req: AuthenticatedRequest, res: ServerRes
     });
   } catch (error: any) {
     return sendJson(res, 503, { success: false, error: `No se pudo crear la cuenta: ${error.message}` });
+  }
+  } finally {
+    altaInicialEnCurso = false;
   }
 }

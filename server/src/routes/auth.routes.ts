@@ -7,6 +7,7 @@ import {
   checkRateLimit,
   getRequestIp,
   readJsonBody,
+  leerPermisos,
   sendJson,
 } from "../middleware/auth.js";
 import { auditLog } from "../middleware/logger.js";
@@ -28,6 +29,7 @@ function normalizeUserInternal(row: any) {
     active: Number(row?.ACTIVO ?? row?.ACTIVE ?? row?.active ?? 0) === 1,
     createdAt: String(row?.CREADO ?? row?.CREATED_AT ?? row?.created_at ?? ""),
     passwordHash: String(row?.PASSWORD_HASH ?? ""),
+    permisos: leerPermisos(row?.PERMISOS),
   };
 }
 
@@ -43,6 +45,7 @@ function normalizeUserPublic(internal: ReturnType<typeof normalizeUserInternal>)
     role: internal.role,
     active: internal.active,
     createdAt: internal.createdAt,
+    permisos: internal.permisos,
   };
 }
 
@@ -97,8 +100,8 @@ export async function handleLogin(req: AuthenticatedRequest, res: ServerResponse
   try {
     const dbMode = getDbMode();
     const sql = dbMode === "sqlite"
-      ? `SELECT ID, USERNAME, NOMBRE, ROL, PASSWORD_HASH, ACTIVO, CREADO FROM SGF_USUARIOS WHERE USERNAME = :u`
-      : `SELECT ID, USERNAME, NAME, ROLE, PASSWORD_HASH, ACTIVE, CREATED_AT FROM SGF_USUARIOS WHERE USERNAME = :u`;
+      ? `SELECT ID, USERNAME, NOMBRE, ROL, PASSWORD_HASH, ACTIVO, CREADO, PERMISOS FROM SGF_USUARIOS WHERE USERNAME = :u`
+      : `SELECT ID, USERNAME, NAME, ROLE, PASSWORD_HASH, ACTIVE, CREATED_AT, PERMISOS FROM SGF_USUARIOS WHERE USERNAME = :u`;
 
     const rows = await query<any>(sql, { u: username });
     if (rows.length === 0) {
@@ -198,7 +201,7 @@ export async function handleMe(req: AuthenticatedRequest, res: ServerResponse) {
     const internal = normalizeUserInternal(rows[0]);
     return sendJson(res, 200, {
       success: true,
-      data: normalizeUserPublic(internal),
+      data: { ...normalizeUserPublic(internal), permisos: req.currentUser?.permisos ?? [] },
     });
   } catch (error: any) {
     return sendJson(res, 503, { success: false, error: `Error: ${error.message}` });

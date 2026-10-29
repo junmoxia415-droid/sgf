@@ -1,17 +1,17 @@
 import { AlertTriangle, BarChart3, FileSearch, FileText, Settings, Upload, Users, FileSpreadsheet, type LucideIcon } from "lucide-react";
 
 export type TabId = "procesar" | "historial" | "servicios" | "revision" | "estadisticas" | "usuarios" | "logs" | "importar";
-export type TabDef = { id: TabId; label: string; icon: LucideIcon; adminOnly?: boolean };
+export type TabDef = { id: TabId; label: string; icon: LucideIcon; adminOnly?: boolean; permiso?: string };
 
 export const TABS: TabDef[] = [
   { id: "procesar", label: "Procesar", icon: Upload },
   { id: "historial", label: "Historial", icon: FileText },
   { id: "servicios", label: "Servicios", icon: FileSearch },
   { id: "revision", label: "Revision", icon: AlertTriangle, adminOnly: true },
-  { id: "estadisticas", label: "Estadisticas", icon: BarChart3, adminOnly: true },
+  { id: "estadisticas", label: "Estadísticas", icon: BarChart3, permiso: "ver_estadisticas" },
   { id: "usuarios", label: "Usuarios", icon: Users, adminOnly: true },
   { id: "logs", label: "Auditoria", icon: Settings, adminOnly: true },
-  { id: "importar", label: "Importar Excel", icon: FileSpreadsheet, adminOnly: true },
+  { id: "importar", label: "Importar Excel", icon: FileSpreadsheet, permiso: "importar_excel" },
 ];
 
 export function TabNav({ tabs, active, onChange }: { tabs: TabDef[]; active: string; onChange: (id: TabId) => void }) {

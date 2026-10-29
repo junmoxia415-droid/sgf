@@ -209,6 +209,7 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
     final usuario = TextEditingController(text: '${existente?['username'] ?? ''}');
     final clave = TextEditingController();
     var rol = '${existente?['role'] ?? 'usuario'}';
+    final permisos = ((existente?['permisos'] as List?) ?? const []).map((e) => e.toString()).toSet();
     var guardando = false;
     String? error;
 
@@ -220,7 +221,7 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
           title: Text(existente == null ? 'Nuevo usuario' : 'Editar usuario'),
           content: SizedBox(
             width: 460,
-            child: Column(
+            child: SingleChildScrollView(child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -243,7 +244,7 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
                   obscureText: true,
                   decoration: InputDecoration(
                     labelText: existente == null ? 'Contraseña' : 'Nueva contraseña (opcional)',
-                    helperText: 'Mínimo 6 caracteres. Al cambiarla, sus sesiones abiertas se cierran.',
+                    helperText: 'Mínimo 8 caracteres. Al cambiarla, sus sesiones abiertas se cierran.',
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -261,12 +262,26 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
                   'Un usuario normal procesa y consulta facturas.',
                   style: TextStyle(fontSize: 12.5, height: 1.4),
                 ),
+                if (rol == 'usuario') ...[
+                  const SizedBox(height: 8),
+                  const Text('Permisos adicionales', style: TextStyle(fontWeight: FontWeight.w700)),
+                  for (final p in const {
+                    'importar_excel': 'Importar y modificar líneas del Excel',
+                    'ver_estadisticas': 'Ver estadísticas globales',
+                    'editar_facturas': 'Editar o eliminar facturas desde la web (incluye las de otras personas)',
+                  }.entries)
+                    CheckboxListTile(
+                      dense: true, contentPadding: EdgeInsets.zero, title: Text(p.value),
+                      value: permisos.contains(p.key),
+                      onChanged: (v) => setState(() { if (v == true) { permisos.add(p.key); } else { permisos.remove(p.key); } }),
+                    ),
+                ],
                 if (error != null) ...[
                   const SizedBox(height: 12),
                   Aviso(titulo: 'No se pudo guardar', mensaje: error!, tipo: TipoAviso.error),
                 ],
               ],
-            ),
+            )),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
@@ -285,11 +300,13 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
                             'password': clave.text,
                             'name': nombre.text.trim(),
                             'role': rol,
+                            'permisos': permisos.toList(),
                           });
                         } else {
                           await widget.api.actualizarUsuario('${existente['id']}', {
                             'name': nombre.text.trim(),
                             'role': rol,
+                            'permisos': permisos.toList(),
                             if (clave.text.isNotEmpty) 'password': clave.text,
                           });
                         }

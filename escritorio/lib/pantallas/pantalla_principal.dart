@@ -17,11 +17,12 @@ import 'usuarios.dart';
 /// Ventana principal: menú lateral con todas las áreas y una barra superior que
 /// siempre dice si el servidor y la base de datos están bien.
 class PantallaPrincipal extends StatefulWidget {
-  const PantallaPrincipal({super.key, required this.servidor, required this.api, required this.ajustes, this.alCambiarTema});
+  const PantallaPrincipal({super.key, required this.servidor, required this.api, required this.ajustes, this.alCambiarTema, this.alCerrarSesion});
   final ControladorServidor servidor;
   final Api api;
   final Ajustes ajustes;
   final VoidCallback? alCambiarTema;
+  final void Function(String motivo)? alCerrarSesion;
 
   @override
   State<PantallaPrincipal> createState() => _PantallaPrincipalState();
@@ -47,7 +48,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         _seleccion = 0;
         // Si estaba en el área de administración, ya no tiene permiso para estar ahí.
       });
-      unawaited(_avisarSesionCerrada(motivo));
+      if (widget.alCerrarSesion != null) {
+        widget.alCerrarSesion!(motivo);
+      } else {
+        unawaited(_avisarSesionCerrada(motivo));
+      }
     };
   }
 
@@ -118,7 +123,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               api: api,
               ajustes: widget.ajustes,
               iniciarSesion: _pedirLogin,
-            )),
+            ), soloAdmin: true),
         _Area('Facturas', Icons.receipt_long_outlined, Icons.receipt_long, (c) => FacturasPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
@@ -126,11 +131,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         _Area('Estadísticas', Icons.insights_outlined, Icons.insights, (c) => EstadisticasPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
-            )),
+            ), permiso: 'ver_estadisticas'),
         _Area('Importar Excel', Icons.table_chart_outlined, Icons.table_chart, (c) => ImportarPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
-            )),
+            ), permiso: 'importar_excel'),
         _Area('Usuarios', Icons.group_outlined, Icons.group, (c) => UsuariosPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
@@ -140,11 +145,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               servidor: servidor,
               api: api,
               alCambiar: () { _redibujar(); widget.alCambiarTema?.call(); },
-            )),
+            ), soloAdmin: true),
       ];
 
   void _irA(String nombre) {
-    final visibles = _areas.where((a) => !a.soloAdmin || api.esAdmin).toList();
+    final visibles = _areas.where((a) => (!a.soloAdmin || api.esAdmin) && (a.permiso == null || api.tienePermiso(a.permiso!))).toList();
     final i = visibles.indexWhere((a) => a.nombre == nombre);
     if (i >= 0) setState(() => _seleccion = i);
   }
@@ -160,7 +165,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     final ancho = MediaQuery.sizeOf(context).width;
     final extendido = ancho > 1180;
     final areas = _areas
-        .where((a) => !a.soloAdmin || api.esAdmin)
+        .where((a) => (!a.soloAdmin || api.esAdmin) && (a.permiso == null || api.tienePermiso(a.permiso!)))
         .toList();
     final indice = _seleccion.clamp(0, areas.length - 1);
 
@@ -174,7 +179,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               onLogin: _pedirLogin,
               onLogout: () async {
                 await api.cerrarSesion();
-                if (mounted) setState(() => _seleccion = 0);
+                if (mounted && widget.alCerrarSesion != null) {
+                  widget.alCerrarSesion!('Sesión cerrada.');
+                } else if (mounted) {
+                  setState(() => _seleccion = 0);
+                }
               },
               onAbrirNavegador: () => abrirEnNavegador(widget.ajustes.urlBaseLocal),
             ),
@@ -248,12 +257,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 }
 
 class _Area {
-  _Area(this.nombre, this.icono, this.iconoActivo, this.constructor, {this.soloAdmin = false});
+  _Area(this.nombre, this.icono, this.iconoActivo, this.constructor, {this.soloAdmin = false, this.permiso});
   final String nombre;
   final IconData icono;
   final IconData iconoActivo;
   final Widget Function(BuildContext) constructor;
   final bool soloAdmin;
+  final String? permiso;
 }
 
 class _BarraSuperior extends StatelessWidget {
@@ -367,7 +377,7 @@ Future<bool> mostrarDialogoLogin(BuildContext context, Api api) async {
             children: [
               const Text(
                 'Entre con su usuario del sistema de facturas. '
-                'La primera vez, el administrador es «admin» con la contraseña que se indicó al instalar.',
+                'Use la cuenta que creó en el asistente o la que le dio el administrador.',
                 style: TextStyle(fontSize: 14, height: 1.4),
               ),
               const SizedBox(height: 18),

@@ -81,7 +81,7 @@ class _ImportarPantallaState extends State<ImportarPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.api.esAdmin) {
+    if (!widget.api.tienePermiso('importar_excel')) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -90,7 +90,7 @@ class _ImportarPantallaState extends State<ImportarPantalla> {
             descripcion: 'Carga de la relación de líneas (titular, unidad, cargo) para cruzar con las facturas.',
           ),
           Aviso(
-            titulo: widget.api.conSesion ? 'Esta tarea es solo para administradores' : 'Inicie sesión como administrador',
+            titulo: widget.api.conSesion ? 'No tiene permiso para importar Excel' : 'Inicie sesión como administrador',
             mensaje: 'Importar un Excel cambia datos de todo el sistema, por eso está reservado al administrador. '
                 'Si necesita cargar el Excel, pida a un administrador que lo haga.',
             tipo: TipoAviso.aviso,

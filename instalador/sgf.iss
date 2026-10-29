@@ -86,6 +86,7 @@ Filename: "{app}\sgf_escritorio.exe"; Description: "Abrir SGF Escritorio ahora";
 [Code]
 var
   PaginaBienvenida: TInputOptionWizardPage;
+  PaginaDatos: TInputOptionWizardPage;
 
 // ── Comprobaciones previas ────────────────────────────────────────────────
 // Se mira solo lo que hay que mirar aquí: que el equipo sea Windows de 64 bits
@@ -123,6 +124,26 @@ begin
   PaginaBienvenida.Add('Iniciar SGF automáticamente al encender el equipo');
   PaginaBienvenida.Values[0] := True;
   PaginaBienvenida.Values[1] := False;
+  PaginaDatos := CreateInputOptionPage(PaginaBienvenida.ID,
+    'Datos de SGF', 'Elija qué hacer con los datos anteriores',
+    'La opción recomendada conserva usuarios, facturas, ajustes y líneas.' + Chr(13) + Chr(10) +
+    'Si desea empezar desde cero, SGF guardará una copia de la carpeta local antes de crear una nueva. Las bases externas no se borran.',
+    True, False);
+  PaginaDatos.Add('Conservar mis datos anteriores (recomendado)');
+  PaginaDatos.Add('Empezar desde cero: archivar mis datos locales y abrir el asistente');
+  PaginaDatos.Values[0] := True;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = PaginaDatos.ID) and PaginaDatos.Values[1] then
+  begin
+    Result := MsgBox('¿Está seguro de empezar desde cero en este equipo?' + Chr(13) + Chr(10) +
+      'Se archivarán los usuarios, ajustes y facturas locales. La aplicación creará una base vacía.' + Chr(13) + Chr(10) +
+      'Cierre todas las ventanas de SGF antes de continuar. Las bases externas no se eliminan.',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  end;
 end;
 
 // Traslada lo elegido en la página de bienvenida a las tareas de instalación.
@@ -139,14 +160,22 @@ end;
 
 // Aviso final con lo que tiene que saber el usuario para empezar.
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Marcador: String;
 begin
   if CurStep = ssPostInstall then
+  begin
+    Marcador := ExpandConstant('{userappdata}\SGF-solicitud-reinicio.txt');
+    if PaginaDatos.Values[1] and (not WizardSilent) then
+    begin
+      if not SaveStringToFile(Marcador, 'El usuario confirmó archivar los datos locales.', False) then
+        MsgBox('No se pudo preparar el reinicio de datos. Los datos anteriores se conservaron.', mbError, MB_OK);
+    end
+    else if FileExists(Marcador) and (not DeleteFile(Marcador)) then
+      MsgBox('No se pudo cancelar una solicitud anterior de reinicio. No abra SGF hasta resolverlo; sus datos se conservan.', mbError, MB_OK);
     MsgBox('SGF se ha instalado correctamente.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
-      'Al abrirlo por primera vez, el asistente le guiará paso a paso.' + Chr(13) + Chr(10) +
-      'La contraseña inicial se crea para ESTE equipo y queda anotada en el' + Chr(13) + Chr(10) +
-      'escritorio, en el archivo "CONTRASENA INICIAL DE SGF.txt".' + Chr(13) + Chr(10) +
-      'El programa pedirá cambiarla en el primer acceso: hágalo antes de ' +
-      'introducir datos reales.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
-      'Sus datos se guardan en la carpeta del usuario y NO se borran al desinstalar.',
-      mbInformation, MB_OK);
+      'Si la instalación está vacía, el asistente le ayudará a crear su cuenta de administrador.' + Chr(13) + Chr(10) +
+      'Las demás cuentas las crea el administrador desde Usuarios.' + Chr(13) + Chr(10) + Chr(10) +
+      'Los datos anteriores se conservan salvo que haya elegido empezar de cero.', mbInformation, MB_OK);
+  end;
 end;

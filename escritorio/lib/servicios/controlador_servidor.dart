@@ -16,7 +16,7 @@ enum EstadoServidor { detenido, arrancando, enMarcha, deteniendo, fallo }
 ///
 /// Reglas de oro:
 ///  - No hace falta instalar Node en el equipo: se usa el `node.exe` incluido.
-///  - El servidor escucha SOLO en 127.0.0.1 (nadie de la red puede entrar).
+///  - El servidor acepta conexiones IPv4 de redes privadas, con inicio de sesión.
 ///  - La base de datos vive en una carpeta de usuario escribible.
 ///  - Si el proceso se cae, se avisa con el mensaje de error y se puede reiniciar
 ///    sin cerrar la aplicacion.
@@ -36,6 +36,25 @@ class ControladorServidor extends ChangeNotifier {
   final _aleatorio = Random.secure();
 
   bool get enMarcha => estado == EstadoServidor.enMarcha;
+
+  /// Direcciones privadas que pueden usarse en otros equipos. Algunas pueden
+  /// pertenecer a VPN u otros adaptadores: el usuario elige la de su red.
+  Future<List<String>> enlacesRed() async {
+    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    final direcciones = <String>{};
+    for (final interfaz in interfaces) {
+      for (final direccion in interfaz.addresses) {
+        final p = direccion.address.split('.').map(int.tryParse).toList();
+        if (p.length != 4 || p.any((n) => n == null)) continue;
+        if (p[0] == 10 || (p[0] == 192 && p[1] == 168) ||
+            (p[0] == 172 && p[1]! >= 16 && p[1]! <= 31) || (p[0] == 169 && p[1] == 254)) {
+          direcciones.add('http://${direccion.address}:${ajustes.puerto}');
+        }
+      }
+    }
+    return direcciones.toList()..sort();
+  }
+
 
   /// Carpeta donde se instala todo: junto al .exe (instalador) o la carpeta del
   /// proyecto (desarrollo). Se sube por el arbol buscando `servidor/dist/index.js`.
@@ -162,8 +181,8 @@ JWT_EXPIRES_IN=8h
 DEFAULT_ADMIN_USER=admin
 DEFAULT_ADMIN_PASSWORD=$claveInicial
 MAX_FILE_SIZE_MB=25
-LOGIN_RATE_PER_MIN=60
-LOGIN_RATE_PER_15MIN=300
+LOGIN_RATE_PER_MIN=10
+LOGIN_RATE_PER_15MIN=40
 ''');
       await _guardarClaveDeFabricacion(claveInicial);
       anotar('Creada la configuración inicial (${archivoEnv.path}).');
@@ -221,7 +240,7 @@ LOGIN_RATE_PER_15MIN=300
           'SGF_ENV_FILE': archivoEnv.path,
           'SGF_CONSOLE_TOKEN': tokenConsola!,
           'PORT': '${ajustes.puerto}',
-          'HOST': '127.0.0.1',
+          'HOST': '0.0.0.0',
         },
         runInShell: false,
       );

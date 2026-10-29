@@ -1,3 +1,4 @@
+import { esPeticionLocal } from "./local.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { safeVerifyToken } from "../utils/jwt.js";
 import { execute, getDbMode, query } from "../models/database.js";
@@ -86,10 +87,10 @@ async function autenticarNucleo(
     // eliminada seguia trabajando hasta 8 horas, y un administrador degradado
     // conservaba los privilegios del token.
     const filasUsuario = dbMode === "oracle"
-      ? await query<any>(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
+      ? await query<any>(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE, PERMISOS FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
       : dbMode === "mssql"
-        ? await query<any>(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
-        : await query<any>(`SELECT ID, USERNAME, NOMBRE, ROL, ACTIVO FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id });
+        ? await query<any>(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE, PERMISOS FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
+        : await query<any>(`SELECT ID, USERNAME, NOMBRE, ROL, ACTIVO, PERMISOS FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id });
 
     if (filasUsuario.length === 0) {
       // Cuenta eliminada: se cierran todas sus sesiones.
@@ -114,6 +115,7 @@ async function autenticarNucleo(
       username: String(fila?.USERNAME ?? user.username),
       name: String(fila?.NOMBRE ?? fila?.NAME ?? user.name),
       role: rolActual,
+      permisos: leerPermisos(fila?.PERMISOS),
       active: true,
     };
 
@@ -182,6 +184,19 @@ export async function authenticate(req: AuthenticatedRequest, res: ServerRespons
 /** Autenticacion opcional: identifica si hay sesion valida, sin responder errores. */
 export async function authenticateOpcional(req: AuthenticatedRequest, res: ServerResponse): Promise<SessionUser | null> {
   return autenticarNucleo(req, res, false);
+}
+
+export const PERMISOS_DISPONIBLES = ["importar_excel", "editar_facturas", "ver_estadisticas"] as const;
+export function leerPermisos(valor: unknown): string[] {
+  try {
+    const datos = typeof valor === "string" ? JSON.parse(valor) : valor;
+    return Array.isArray(datos) ? datos.filter((x: unknown) => typeof x === "string" && (PERMISOS_DISPONIBLES as readonly string[]).includes(x)) : [];
+  } catch { return []; }
+}
+export function requirePermiso(req: AuthenticatedRequest, res: ServerResponse, permiso: string): boolean {
+  if (req.currentUser?.role === "admin" || req.currentUser?.permisos?.includes(permiso)) return true;
+  sendJson(res, 403, { success: false, error: "Su cuenta no tiene permiso para esta operación." });
+  return false;
 }
 
 export function requireAdmin(req: AuthenticatedRequest, res: ServerResponse): boolean {
@@ -440,20 +455,25 @@ export async function evaluarAccesoConfigBd(
   req: AuthenticatedRequest,
   body?: any,
 ): Promise<AccesoConfigBd> {
-  // La consola local (app de escritorio) es el propio instalador.
-  if (String(req.headers["x-sgf-console-token"] || "") && String((req as any).consoleLocal) === "1") {
-    return { nivel: "admin", permitido: true };
-  }
-
+  // Una sesión identificada nunca hereda privilegios de la consola local.
   const usuario = (req as AuthenticatedRequest).currentUser;
   if (usuario) {
     if (usuario.role === "admin") return { nivel: "admin", permitido: true };
     return { nivel: "denegado", permitido: false, motivo: "Se requiere rol de administrador." };
   }
 
+  if (req.headers.authorization) return { nivel: "denegado", permitido: false, motivo: "Sesión inválida." };
+  // Sin sesión solo la consola de este equipo puede realizar el asistente.
+  if (String(req.headers["x-sgf-console-token"] || "") && String((req as any).consoleLocal) === "1") {
+    return { nivel: "admin", permitido: true };
+  }
+
   const tokenRecibido = String(
     body?.installToken || req.headers["x-install-token"] || "",
   ).trim();
+
+  // Sin sesión, la recuperación y el primer arranque son solo locales.
+  if (!esPeticionLocal(req)) return { nivel: "denegado", permitido: false, motivo: "Inicie sesión como administrador." };
 
   // 1) Token de instalacion explicito (un solo uso)
   if (tokenRecibido && tokenInstalacionValido(tokenRecibido)) {

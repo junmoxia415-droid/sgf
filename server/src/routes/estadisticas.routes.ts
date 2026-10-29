@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { query } from "../models/database.js";
-import { sendJson } from "../middleware/auth.js";
+import { sendJson, requirePermiso } from "../middleware/auth.js";
 import { clavePeriodo } from "../utils/facturas-periodo.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 
@@ -61,6 +61,7 @@ function aNumero(valor: any): number {
 }
 
 export async function handleEstadisticasMeses(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
+  if (!requirePermiso(req, res, "ver_estadisticas")) return;
   try {
     // ── Qué meses se quieren ────────────────────────────────────────────────
     const pedidos = (url.searchParams.get("periodos") || "")

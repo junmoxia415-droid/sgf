@@ -9,8 +9,9 @@ import 'package:window_manager/window_manager.dart';
 import 'servicios/ajustes.dart';
 import 'servicios/api.dart';
 import 'servicios/controlador_servidor.dart';
+import 'servicios/reinicio_datos.dart';
 import 'pantallas/asistente_inicial.dart';
-import 'pantallas/pantalla_principal.dart';
+import 'pantallas/acceso.dart';
 import 'widgets/comunes.dart';
 
 Future<void> main() async {
@@ -41,7 +42,18 @@ Future<void> main() async {
     }));
   }
 
-  final ajustes = await Ajustes.cargar();
+  var ajustes = await Ajustes.cargar();
+  final carpeta = Ajustes.carpeta;
+  final marcador = File('${carpeta.parent.path}${Platform.pathSeparator}SGF-solicitud-reinicio.txt');
+  final reinicioSolicitado = await marcador.exists();
+  final errorReinicio = await prepararReinicioLocal(carpeta: carpeta, marcador: marcador, puerto: ajustes.puerto);
+  if (errorReinicio != null) {
+    runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
+      padding: const EdgeInsets.all(32), child: Text(errorReinicio),
+    )))));
+    return;
+  }
+  if (reinicioSolicitado) ajustes = await Ajustes.cargar();
 
   // Cerrar la ventana para el servidor con orden, para que guarde la BD.
   runApp(SgfApp(ajustes: ajustes));
@@ -82,11 +94,11 @@ class _AtajosState extends State<_Atajos> {
       widget.servidor.iniciarSesion!();
       return true;
     }
-    if (teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyR) {
+    if (widget.servidor.api.esAdmin && teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyR) {
       unawaited(widget.servidor.reiniciar());
       return true;
     }
-    if (teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyB) {
+    if (widget.servidor.api.esAdmin && teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyB) {
       unawaited(() async {
         try {
           await widget.servidor.api.crearCopia();
@@ -181,9 +193,10 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
                     api: api,
                     ajustes: widget.ajustes,
                     alCambiarTema: () => setState(() {}),
+                    alTerminar: () => setState(() => _primeraVez = Future.value(false)),
                   );
                 }
-                return PantallaPrincipal(servidor: servidor, api: api, ajustes: widget.ajustes, alCambiarTema: () => setState(() {}));
+                return AccesoSgf(servidor: servidor, api: api, ajustes: widget.ajustes, alCambiarTema: () => setState(() {}));
               },
             ),
     );

@@ -56,6 +56,12 @@ jobs:
         working-directory: server
         run: npx tsc
 
+      - name: Seguridad de red y permisos (SQLite ficticio)
+        working-directory: server
+        run: |
+          python3 test/red-y-permisos.py
+          node test/migracion-permisos.mjs
+
       - name: Arrancar servidor de pruebas
         working-directory: server
         env:
@@ -87,7 +93,7 @@ jobs:
           # La base arranca SIN usuarios: igual que en la app, la cuenta se crea
           # desde /api/setup/admin. Mientras este vacia, el asistente puede
           # configurar la BD; en cuanto hay una cuenta, la ventana se cierra.
-          TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
+          TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' -H 'x-sgf-console-token: token-consola-ci-1234567890' \
             -d '{"username":"admin","name":"Administrador","password":"para-pruebas-123"}' \
             http://127.0.0.1:3000/api/setup/admin | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
           test -n "$TOKEN"
@@ -301,6 +307,26 @@ jobs:
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
           if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup fallo (codigo $LASTEXITCODE)"; exit 1 }
           Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
+
+      - name: Probar instalación conservando datos anteriores
+        shell: pwsh
+        run: |
+          $appdataAnterior = $env:APPDATA
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'sgf-appdata-ensayo'
+          $carpetaDatos = Join-Path $env:APPDATA 'SGF'
+          $destino = Join-Path $env:RUNNER_TEMP 'sgf-instalado-ensayo'
+          New-Item -ItemType Directory -Force -Path $carpetaDatos | Out-Null
+          Set-Content (Join-Path $carpetaDatos 'datos-existentes.txt') 'informacion ficticia'
+          $exe = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
+          try {
+            $argumentos = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$destino`" /TASKS=`"`""
+            $prueba = Start-Process -FilePath $exe -ArgumentList $argumentos -Wait -PassThru
+            if ($prueba.ExitCode -ne 0) { throw "El instalador devolvió $($prueba.ExitCode)" }
+            if (-not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw 'La aplicación no se instaló.' }
+            if (-not (Test-Path (Join-Path $destino 'client/dist/index.html'))) { throw 'La web no se instaló.' }
+            if ((Get-Content (Join-Path $carpetaDatos 'datos-existentes.txt') -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos.' }
+            Write-Host 'Instalación silenciosa y conservación de datos: OK.'
+          } finally { $env:APPDATA = $appdataAnterior }
 
       - name: Comprimir version portable
         shell: pwsh

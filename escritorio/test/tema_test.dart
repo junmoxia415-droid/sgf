@@ -38,7 +38,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final ajustes = AjustesPrueba();
-    final api = ApiPrueba();
+    final api = ApiPrueba()..rol = 'admin';
     final servidor = ControladorServidor(ajustes: ajustes, api: api);
     await tester.pumpWidget(AppPrueba(ajustes: ajustes, api: api, servidor: servidor));
     await tester.pumpAndSettle();
@@ -57,7 +57,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final ajustes = AjustesPrueba();
-    final api = ApiPrueba();
+    final api = ApiPrueba()..rol = 'admin';
     final servidor = ControladorServidor(ajustes: ajustes, api: api);
     await tester.pumpWidget(AppPrueba(ajustes: ajustes, api: api, servidor: servidor));
     await tester.pumpAndSettle();

@@ -33,15 +33,17 @@ function ensureDir() {
  * temporal en el mismo directorio y se renombra encima del original.
  * Un corte de luz a mitad de escritura deja intacta la version anterior.
  */
-function saveDisk() {
-  if (!db) return;
+function saveDisk(): boolean {
+  if (!db) return false;
   const tmpPath = `${DB_PATH}.tmp-${process.pid}`;
   try {
     fs.writeFileSync(tmpPath, Buffer.from(db.export()));
     fs.renameSync(tmpPath, DB_PATH);
+    return true;
   } catch (error: any) {
     console.error("[SGF] Error guardando SQLite:", error.message);
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    return false;
   }
 }
 
@@ -54,12 +56,18 @@ function scheduleSave(delayMs = 1000) {
  * Ejecuta las escrituras pendientes AHORA, sin esperar al temporizador.
  * Se llama al terminar una importacion masiva y al cerrar el servidor.
  */
-export function flushDisk() {
+export function flushDisk(): boolean {
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  saveDisk();
+  return saveDisk();
+}
+
+/** Evita copiar una base a medio importar o dentro de una transacción. */
+export function flushParaCopia(): boolean {
+  if (batchDepth > 0 || txContext !== null) return false;
+  return flushDisk();
 }
 
 /**
@@ -457,6 +465,12 @@ async function initSqlite() {
   }
 
   for (const sql of SQLITE_SCHEMA) db.run(sql);
+  // Migración aditiva: nunca borra usuarios ni datos anteriores.
+  const columnasUsuarios = db.exec(`PRAGMA table_info(SGF_USUARIOS)`);
+  if (!columnasUsuarios[0]?.values?.some((fila: any) => String(fila[1]).toUpperCase() === 'PERMISOS')) {
+    db.run(`ALTER TABLE SGF_USUARIOS ADD COLUMN PERMISOS TEXT DEFAULT '[]'`);
+  }
+
 
   // Columnas nuevas para "facturas por mes". En una base ya creada no existen,
   // asi que se añaden aqui (CREATE TABLE IF NOT EXISTS no las añade).
@@ -489,6 +503,8 @@ async function ensureOracleSchema(pool: any) {
         if (!String(error?.message || '').includes('ORA-00955')) throw error;
       }
     }
+    try { await conn.execute(`ALTER TABLE SGF_USUARIOS ADD (PERMISOS VARCHAR2(1000) DEFAULT '[]')`); }
+    catch (error: any) { if (!String(error?.message || '').includes('ORA-01430')) throw error; }
     for (const sql of ORACLE_SCHEMA_INDEXES) {
       try {
         await conn.execute(sql);
@@ -519,6 +535,7 @@ async function ensureMssqlSchema(pool: any) {
   for (const sql of MSSQL_SCHEMA_TABLES) {
     await pool.request().query(sql);
   }
+  await pool.request().query(`IF COL_LENGTH('SGF_USUARIOS', 'PERMISOS') IS NULL ALTER TABLE SGF_USUARIOS ADD PERMISOS NVARCHAR(1000) DEFAULT '[]'`);
   for (const sql of MSSQL_SCHEMA_INDEXES) {
     await pool.request().query(sql);
   }

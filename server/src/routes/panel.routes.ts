@@ -6,7 +6,7 @@ import { readJsonBody, sendJson } from "../middleware/auth.js";
 import { safeVerifyToken } from "../utils/jwt.js";
 import { esConsolaLocal, esPeticionLocal, tokenConsolaConfigurado } from "../middleware/local.js";
 import { esInstalacionNueva } from "../middleware/auth.js";
-import { getDbMode, pingDb, query } from "../models/database.js";
+import { getDbMode, pingDb, query, flushParaCopia } from "../models/database.js";
 
 /**
  * Panel de control de la consola de escritorio (app Flutter).
@@ -154,7 +154,8 @@ export async function handlePanelCopia(req: IncomingMessage, res: ServerResponse
   const marca = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const destino = path.join(datos, `copia-${marca}.db`);
   try {
-    // flushDisk() fuerza el volcado en memoria -> disco antes de copiar.
+    // Solo se copia después de persistir correctamente la versión en memoria.
+    if (!flushParaCopia()) throw new Error("La base está ocupada o no se pudo guardar; reintente la copia.");
     fs.copyFileSync(origen, destino);
 
     // Se conservan las 10 copias mas recientes.

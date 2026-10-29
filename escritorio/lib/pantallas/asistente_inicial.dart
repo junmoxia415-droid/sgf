@@ -17,12 +17,14 @@ class AsistenteInicial extends StatefulWidget {
     required this.api,
     required this.ajustes,
     this.alCambiarTema,
+    this.alTerminar,
   });
 
   final ControladorServidor servidor;
   final Api api;
   final Ajustes ajustes;
   final VoidCallback? alCambiarTema;
+  final VoidCallback? alTerminar;
 
   @override
   State<AsistenteInicial> createState() => _AsistenteInicialState();
@@ -426,6 +428,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
         const SizedBox(height: 18),
         FilledButton.icon(
           onPressed: () {
+            if (widget.alTerminar != null) { widget.alTerminar!(); return; }
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (_) => PantallaPrincipal(

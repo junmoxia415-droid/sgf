@@ -7,6 +7,7 @@ export interface SessionUser {
   username: string;
   name: string;
   role: Role;
+  permisos?: string[];
   active?: boolean;
   createdAt?: string;
 }
@@ -16,6 +17,7 @@ export interface User {
   username: string;
   name: string;
   role: Role;
+  permisos?: string[];
   active: number;
   created_at: string;
 }
