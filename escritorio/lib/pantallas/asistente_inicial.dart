@@ -423,7 +423,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
         ),
         const SizedBox(height: 18),
         _recordatorio('Cargue el Excel de líneas', 'Menú «Importar Excel». Así verá el titular de cada número de teléfono.'),
-        _recordatorio('Procese las facturas', 'Menú «Facturas». Arrastre los PDF y el sistema los guarda.'),
+        _recordatorio('Procese las facturas', 'Menú «Facturas». Analice los PDF, revise los datos y decida si desea guardarlos.'),
         _recordatorio('Haga una copia al final del día', 'Menú «Servidor» → «Crear copia ahora».'),
         const SizedBox(height: 18),
         FilledButton.icon(

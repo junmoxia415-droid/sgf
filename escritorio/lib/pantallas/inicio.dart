@@ -244,8 +244,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
           Aviso(
             titulo: 'Funciona sin internet',
             mensaje: 'Los datos se guardan en este equipo; otros usuarios autorizados pueden entrar desde la red privada. '
-                'Si el equipo se apaga de golpe, la información no se pierde: la base se guarda de forma segura '
-                'en cada cambio. Se recomienda crear una copia de seguridad al final de cada jornada desde «Servidor».',
+                'Los cambios se guardan en el servidor; un corte inesperado puede afectar operaciones recientes. '
+                'Cree copias de seguridad periódicas desde «Servidor».',
             tipo: TipoAviso.info,
             accion: OutlinedButton.icon(
               onPressed: () => widget.irA('Servidor'),

@@ -108,7 +108,7 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Factura</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Cliente</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500">Estado</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500">Confianza</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500">Índice orientativo</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 hidden lg:table-cell">Servicios</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Acciones</th>
@@ -180,7 +180,7 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
               <div className="space-y-4">
                 <div className="grid md:grid-cols-4 gap-3">
                   <SummaryMini label="Estado" value={detail.reviewLabel || detail.estado} />
-                  <SummaryMini label="Confianza" value={`${detail.confidence ?? 0}%`} />
+                  <SummaryMini label="Índice orientativo" value={`${detail.confidence ?? 0}/100`} />
                   <SummaryMini label="Parser" value={detail.parser || "-"} />
                   <SummaryMini label="Servicios" value={String(detail.servicios?.length || 0)} />
                 </div>
@@ -197,7 +197,7 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
-                    No hay diagnosticos persistidos para esta factura. Usa la confianza, el estado y el detalle para revisarla.
+                    No hay diagnosticos persistidos para esta factura. Revise el estado, el detalle y el documento original. El índice no mide un porcentaje de exactitud.
                   </div>
                 )}
 
@@ -266,5 +266,5 @@ function StatusBadge({ row }: { row: InvoiceRecord }) {
     return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">{row.reviewLabel || "Revisar manualmente"}</span>;
   }
 
-  return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Alta confianza</span>;
+  return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Sin alertas automáticas</span>;
 }

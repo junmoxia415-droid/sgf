@@ -325,7 +325,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                         _fila('Escucha en', a.urlBaseLocal),
                         const SizedBox(height: 10),
                         const Text(
-                          'La aplicación funciona sin internet. El servidor admite conexiones de redes privadas; los datos se guardan aquí.',
+                          'La aplicación funciona sin internet. El servidor admite conexiones de redes privadas; los datos se guardan en la base configurada.',
                           style: TextStyle(fontSize: 13, height: 1.4),
                         ),
                       ],

@@ -57,8 +57,7 @@ class _FacturasPantallaState extends State<FacturasPantalla> with SingleTickerPr
       children: [
         Cabecera(
           titulo: 'Facturas',
-          descripcion: 'Suelte los PDF aquí o búsquelos en el equipo. El sistema lee el texto, guarda la factura y '
-              'cruza las líneas con el Excel importado; usted decide si la guarda.',
+          descripcion: 'Suelte los PDF aquí o búsquelos en el equipo. El servidor lee el texto y cruza las líneas con el Excel importado; usted revisa y decide si guarda la factura.',
           acciones: [
             OutlinedButton.icon(
               onPressed: () => _tabs.index = 1,
@@ -148,17 +147,12 @@ class _ProcesarState extends State<_Procesar> {
       } on ApiError catch (e) {
         if (!mounted) return;
         setState(() {
-          // El único 409 que queda es que el número de factura pertenezca a OTRO
-          // usuario. Se guarda el archivo para poder reintentar sin buscarlo, pero
-          // solo un administrador podrá reemplazarla.
           _resultados.insert(
             0,
             _Resultado(
               archivo: nombre,
               exito: false,
-              mensaje: e.codigo == 409
-                  ? '${e.mensaje}\n\nSi es correcto, use «Cargar de todas formas» para forzar la carga.'
-                  : e.mensaje,
+              mensaje: e.mensaje,
             ),
           );
         });
