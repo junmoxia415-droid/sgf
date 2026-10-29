@@ -30,6 +30,8 @@ class ControladorServidor extends ChangeNotifier {
   EstadoServidor estado = EstadoServidor.detenido;
   String? ultimoError;
   String? tokenConsola;
+  VoidCallback? abrirGuia;
+  VoidCallback? iniciarSesion;
   final List<String> registro = [];
   final _aleatorio = Random.secure();
 
@@ -108,12 +110,10 @@ class ControladorServidor extends ChangeNotifier {
       await nota.writeAsString(
         'SGF Escritorio\n'
         '================\n\n'
-        'Usuario: admin\n'
-        'Contraseña inicial: $clave\n\n'
-        'Esta contraseña se creó solo para este equipo. El programa pedirá\n'
-        'cambiarla en el primer acceso. Después de cambiarla, borre este archivo.\n\n'
-        'Si la pierde: abra Ajustes y vuelva a ejecutar el asistente, o borre el\n'
-        'archivo de configuración para que se genere una nueva.\n',
+        'Clave local de recuperación de configuración: $clave\n\n'
+        'Esta NO es una cuenta de usuario ni sirve para iniciar sesión.\n'
+        'La cuenta de administrador y su contraseña se crean en el asistente.\n'
+        'Guarde este archivo en un lugar seguro y no comparta esta clave.\n',
       );
       anotar('Contraseña inicial escrita en: ${nota.path}');
     } catch (_) {
@@ -167,8 +167,7 @@ LOGIN_RATE_PER_15MIN=300
 ''');
       await _guardarClaveDeFabricacion(claveInicial);
       anotar('Creada la configuración inicial (${archivoEnv.path}).');
-      anotar('Contraseña inicial del administrador guardada en el escritorio '
-          '("CONTRASENA INICIAL DE SGF.txt"). El programa pedirá cambiarla.');
+      anotar('Clave local de recuperación guardada en el escritorio. La cuenta se crea en el asistente.');
     }
   }
 
@@ -188,6 +187,22 @@ LOGIN_RATE_PER_15MIN=300
       ultimoError = 'No se encuentra el servidor en ${carpetaServidor.path}. Reinstale la aplicación.';
       anotar(ultimoError!);
       return false;
+    }
+
+    // No reutilizar ni detener un proceso ajeno: puede ser otra instancia de
+    // SGF o una aplicación distinta. Compartir la base sería inseguro.
+    try {
+      final socket = await Socket.connect('127.0.0.1', ajustes.puerto,
+          timeout: const Duration(seconds: 1));
+      socket.destroy();
+      estado = EstadoServidor.fallo;
+      ultimoError = 'El puerto ${ajustes.puerto} ya está ocupado. Cierre otra ventana de SGF y vuelva a intentar. Si continúa, reinicie Windows. Cambie el puerto solo si lo usa otro programa, no otra instancia de SGF. No se han borrado sus datos.';
+      anotar(ultimoError!);
+      return false;
+    } on SocketException {
+      // Puerto libre.
+    } on TimeoutException {
+      // El arranque informará del problema si no puede enlazar el puerto.
     }
 
     tokenConsola = _generarToken();
@@ -235,8 +250,9 @@ LOGIN_RATE_PER_15MIN=300
       if (esperar) {
         final arriba = await _esperarRespuesta();
         if (!arriba) {
+          await detener();
           estado = EstadoServidor.fallo;
-          ultimoError ??= 'El servidor no respondió en 25 segundos. Revise el registro.';
+          ultimoError ??= 'El servidor no respondió correctamente. Revise el puerto y el registro en «Servidor».';
           anotar(ultimoError!);
           return false;
         }
@@ -257,9 +273,14 @@ LOGIN_RATE_PER_15MIN=300
   Future<bool> _esperarRespuesta() async {
     for (var i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 500));
+      if (_proceso == null || estado == EstadoServidor.fallo) return false;
       try {
         final r = await api.panelPing();
-        if (r['servicio'] == 'sgf-consola') return true;
+        if (r['servicio'] == 'sgf-consola' && r['pid'] == _proceso?.pid) {
+          // Ping es público: comprobar también el token en una ruta protegida.
+          await api.panelEstado();
+          if (_proceso != null && r['pid'] == _proceso!.pid) return true;
+        }
       } catch (_) {
         // todavia arrancando
       }
@@ -303,17 +324,11 @@ LOGIN_RATE_PER_15MIN=300
     await arrancar();
   }
 
-  /// Si el servidor ya estaba arrancado de antes (por ejemplo tras reiniciar la
-  /// aplicacion), se reutiliza en lugar de abrir un segundo proceso.
+  /// No se adopta un servidor anterior sin su token: evita confundir un ping
+  /// público con el control real de otro proceso.
   Future<void> comprobarSiYaEstaArriba() async {
     api.base = ajustes.urlBaseLocal;
-    try {
-      await api.panelPing();
-      estado = EstadoServidor.enMarcha;
-      anotar('Se encontró un servidor ya en marcha en ${ajustes.urlBaseLocal}.');
-    } catch (_) {
-      estado = EstadoServidor.detenido;
-    }
+    estado = EstadoServidor.detenido;
     notifyListeners();
   }
 

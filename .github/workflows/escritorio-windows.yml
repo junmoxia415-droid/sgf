@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 1.0.0)'
+        description: 'Versión a compilar (ej. 4.0.0)'
         required: false
         default: '4.0.0'
 
@@ -140,7 +140,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   escritorio:
     name: Escritorio · Flutter (Windows)
-    needs: servidor
+    needs: [servidor, integracion]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,7 +165,7 @@ jobs:
 
       - name: Compilar ejecutable
         working-directory: escritorio
-        run: flutter build windows --release --build-name=${{ env.VERSION }}
+        run: flutter build windows --release --build-name=${{ env.VERSION }} --dart-define=SGF_VERSION=${{ env.VERSION }}
 
       # ── Montaje del paquete: .exe + servidor + Node + dependencias ─────────
       - uses: actions/setup-node@v4
@@ -190,6 +190,12 @@ jobs:
           npm ci --no-audit --no-fund
           npx tsc
           npm prune --omit=dev --no-audit --no-fund
+
+      - name: Compilar la versión web sin conexión
+        working-directory: client
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
 
       - name: Montar la carpeta de distribucion
         shell: pwsh
@@ -227,6 +233,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $runtime | Out-Null
           Copy-Item (Join-Path $env:RUNNER_TEMP 'node-portatil/node.exe') $runtime
 
+          # La ruta esperada por servidor/dist/index.js es ../../client/dist.
+          New-Item -ItemType Directory -Force -Path (Join-Path $destino 'client') | Out-Null
+          Copy-Item -Recurse 'client/dist' (Join-Path $destino 'client/dist')
+
           # 3) Material de apoyo
           Copy-Item 'escritorio/LEEME-PRIMERO.txt' $destino -ErrorAction Ignore
           Get-ChildItem $destino | Select-Object Name, Length
@@ -243,11 +253,45 @@ jobs:
             'distribucion\sgf_escritorio.exe',
             'distribucion\servidor\runtime\node.exe',
             'distribucion\servidor\dist\index.js',
+            'distribucion\client\dist\index.html',
             'distribucion\LEEME-PRIMERO.txt'
           )
           $faltan = $obligatorios | Where-Object { -not (Test-Path $_) }
           if ($faltan) { Write-Error "Faltan en el paquete: $($faltan -join ', ')"; exit 1 }
           Write-Host "Paquete completo. Tamaño: $([math]::Round((Get-ChildItem distribucion -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)) MB"
+
+      - name: Probar web y consola del paquete montado
+        shell: pwsh
+        run: |
+          $env:DB_TYPE = 'sqlite'
+          $env:PORT = '35119'
+          $env:HOST = '127.0.0.1'
+          $env:JWT_SECRET = 'secreto-solo-para-pruebas-123456'
+          $env:SGF_CONSOLE_TOKEN = 'token-consola-ci-1234567890'
+          $env:SGF_DATA_DIR = Join-Path $env:RUNNER_TEMP 'sgf-prueba-paquete'
+          New-Item -ItemType Directory -Force -Path $env:SGF_DATA_DIR | Out-Null
+          $node = (Resolve-Path 'distribucion/servidor/runtime/node.exe').Path
+          $js = (Resolve-Path 'distribucion/servidor/dist/index.js').Path
+          $proceso = Start-Process -FilePath $node -ArgumentList @("`"$js`"") -WorkingDirectory (Resolve-Path 'distribucion/servidor').Path -PassThru -NoNewWindow
+          try {
+            $listo = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              try { $ping = Invoke-RestMethod 'http://127.0.0.1:35119/api/panel/ping'; if ($ping.data.pid -eq $proceso.Id) { $listo = $true; break } } catch {}
+              Start-Sleep -Seconds 1
+            }
+            if (-not $listo) { throw 'El servidor incluido no arrancó o el puerto está ocupado.' }
+            $panel = Invoke-RestMethod 'http://127.0.0.1:35119/api/panel/estado' -Headers @{ 'x-sgf-console-token' = $env:SGF_CONSOLE_TOKEN }
+            if (-not $panel.success) { throw 'El token de consola del paquete no funciona.' }
+            $web = Invoke-WebRequest 'http://127.0.0.1:35119/' -UseBasicParsing
+            if ($web.StatusCode -ne 200 -or $web.Content -notmatch '<div id="root">') { throw 'No se puede abrir la versión web incluida.' }
+            $asset = [regex]::Match($web.Content, 'src="(/assets/[^" ]+\.js)"').Groups[1].Value
+            if (-not $asset) { throw 'Falta el JavaScript de la versión web.' }
+            $jsWeb = Invoke-WebRequest "http://127.0.0.1:35119$asset" -UseBasicParsing
+            if ($jsWeb.StatusCode -ne 200) { throw 'No se puede abrir el JavaScript incluido.' }
+            Write-Host 'Web, recursos y token de consola del paquete: OK.'
+          } finally {
+            if (-not $proceso.HasExited) { Stop-Process -Id $proceso.Id -Force }
+          }
 
       - name: Generar instalador
         shell: pwsh
@@ -296,7 +340,7 @@ jobs:
           - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador (recomendado). Se instala, se abre y arranca el servidor solo.
           - ``SGF-Escritorio-Portable-${{ env.VERSION }}.zip`` — para probar sin instalar: descomprimir y ejecutar ``sgf_escritorio.exe``.
 
-          Al abrir por primera vez, un asistente guia los pasos. La contrasena inicial se genera para cada equipo y queda anotada en el escritorio; el programa pide cambiarla en el primer acceso.
+          Al abrir por primera vez, un asistente guia los pasos para crear su propia cuenta de administrador. No hay una cuenta de fabrica.
           "@
           $notas | Set-Content -Path notas-release.md -Encoding utf8
 

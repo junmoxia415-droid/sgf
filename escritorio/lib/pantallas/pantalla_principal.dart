@@ -17,10 +17,11 @@ import 'usuarios.dart';
 /// Ventana principal: menú lateral con todas las áreas y una barra superior que
 /// siempre dice si el servidor y la base de datos están bien.
 class PantallaPrincipal extends StatefulWidget {
-  const PantallaPrincipal({super.key, required this.servidor, required this.api, required this.ajustes});
+  const PantallaPrincipal({super.key, required this.servidor, required this.api, required this.ajustes, this.alCambiarTema});
   final ControladorServidor servidor;
   final Api api;
   final Ajustes ajustes;
+  final VoidCallback? alCambiarTema;
 
   @override
   State<PantallaPrincipal> createState() => _PantallaPrincipalState();
@@ -36,6 +37,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   void initState() {
     super.initState();
     servidor.addListener(_redibujar);
+    servidor.abrirGuia = () => _irA('Ajustes y guía');
+    servidor.iniciarSesion = () => unawaited(_pedirLogin());
     // Si el servidor rechaza la sesión (cuenta desactivada, contraseña cambiada
     // por un administrador o caducidad), se avisa y se pide entrar de nuevo.
     api.alCaducarSesion = (motivo) {
@@ -93,6 +96,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   @override
   void dispose() {
     api.alCaducarSesion = null;
+    servidor.abrirGuia = null;
+    servidor.iniciarSesion = null;
     servidor.removeListener(_redibujar);
     super.dispose();
   }
@@ -134,12 +139,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               ajustes: widget.ajustes,
               servidor: servidor,
               api: api,
-              alCambiar: _redibujar,
+              alCambiar: () { _redibujar(); widget.alCambiarTema?.call(); },
             )),
       ];
 
   void _irA(String nombre) {
-    final i = _areas.indexWhere((a) => a.nombre == nombre);
+    final visibles = _areas.where((a) => !a.soloAdmin || api.esAdmin).toList();
+    final i = visibles.indexWhere((a) => a.nombre == nombre);
     if (i >= 0) setState(() => _seleccion = i);
   }
 
@@ -200,13 +206,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                                 const Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('SGF', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-                                    Text('Gestión de facturas', style: TextStyle(fontSize: 11)),
+                                    Text('SGF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+                                    Text('Gestión de facturas', style: TextStyle(color: Color(0xFFD4E3F5), fontSize: 11)),
                                   ],
                                 ),
                               ],
                             )
-                          : const Icon(Icons.receipt_long, size: 26),
+                          : const Icon(Icons.receipt_long, size: 26, color: Colors.white),
                     ),
                     destinations: [
                       for (final a in areas)

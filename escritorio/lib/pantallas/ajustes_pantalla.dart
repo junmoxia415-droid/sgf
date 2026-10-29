@@ -316,13 +316,13 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                       children: [
                         Text('Sobre esta aplicación', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 10),
-                        _fila('Programa', 'SGF Escritorio 1.0'),
+                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.0')}'),
                         _fila('Motor', 'Incluido (no hace falta instalar nada más)'),
                         _fila('Datos', Ajustes.carpeta.path),
                         _fila('Escucha en', a.urlBaseLocal),
                         const SizedBox(height: 10),
                         const Text(
-                          'La aplicación funciona sin internet. Solo usa la red local para nada: todo se guarda en este equipo.',
+                          'La aplicación funciona sin internet. El servidor solo escucha en este equipo y los datos se guardan aquí.',
                           style: TextStyle(fontSize: 13, height: 1.4),
                         ),
                       ],
@@ -416,7 +416,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
             child: Text(tecla, style: const TextStyle(fontSize: 12, fontFamily: 'Consolas', fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 10),
-          Text(accion, style: const TextStyle(fontSize: 13)),
+          Expanded(child: Text(accion, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );

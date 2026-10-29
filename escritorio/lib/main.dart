@@ -74,6 +74,14 @@ class _AtajosState extends State<_Atajos> {
   bool _manejar(KeyEvent evento) {
     if (evento is! KeyDownEvent) return false;
     final teclas = HardwareKeyboard.instance;
+    if (evento.logicalKey == LogicalKeyboardKey.f1 && widget.servidor.abrirGuia != null) {
+      widget.servidor.abrirGuia!();
+      return true;
+    }
+    if (teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyL && widget.servidor.iniciarSesion != null) {
+      widget.servidor.iniciarSesion!();
+      return true;
+    }
     if (teclas.isControlPressed && evento.logicalKey == LogicalKeyboardKey.keyR) {
       unawaited(widget.servidor.reiniciar());
       return true;
@@ -104,14 +112,17 @@ class SgfApp extends StatefulWidget {
   State<SgfApp> createState() => _SgfAppState();
 }
 
-class _SgfAppState extends State<SgfApp> {
+class _SgfAppState extends State<SgfApp> with WindowListener {
   late final ControladorServidor servidor;
   late final Api api;
   bool _arrancado = false;
+  late Future<bool> _primeraVez;
 
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
+    unawaited(windowManager.setPreventClose(true));
     api = Api();
     servidor = ControladorServidor(ajustes: widget.ajustes, api: api);
     // Al abrir la aplicacion se arranca el servidor automaticamente
@@ -122,12 +133,20 @@ class _SgfAppState extends State<SgfApp> {
       } else {
         await servidor.comprobarSiYaEstaArriba();
       }
+      _primeraVez = servidor.esPrimeraVez();
       if (mounted) setState(() => _arrancado = true);
     });
   }
 
   @override
+  void onWindowClose() async {
+    await servidor.detener();
+    await windowManager.destroy();
+  }
+
+  @override
   void dispose() {
+    windowManager.removeListener(this);
     servidor.dispose();
     super.dispose();
   }
@@ -151,19 +170,20 @@ class _SgfAppState extends State<SgfApp> {
       home: !_arrancado
           ? const PantallaCarga(mensaje: 'Preparando el sistema…')
           : FutureBuilder<bool>(
-              future: servidor.esPrimeraVez(),
+              future: _primeraVez,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const PantallaCarga(mensaje: 'Comprobando la instalación…');
                 }
-                if (snapshot.data == true && widget.ajustes.asistenteCompletado == false) {
+                if (snapshot.data == true) {
                   return AsistenteInicial(
                     servidor: servidor,
                     api: api,
                     ajustes: widget.ajustes,
+                    alCambiarTema: () => setState(() {}),
                   );
                 }
-                return PantallaPrincipal(servidor: servidor, api: api, ajustes: widget.ajustes);
+                return PantallaPrincipal(servidor: servidor, api: api, ajustes: widget.ajustes, alCambiarTema: () => setState(() {}));
               },
             ),
     );
@@ -175,10 +195,10 @@ class _SgfAppState extends State<SgfApp> {
 ThemeData temaSgf(Brightness brillo) {
   final oscuro = brillo == Brightness.dark;
   final base = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF0E7C66),
+    seedColor: const Color(0xFF276BC5),
     brightness: brillo,
   );
-  final fondo = oscuro ? const Color(0xFF10161A) : const Color(0xFFF4F6F8);
+  final fondo = oscuro ? const Color(0xFF101A2A) : const Color(0xFFF4F8FD);
   final superficie = oscuro ? const Color(0xFF182128) : Colors.white;
 
   return ThemeData(
@@ -227,10 +247,12 @@ ThemeData temaSgf(Brightness brillo) {
       hintStyle: TextStyle(fontSize: 14, color: oscuro ? Colors.white38 : Colors.black38),
     ),
     navigationRailTheme: NavigationRailThemeData(
-      backgroundColor: superficie,
-      indicatorColor: base.primary.withValues(alpha: 0.14),
-      selectedLabelTextStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: base.primary),
-      unselectedLabelTextStyle: const TextStyle(fontSize: 13),
+      backgroundColor: oscuro ? const Color(0xFF102238) : const Color(0xFF19344F),
+      indicatorColor: const Color(0xFF2B70C8),
+      selectedIconTheme: const IconThemeData(color: Colors.white),
+      unselectedIconTheme: const IconThemeData(color: Color(0xFFD4E3F5)),
+      selectedLabelTextStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+      unselectedLabelTextStyle: const TextStyle(fontSize: 13, color: Color(0xFFD4E3F5)),
     ),
     dividerTheme: DividerThemeData(
       color: oscuro ? const Color(0xFF2A3742) : const Color(0xFFE2E8ED),

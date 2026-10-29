@@ -16,11 +16,13 @@ class AsistenteInicial extends StatefulWidget {
     required this.servidor,
     required this.api,
     required this.ajustes,
+    this.alCambiarTema,
   });
 
   final ControladorServidor servidor;
   final Api api;
   final Ajustes ajustes;
+  final VoidCallback? alCambiarTema;
 
   @override
   State<AsistenteInicial> createState() => _AsistenteInicialState();
@@ -430,6 +432,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
                   servidor: widget.servidor,
                   api: widget.api,
                   ajustes: widget.ajustes,
+                  alCambiarTema: widget.alCambiarTema,
                 ),
               ),
               (r) => false,

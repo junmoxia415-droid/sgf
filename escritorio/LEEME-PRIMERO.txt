@@ -18,7 +18,7 @@ COMO EMPEZAR (3 pasos)
 2) La primera vez aparece un asistente con tres pantallas:
    - Donde se guardan los datos: deje "En este equipo" (recomendado).
    - Cuenta del administrador: escriba su nombre y una contrasena que recuerde.
-     ANOTELA: no se puede recuperar, solo cambiar.
+     ANOTELA y guardela con seguridad. No existe un usuario de fabrica.
 
 3) Cuando termine, pulse "Empezar a trabajar".
 
@@ -28,7 +28,12 @@ USO DIARIO
 - El servidor se enciende solo al abrir el programa. Arriba debe verse en verde
   "Servidor en marcha".
 - Para procesar facturas: menu "Facturas" y arrastre los PDF a la ventana.
-- Si algun dia algo va mal: menu "Servidor" y pulse "Reiniciar".
+- Si algun dia algo va mal: menu "Servidor" y revise el registro.
+- Si dice que el puerto esta ocupado, cierre las otras ventanas de SGF y abra
+  de nuevo. Si sigue ocupado, reinicie Windows. Cambie el puerto solo cuando
+  sea otro programa el que lo use, no para abrir dos servidores SGF a la vez.
+- Para ver la version web pulse "Ver la version web". Los archivos web vienen
+  incluidos; no hace falta conexion a internet.
 
 
 COPIA DE SEGURIDAD (MUY IMPORTANTE)

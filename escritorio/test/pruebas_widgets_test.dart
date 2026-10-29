@@ -58,7 +58,7 @@ void main() {
       iniciarSesion: () async => true,
     )));
     await tester.pump();
-    expect(find.text('Todo listo para trabajar'), findsOneWidget);
+    expect(find.text('Bienvenido a SGF'), findsOneWidget);
     // Sin servidor responde con un aviso claro, no con un error técnico.
     expect(find.textContaining('servidor'), findsWidgets);
   });

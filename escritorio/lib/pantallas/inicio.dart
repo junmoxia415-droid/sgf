@@ -62,9 +62,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Cabecera(
-          titulo: 'Todo listo para trabajar',
-          descripcion: 'Este es el estado del sistema en este equipo. La aplicación arranca el servidor por usted: '
-              'no hay que abrir archivos .bat ni ventanas negras.',
+          titulo: 'Bienvenido a SGF',
+          descripcion: 'Gestione sus facturas y líneas de forma sencilla, segura y sin conexión.',
           acciones: [
             OutlinedButton.icon(
               onPressed: _cargando ? null : _cargar,
@@ -77,8 +76,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
           const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CircularProgressIndicator()))
         else if (_error != null)
           Aviso(
-            titulo: 'El servidor no responde',
-            mensaje: _error!,
+            titulo: 'No se pudo conectar con el servidor',
+            mensaje: widget.servidor.ultimoError ?? _error!,
             tipo: TipoAviso.error,
             accion: Wrap(
               spacing: 10,
@@ -100,19 +99,30 @@ class _InicioPantallaState extends State<InicioPantalla> {
             ),
           )
         else ...[
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              _Resumen(icono: Icons.receipt_long, titulo: 'Facturas registradas', valor: '${contadores['facturas'] ?? 0}', color: const Color(0xFF286DC5)),
+              _Resumen(icono: Icons.sim_card_outlined, titulo: 'Servicios', valor: '${contadores['servicios'] ?? 0}', color: const Color(0xFF258856)),
+              _Resumen(icono: Icons.table_chart_outlined, titulo: 'Líneas del Excel', valor: '${contadores['lineasExcel'] ?? 0}', color: const Color(0xFFD58A23)),
+              _Resumen(icono: Icons.people_outline, titulo: 'Usuarios', valor: '${contadores['usuarios'] ?? 0}', color: const Color(0xFF6757BF)),
+            ],
+          ),
+          const SizedBox(height: 18),
           EnColumnas(
             izquierda: Tarjeta(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 8, runSpacing: 8,
                         children: [
                           const Etiqueta(
                             texto: 'Servidor en marcha',
                             color: Color(0xFF1B7F4B),
                             icono: Icons.check_circle,
                           ),
-                          const SizedBox(width: 8),
                           Etiqueta(
                             texto: 'Base de datos: ${(_estado?['modoBd'] ?? 'sqlite').toString().toUpperCase()}',
                             color: const Color(0xFF1D6FB8),
@@ -223,6 +233,29 @@ class _InicioPantallaState extends State<InicioPantalla> {
     if (minutos < 60) return '$minutos min';
     final horas = minutos ~/ 60;
     return '${horas} h ${minutos % 60} min';
+  }
+}
+
+class _Resumen extends StatelessWidget {
+  const _Resumen({required this.icono, required this.titulo, required this.valor, required this.color});
+  final IconData icono;
+  final String titulo;
+  final String valor;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return SizedBox(
+      width: 210,
+      child: Tarjeta(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        CircleAvatar(backgroundColor: color.withValues(alpha: 0.13), child: Icon(icono, color: color)),
+        const SizedBox(height: 12),
+        Text(titulo, style: tema.textTheme.bodySmall),
+        const SizedBox(height: 4),
+        Text(valor, style: tema.textTheme.headlineSmall),
+      ])),
+    );
   }
 }
 
