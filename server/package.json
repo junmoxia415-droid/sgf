@@ -28,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/mssql": "^12.3.0",
     "@types/node": "^22.19.17",
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3"
   },
