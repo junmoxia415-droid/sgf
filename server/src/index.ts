@@ -144,6 +144,12 @@ const server = http.createServer(
         if (requestPath === "/api/panel/estado" && req.method === "GET") return handlePanelEstado(req, res);
         if (requestPath === "/api/panel/copia" && req.method === "POST") return handlePanelCopia(req, res);
         if (requestPath === "/api/panel/ping" && req.method === "GET") return handlePanelPing(req, res);
+        if (requestPath === "/api/panel/apagar" && req.method === "POST") {
+          if (!esConsolaLocal(req)) return sendJson(res, 403, { success: false, error: "Solo la consola local puede detener el servidor." });
+          sendJson(res, 200, { success: true, message: "Guardando datos y cerrando el servidor." });
+          setImmediate(() => shutdown("consola local"));
+          return;
+        }
         if (requestPath === "/api/panel/periodos") return handlePanelPeriodos(req, res);
         return sendJson(res, 404, { success: false, error: "Ruta de panel desconocida." });
       }

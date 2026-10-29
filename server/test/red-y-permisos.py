@@ -69,8 +69,15 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
         expect(403,call('/api/estadisticas/meses',headers=usr,host=host_lan))
         expect(403,call('/api/import/tables',headers=usr,host=host_lan))
         expect(403,call('/api/users/'+uid,'PUT',{'permisos':['administrar_usuarios']},usr,host=host_lan))
-        print('OK: LAN, alta inicial local, autenticación, roles, concesión y revocación de permisos.')
+        expect(403,call('/api/panel/apagar','POST',{}, {'x-sgf-console-token':env['SGF_CONSOLE_TOKEN']}, host=host_lan))
+        expect(403,call('/api/panel/apagar','POST',{}))
+        expect(200,call('/api/panel/apagar','POST',{}, {'x-sgf-console-token':env['SGF_CONSOLE_TOKEN']}))
+        p.wait(timeout=12)
+        assert p.returncode == 0
+        with sqlite3.connect(os.path.join(data, 'sgf-data.db')) as bd_final:
+            assert bd_final.execute("SELECT COUNT(*) FROM SGF_USUARIOS WHERE USERNAME='operador_ci'").fetchone()[0] == 1
+        print('OK: LAN, alta inicial, permisos, copia y cierre ordenado con datos conservados.')
     finally:
-        p.terminate()
+        if p.poll() is None: p.terminate()
         try: p.communicate(timeout=10)
         except subprocess.TimeoutExpired: p.kill(); p.communicate()

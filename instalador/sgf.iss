@@ -173,7 +173,7 @@ begin
     end
     else if FileExists(Marcador) and (not DeleteFile(Marcador)) then
       MsgBox('No se pudo cancelar una solicitud anterior de reinicio. No abra SGF hasta resolverlo; sus datos se conservan.', mbError, MB_OK);
-    MsgBox('SGF se ha instalado correctamente.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
+    if not WizardSilent then MsgBox('SGF se ha instalado correctamente.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'Si la instalación está vacía, el asistente le ayudará a crear su cuenta de administrador.' + Chr(13) + Chr(10) +
       'Las demás cuentas las crea el administrador desde Usuarios.' + Chr(13) + Chr(10) + Chr(10) +
       'Los datos anteriores se conservan salvo que haya elegido empezar de cero.', mbInformation, MB_OK);

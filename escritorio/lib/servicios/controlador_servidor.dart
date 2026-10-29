@@ -317,19 +317,26 @@ LOGIN_RATE_PER_15MIN=40
     estado = EstadoServidor.deteniendo;
     notifyListeners();
     anotar('Deteniendo el servidor…');
+    final proceso = _proceso!;
     try {
-      if (Platform.isWindows) {
-        // En Windows no hay SIGTERM: se cierra el arbol de procesos.
-        await Process.run('taskkill', ['/PID', '${_proceso!.pid}', '/T', '/F']);
-      } else {
-        _proceso!.kill(ProcessSignal.sigterm);
-        await _proceso!.exitCode.timeout(const Duration(seconds: 10), onTimeout: () {
-          _proceso!.kill(ProcessSignal.sigkill);
-          return -1;
-        });
-      }
+      // En Windows taskkill /F saltaba el guardado de SQLite. Pedimos primero
+      // un cierre ordenado por la consola local, y esperamos al proceso propio.
+      await api.apagarServidor();
+      final salida = await proceso.exitCode.timeout(const Duration(seconds: 12), onTimeout: () => -999);
+      if (salida == -999) throw TimeoutException('El servidor no terminó el cierre ordenado.');
     } catch (e) {
-      anotar('Aviso al detener: $e');
+      anotar('No se pudo cerrar con orden: $e. Se intentará detener el proceso.');
+      try {
+        if (Platform.isWindows) {
+          await Process.run('taskkill', ['/PID', '${proceso.pid}', '/T', '/F']);
+        } else {
+          proceso.kill(ProcessSignal.sigterm);
+          await proceso.exitCode.timeout(const Duration(seconds: 10), onTimeout: () {
+            proceso.kill(ProcessSignal.sigkill);
+            return -1;
+          });
+        }
+      } catch (error) { anotar('Aviso al detener: $error'); }
     }
     _proceso = null;
     estado = EstadoServidor.detenido;

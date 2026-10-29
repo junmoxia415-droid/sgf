@@ -311,12 +311,12 @@ jobs:
       - name: Probar instalación conservando datos anteriores
         shell: pwsh
         run: |
-          $appdataAnterior = $env:APPDATA
-          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'sgf-appdata-ensayo'
+          # Se usa el APPDATA real del runner efímero, igual que {userappdata}.
           $carpetaDatos = Join-Path $env:APPDATA 'SGF'
           $destino = Join-Path $env:RUNNER_TEMP 'sgf-instalado-ensayo'
           New-Item -ItemType Directory -Force -Path $carpetaDatos | Out-Null
-          Set-Content (Join-Path $carpetaDatos 'datos-existentes.txt') 'informacion ficticia'
+          $testigo = Join-Path $carpetaDatos ('ensayo-conservar-' + [guid]::NewGuid().ToString() + '.txt')
+          Set-Content $testigo 'informacion ficticia'
           $exe = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
           try {
             $argumentos = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$destino`" /TASKS=`"`""
@@ -324,9 +324,9 @@ jobs:
             if ($prueba.ExitCode -ne 0) { throw "El instalador devolvió $($prueba.ExitCode)" }
             if (-not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw 'La aplicación no se instaló.' }
             if (-not (Test-Path (Join-Path $destino 'client/dist/index.html'))) { throw 'La web no se instaló.' }
-            if ((Get-Content (Join-Path $carpetaDatos 'datos-existentes.txt') -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos.' }
+            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos.' }
             Write-Host 'Instalación silenciosa y conservación de datos: OK.'
-          } finally { $env:APPDATA = $appdataAnterior }
+          } finally { Remove-Item $testigo -Force -ErrorAction Ignore }
 
       - name: Comprimir version portable
         shell: pwsh

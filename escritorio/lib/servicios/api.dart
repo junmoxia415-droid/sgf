@@ -42,12 +42,14 @@ class Api {
     String ruta, {
     Object? cuerpo,
     Duration espera = const Duration(seconds: 30),
+    bool sinSesion = false,
   }) async {
     final uri = Uri.parse('$base$ruta');
     late http.Response respuesta;
     try {
       final cliente = http.Client();
       final solicitud = http.Request(metodo, uri)..headers.addAll(_cabeceras);
+      if (sinSesion) solicitud.headers.remove('Authorization');
       if (cuerpo != null) solicitud.body = jsonEncode(cuerpo);
       final streamed = await cliente.send(solicitud).timeout(espera);
       respuesta = await http.Response.fromStream(streamed);
@@ -75,7 +77,7 @@ class Api {
     // Sesión rechazada por el servidor: se cierra en la aplicación y se avisa.
     // No se hace en el propio login (ruta /api/auth/login) porque allí un 401
     // significa "contraseña incorrecta", no "sesión caducada".
-    if (respuesta.statusCode == 401 && _tokenSesion != null && !ruta.startsWith('/api/auth/login')) {
+    if (respuesta.statusCode == 401 && !sinSesion && _tokenSesion != null && !ruta.startsWith('/api/auth/login')) {
       final motivo = (json['error'] ?? '').toString();
       _tokenSesion = null;
       final quien = usuario;
@@ -166,6 +168,7 @@ class Api {
   Future<Map<String, dynamic>> panelBienvenida() async =>
       (await get('/api/panel/bienvenida'))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> panelPing() async => (await get('/api/panel/ping'))['data'] as Map<String, dynamic>;
+  Future<void> apagarServidor() async => _pedir('POST', '/api/panel/apagar', cuerpo: {}, sinSesion: true, espera: const Duration(seconds: 5));
   Future<Map<String, dynamic>> crearCopia() async => await post('/api/panel/copia');
 
   // ── Facturas por mes ──────────────────────────────────────────────────────
