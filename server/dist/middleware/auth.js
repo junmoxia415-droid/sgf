@@ -1,5 +1,9 @@
 import { safeVerifyToken } from "../utils/jwt.js";
 import { execute, getDbMode, query } from "../models/database.js";
+/** Duración de cada renovación deslizante (una llamada mantiene la sesión viva). */
+const SESION_HORAS_RENOVACION = Number(process.env.SESSION_REFRESH_HOURS) || 8;
+/** Tope absoluto: por muchas peticiones que se hagan, la sesión caduca. */
+const SESION_MAXIMA_HORAS = Number(process.env.SESSION_MAX_HOURS) || 24;
 /**
  * Nucleo de autenticacion.
  * - respondiendo=true : comportamiento clasico de las rutas protegidas (401/503).
@@ -24,28 +28,79 @@ async function autenticarNucleo(req, res, respondiendo) {
     }
     try {
         const dbMode = getDbMode();
-        const rows = dbMode === "oracle"
-            ? await query(`SELECT ID FROM SGF_SESIONES
+        const filaSesion = dbMode === "oracle"
+            ? await query(`SELECT ID, CREATED_AT FROM SGF_SESIONES
            WHERE SESSION_TOKEN = :t AND ACTIVE = 1 AND EXPIRES_AT > SYSTIMESTAMP`, { t: token })
             : dbMode === "mssql"
-                ? await query(`SELECT ID FROM SGF_SESIONES
+                ? await query(`SELECT ID, CREATED_AT FROM SGF_SESIONES
              WHERE SESSION_TOKEN = :t AND ACTIVE = 1 AND EXPIRES_AT > SYSUTCDATETIME()`, { t: token })
-                : await query(`SELECT ID FROM SGF_SESIONES
+                : await query(`SELECT ID, CREADO FROM SGF_SESIONES
              WHERE TOKEN = :t AND ACTIVO = 1 AND EXPIRA > datetime('now')`, { t: token });
-        if (rows.length === 0) {
+        if (filaSesion.length === 0) {
             if (respondiendo)
                 sendJson(res, 401, { success: false, error: "Sesion expirada o cerrada." });
             return null;
         }
-        if (dbMode === "oracle") {
-            await execute(`UPDATE SGF_SESIONES SET EXPIRES_AT = SYSTIMESTAMP + INTERVAL '8' HOUR WHERE SESSION_TOKEN = :t`, { t: token });
+        // ── El usuario se lee de la base de datos en CADA peticion ──────────────
+        // Antes solo se creia el contenido del token: una cuenta desactivada o
+        // eliminada seguia trabajando hasta 8 horas, y un administrador degradado
+        // conservaba los privilegios del token.
+        const filasUsuario = dbMode === "oracle"
+            ? await query(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
+            : dbMode === "mssql"
+                ? await query(`SELECT ID, USERNAME, NAME, ROLE, ACTIVE FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
+                : await query(`SELECT ID, USERNAME, NOMBRE, ROL, ACTIVO FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id });
+        if (filasUsuario.length === 0) {
+            // Cuenta eliminada: se cierran todas sus sesiones.
+            await cerrarSesionesDeUsuario(user.id);
+            if (respondiendo)
+                sendJson(res, 401, { success: false, error: "La cuenta ya no existe. Inicie sesion de nuevo." });
+            return null;
         }
-        else if (dbMode === "mssql") {
-            await execute(`UPDATE SGF_SESIONES SET EXPIRES_AT = DATEADD(HOUR, 8, SYSUTCDATETIME()) WHERE SESSION_TOKEN = :t`, { t: token });
+        const fila = filasUsuario[0];
+        const activo = Number(fila?.ACTIVO ?? fila?.ACTIVE ?? 0) === 1;
+        const rolActual = String(fila?.ROL ?? fila?.ROLE ?? "usuario") === "admin" ? "admin" : "usuario";
+        if (!activo) {
+            await cerrarSesionesDeUsuario(user.id);
+            if (respondiendo)
+                sendJson(res, 401, { success: false, error: "Usuario desactivado. Contacte al administrador." });
+            return null;
         }
-        else {
-            await execute(`UPDATE SGF_SESIONES SET EXPIRA = datetime('now','+8 hours') WHERE TOKEN = :t`, { t: token });
+        // Se usa SIEMPRE el rol de la base de datos, no el del token.
+        const usuarioActualizado = {
+            ...user,
+            username: String(fila?.USERNAME ?? user.username),
+            name: String(fila?.NOMBRE ?? fila?.NAME ?? user.name),
+            role: rolActual,
+            active: true,
+        };
+        // ── Renovacion deslizante CON tope absoluto ────────────────────────────
+        // Antes cada peticion sumaba 8 h a la caducidad, asi que una sesion activa
+        // no caducaba nunca y un token robado podia durar indefinidamente.
+        const creada = String(fila?.CREATED_AT ?? fila?.CREADO ?? "");
+        const inicioMs = Date.parse(creada.includes("T") ? creada : creada.replace(" ", "T") + "Z");
+        const dentroDeVidaMaxima = !Number.isFinite(inicioMs) ||
+            Date.now() - inicioMs < SESION_MAXIMA_HORAS * 3600 * 1000;
+        const restanteMs = Number.isFinite(inicioMs)
+            ? SESION_MAXIMA_HORAS * 3600 * 1000 - (Date.now() - inicioMs)
+            : null;
+        if (dentroDeVidaMaxima) {
+            // La caducidad nunca pasa del limite absoluto de la sesion.
+            const horas = restanteMs === null
+                ? SESION_HORAS_RENOVACION
+                : Math.max(1 / 60, Math.min(SESION_HORAS_RENOVACION, restanteMs / 3600000));
+            if (dbMode === "oracle") {
+                await execute(`UPDATE SGF_SESIONES SET EXPIRES_AT = LEAST(SYSTIMESTAMP + INTERVAL '${horas.toFixed(4)}' HOUR, CREATED_AT + INTERVAL '${SESION_MAXIMA_HORAS}' HOUR) WHERE SESSION_TOKEN = :t`, { t: token });
+            }
+            else if (dbMode === "mssql") {
+                await execute(`UPDATE SGF_SESIONES SET EXPIRES_AT = CASE WHEN DATEADD(HOUR, ${horas.toFixed(4)}, SYSUTCDATETIME()) < DATEADD(HOUR, ${SESION_MAXIMA_HORAS}, CREATED_AT) THEN DATEADD(HOUR, ${horas.toFixed(4)}, SYSUTCDATETIME()) ELSE DATEADD(HOUR, ${SESION_MAXIMA_HORAS}, CREATED_AT) END WHERE SESSION_TOKEN = :t`, { t: token });
+            }
+            else {
+                await execute(`UPDATE SGF_SESIONES SET EXPIRA = MIN(datetime('now','+${horas.toFixed(4)} hours'), datetime(CREADO, '+${SESION_MAXIMA_HORAS} hours')) WHERE TOKEN = :t`, { t: token });
+            }
         }
+        req.currentUser = usuarioActualizado;
+        return usuarioActualizado;
     }
     catch (error) {
         console.error("[AUTH ERROR]", error.message);
@@ -53,8 +108,20 @@ async function autenticarNucleo(req, res, respondiendo) {
             sendJson(res, 503, { success: false, error: `Error de autenticacion: ${error.message}` });
         return null;
     }
-    req.currentUser = user;
-    return user;
+}
+/** Marca como cerradas todas las sesiones de un usuario (en cualquier motor). */
+export async function cerrarSesionesDeUsuario(userId) {
+    try {
+        if (getDbMode() === "sqlite") {
+            await execute(`UPDATE SGF_SESIONES SET ACTIVO = 0 WHERE USER_ID = :id`, { id: userId });
+        }
+        else {
+            await execute(`UPDATE SGF_SESIONES SET ACTIVE = 0 WHERE USER_ID = :id`, { id: userId });
+        }
+    }
+    catch {
+        // si la tabla no admite la operacion, no se bloquea la peticion
+    }
 }
 /** Autenticacion obligatoria: responde 401/503 y devuelve null si falla. */
 export async function authenticate(req, res) {

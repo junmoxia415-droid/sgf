@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import jwt, { type Secret } from "jsonwebtoken";
 import { JWT_CONFIG } from "../config/index.js";
 import type { SessionUser } from "../models/types.js";
@@ -9,6 +10,9 @@ export function signToken(user: SessionUser): string {
       username: user.username,
       role: user.role,
       name: user.name,
+      // jti unico: dos inicios de sesion en el mismo segundo ya no generan el
+      // mismo token (antes chocaban con UNIQUE y el login devolvia 503).
+      jti: randomUUID(),
     },
     JWT_CONFIG.secret as Secret,
     { expiresIn: JWT_CONFIG.expiresIn as any },

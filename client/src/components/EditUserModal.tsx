@@ -12,7 +12,16 @@ export function EditUserModal({ user, onClose, onSaved, showToast }: Props) {
     const body: Record<string,unknown> = { name: form.name, role: form.role, active: form.active };
     if (form.password) body.password = form.password;
     const r = await api.updateUser(user.id, body);
-    if (r.success) { showToast("success","Usuario actualizado."); onSaved(); onClose(); }
+    if (r.success) {
+      showToast("success","Usuario actualizado.");
+      // Al cambiar la contrasena o desactivar la cuenta, el servidor cierra sus
+      // sesiones abiertas (incluida la de este navegador, si es la propia).
+      // Avisamos en lugar de dejar la pantalla "colgada" hasta la proxima accion.
+      if (body.password || body.active === false) {
+        showToast("info","Por seguridad se han cerrado las sesiones abiertas de este usuario.");
+      }
+      onSaved(); onClose();
+    }
     else showToast("error", r.error||"Error.");
   };
 

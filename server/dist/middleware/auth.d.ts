@@ -4,6 +4,8 @@ export interface AuthenticatedRequest extends IncomingMessage {
     currentUser?: SessionUser;
     body?: any;
 }
+/** Marca como cerradas todas las sesiones de un usuario (en cualquier motor). */
+export declare function cerrarSesionesDeUsuario(userId: string): Promise<void>;
 /** Autenticacion obligatoria: responde 401/503 y devuelve null si falla. */
 export declare function authenticate(req: AuthenticatedRequest, res: ServerResponse): Promise<SessionUser | null>;
 /** Autenticacion opcional: identifica si hay sesion valida, sin responder errores. */
