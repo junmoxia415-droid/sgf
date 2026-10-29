@@ -184,6 +184,26 @@ void main() {
     expect(api.motivoCaducidad, isNull);
   });
 
+  testWidgets('Ajustes permite elegir cuántas facturas por mes se esperan', (tester) async {
+    tamanoVentana(tester);
+    await tester.pumpWidget(envolver(AjustesPantalla(
+      ajustes: ajustes,
+      servidor: servidor,
+      api: api,
+      alCambiar: () {},
+    )));
+    await tester.pump();
+
+    // La tarjeta existe y explica el valor habitual (2 facturas por mes).
+    expect(find.text('Facturas por mes'), findsOneWidget);
+    expect(find.textContaining('2 facturas por mes'), findsWidgets);
+    // Y ofrece las opciones habituales, incluida 1 y las de 3, 4, 6…
+    expect(find.text('1 factura'), findsOneWidget);
+    expect(find.text('3 facturas'), findsOneWidget);
+    expect(find.text('4 facturas'), findsOneWidget);
+    expect(find.text('6 facturas'), findsOneWidget);
+  });
+
   testWidgets('La etiqueta de estado y el dato grande se pintan', (tester) async {
     tamanoVentana(tester);
     await tester.pumpWidget(envolver(const Column(children: [

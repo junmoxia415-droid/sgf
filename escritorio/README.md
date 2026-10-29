@@ -111,16 +111,38 @@ ocurre si la sesión supera su tope absoluto (24 h por defecto, ajustable con
 
 ### 4.2 Si una factura choca con otra (error 409)
 
-El servidor solo rechaza una factura cuando **ya existe ese número de factura** o
-cuando **las mismas líneas ya están facturadas en el mismo periodo**. Si es así, la
-tarjeta del resultado muestra el motivo y un botón **«Cargar de todas formas»**:
+Solo hay **un caso** en el que el servidor rechaza una factura:
 
-- úsalo cuando el 409 sea un falso positivo (por ejemplo, una factura reemitida) o
-  cuando estés volviendo a cargar un mes ya cargado;
-- no hace falta volver a buscar el archivo: la aplicación lo conserva.
+- **el número de factura ya lo ha cargado otro usuario.** Un usuario normal no
+  puede reemplazar facturas ajenas; un administrador sí, y queda registrado.
 
-Que una línea aparezca en facturas de meses anteriores **no** es un error y ya no
-bloquea la carga: se muestra solo como aviso.
+Todo lo demás **no** bloquea:
+
+- reenviar la misma factura **la sustituye** (así se corrige una que se mandó mal);
+- que las mismas líneas aparezcan en otra factura del mismo mes es lo normal
+  (primera y segunda quincena) y solo se avisa;
+- que aparezcan en facturas de otros meses también es normal y solo se avisa.
+
+### 4.3 Facturas por mes (2 por defecto, configurable)
+
+Cada mes se facturan las mismas líneas, y a veces en varias facturas (lo habitual,
+dos: primera y segunda quincena). El servidor lleva la cuenta:
+
+- **`FACTURAS_POR_MES`** (por defecto **2**) dice cuántas se esperan. Se cambia
+  desde **Ajustes y guía → Facturas por mes** (1, 2, 3, 4, 5, 6, 8 o 10) y se
+  aplica al instante, sin reiniciar.
+- Cada factura se guarda con su **periodo normalizado** (`2026-09`) y su **parte**
+  (`1`, `2`…), así que se puede saber qué meses están completos.
+- Si llega **una factura más de las esperadas**, se carga igual y se avisa. Nunca
+  se bloquea una factura legítima.
+- Si llega **una menos**, el panel de periodos la marca como pendiente.
+
+### Corregir una factura mal enviada
+
+Basta con volver a cargarla: la nueva **sustituye** a la anterior, en una sola
+operación y sin dejar restos. El resultado lo dice («se ha SUSTITUIDO por esta
+versión»). Solo hay un caso que se rechaza: intentar reemplazar una factura cargada
+por **otro usuario**, que solo puede hacerlo un administrador.
 
 ## 5. Seguridad del modelo de escritorio
 

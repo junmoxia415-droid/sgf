@@ -21,6 +21,12 @@ export interface FacturaExtraida {
     fechaEmision: string;
     fechaVencimiento: string;
     periodoConsumo: string;
+    /**
+     * Periodo normalizado (AAAA-MM) y partición cuando el mes se factura en varias
+     * facturas ("primera quincena", "parte 1 de 2"...). Ver facturas-periodo.ts.
+     */
+    periodoClave?: string;
+    periodoParte?: number | null;
     codigoPago: string;
     moneda: string;
     nit: string;

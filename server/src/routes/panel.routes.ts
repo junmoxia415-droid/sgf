@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sendJson } from "../middleware/auth.js";
+import { readJsonBody, sendJson } from "../middleware/auth.js";
+import { safeVerifyToken } from "../utils/jwt.js";
 import { esConsolaLocal, esPeticionLocal, tokenConsolaConfigurado } from "../middleware/local.js";
 import { esInstalacionNueva } from "../middleware/auth.js";
 import { getDbMode, pingDb, query } from "../models/database.js";
@@ -32,6 +33,18 @@ function guardiaPanel(req: IncomingMessage, res: ServerResponse): boolean {
     return false;
   }
   return true;
+}
+
+/** ¿La petición trae una sesión de administrador válida? */
+async function esAdministrador(req: IncomingMessage): Promise<boolean> {
+  try {
+    const cabecera = String(req.headers.authorization || "");
+    if (!cabecera.startsWith("Bearer ")) return false;
+    const usuario = safeVerifyToken(cabecera.slice(7));
+    return Boolean(usuario && usuario.role === "admin");
+  } catch {
+    return false;
+  }
 }
 
 function carpetas() {
@@ -196,6 +209,103 @@ export async function handlePanelBienvenida(req: IncomingMessage, res: ServerRes
       // existe el administrador por defecto (nadie ha configurado nada aun).
       primeraVez: !existeBd || usuarios === 0 || (await esInstalacionNueva()),
     },
+  });
+}
+
+/**
+ * Ajustes de facturación: cuántas facturas por mes se esperan y cómo va cada mes.
+ *
+ * GET  /api/panel/periodos           → configuración + últimos meses con su avance
+ * POST /api/panel/periodos {facturasPorMes} → guarda la preferencia en el .env
+ *
+ * Lo normal son 2 facturas por mes (primera y segunda quincena), pero se puede
+ * poner 1, 3, 4, 6… sin tocar código.
+ */
+export async function handlePanelPeriodos(req: IncomingMessage, res: ServerResponse) {
+  if (!guardiaPanel(req, res)) return;
+  // Cambiar la configuración requiere ser administrador: o bien la app instalada
+  // (que trae el token de consola) o bien una sesión de administrador real.
+  // Así no lo puede cambiar cualquiera desde una pestaña del navegador.
+  if (req.method === "POST" && !esConsolaLocal(req) && !(await esAdministrador(req))) {
+    return sendJson(res, 403, {
+      success: false,
+      error: "Solo un administrador puede cambiar el número de facturas por mes.",
+    });
+  }
+  const { env } = carpetas();
+
+  const leerPreferencia = (): number => {
+    const deEntorno = Number(process.env.FACTURAS_POR_MES);
+    if (Number.isFinite(deEntorno) && deEntorno >= 1 && deEntorno <= 50) return Math.floor(deEntorno);
+    try {
+      if (env && fs.existsSync(env)) {
+        const linea = fs.readFileSync(env, "utf8").split(/\r?\n/).find((l) => l.trim().startsWith("FACTURAS_POR_MES="));
+        if (linea) {
+          const n = Number(linea.split("=")[1]?.trim());
+          if (Number.isFinite(n) && n >= 1 && n <= 50) return Math.floor(n);
+        }
+      }
+    } catch {
+      // si no se puede leer el .env se usa el valor por defecto
+    }
+    return 2;
+  };
+
+  if (req.method === "POST") {
+    const cuerpo: any = await readJsonBody(req).catch(() => null);
+    const n = Number(cuerpo?.facturasPorMes);
+    if (!Number.isFinite(n) || n < 1 || n > 50) {
+      return sendJson(res, 400, {
+        success: false,
+        error: "El número de facturas por mes debe estar entre 1 y 50.",
+      });
+    }
+    try {
+      let lineas: string[] = [];
+      if (env && fs.existsSync(env)) lineas = fs.readFileSync(env, "utf8").split(/\r?\n/);
+      const indice = lineas.findIndex((l) => l.trim().startsWith("FACTURAS_POR_MES="));
+      if (indice >= 0) lineas[indice] = `FACTURAS_POR_MES=${Math.floor(n)}`;
+      else lineas.push(`FACTURAS_POR_MES=${Math.floor(n)}`);
+      if (env) fs.writeFileSync(env, lineas.join("\n"));
+      process.env.FACTURAS_POR_MES = String(Math.floor(n));
+      return sendJson(res, 200, {
+        success: true,
+        message: `Listo: se esperan ${Math.floor(n)} factura(s) por mes. Se aplica desde ya.`,
+        data: { facturasPorMes: Math.floor(n), guardadoEn: env || "(solo en memoria)" },
+      });
+    } catch (error: any) {
+      return sendJson(res, 500, {
+        success: false,
+        error: `No se pudo guardar la preferencia: ${error.message}`,
+      });
+    }
+  }
+
+  // GET: preferencia + situación de los últimos meses
+  const facturasPorMes = leerPreferencia();
+  let meses: Array<{ periodo: string; facturas: number; esperadas: number; completa: boolean }> = [];
+  try {
+    const filas = await query<any>(
+      `SELECT PERIODO_CLAVE, COUNT(*) AS CUANTAS FROM SGF_FACTURAS
+       WHERE PERIODO_CLAVE IS NOT NULL AND PERIODO_CLAVE <> ''
+       GROUP BY PERIODO_CLAVE ORDER BY PERIODO_CLAVE DESC LIMIT 12`,
+    );
+    meses = filas.map((f) => {
+      const cuantas = Number(f?.CUANTAS ?? f?.cuantas ?? 0);
+      return {
+        periodo: String(f?.PERIODO_CLAVE ?? f?.periodo_clave ?? ""),
+        facturas: cuantas,
+        esperadas: facturasPorMes,
+        completa: cuantas >= facturasPorMes,
+      };
+    });
+  } catch {
+    meses = [];
+  }
+
+  return sendJson(res, 200, {
+    success: true,
+    data: { facturasPorMes, meses },
   });
 }
 

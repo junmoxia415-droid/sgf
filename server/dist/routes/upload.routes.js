@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { execute, flushDisk, isOracleLegacyTablesAvailable, nowExpr, query, transaction, } from "../models/database.js";
 import { sendJson } from "../middleware/auth.js";
 import { auditLog } from "../middleware/logger.js";
+import { calcularParteDelPeriodo, clavePeriodo, facturasPorMesConfiguradas, } from "../utils/facturas-periodo.js";
 import { normalizarNumero, packStoredFacturaText, parseFacturaEtcsa, } from "../utils/factura-parser.js";
 import { enriquecerLineasFactura } from "../utils/enriquecimiento.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -146,10 +147,16 @@ async function detectarDuplicadosFactura(factura, usuarioActual = "") {
         repeatedServices,
         repeatedSamePeriod,
         repeatedOtherPeriod,
-        // Solo se bloquea (409) si ya existe el numero de factura o si la misma
-        // linea se repite DENTRO del mismo periodo. Repetir linea en otro mes es lo
-        // normal (cada mes se factura) y solo se avisa.
-        hasDuplicates: sameInvoice.length > 0 || repeatedSamePeriod.length > 0,
+        /**
+         * Solo se BLOQUEA (409) cuando el número de factura pertenece a otro usuario
+         * (para que nadie reemplace facturas ajenas).
+         *
+         * Todo lo demás se acepta:
+         *   - reenviar la misma factura la SUSTITUYE (era un error y se corrige);
+         *   - varias facturas del mismo mes comparten líneas (primera y segunda
+         *     quincena), así que repetir líneas es lo normal y solo se avisa.
+         */
+        hasDuplicates: sameInvoiceOtrosUsuarios.length > 0,
     };
 }
 async function limpiarFacturaExistente(noFactura, userId) {
@@ -198,12 +205,14 @@ async function guardarFacturaCompleta(req, factura, textoOcr, filename) {
       ID, CLIENTE, CUENTA, NUMERO_CLIENTE, NUMERO_CUENTA, NO_FACTURA,
       FECHA_EMISION, FECHA_VENCIMIENTO, PERIODO_CONSUMO, CODIGO_PAGO,
       MONEDA, NIT, CUOTA, CONSUMO, COMISION, IMPUESTO, TOTAL, TOTAL_PAGAR,
-      ESTADO, PARSER, OCR_CONFIDENCE, OCR_DURATION, ARCHIVO, TEXTO_OCR, USER_ID, CREATED_AT, UPDATED_AT
+      ESTADO, PARSER, OCR_CONFIDENCE, OCR_DURATION, ARCHIVO, TEXTO_OCR,
+      PERIODO_CLAVE, PERIODO_PARTE, USER_ID, CREATED_AT, UPDATED_AT
     ) VALUES (
       :id, :cliente, :cuenta, :numeroCliente, :numeroCuenta, :noFactura,
       :fechaEmision, :fechaVencimiento, :periodoConsumo, :codigoPago,
       :moneda, :nit, :cuota, :consumo, :comision, :impuesto, :total, :totalPagar,
-      :estado, :parser, :ocrConfidence, :ocrDuration, :archivo, :textoOcr, :userId, ${now}, ${now}
+      :estado, :parser, :ocrConfidence, :ocrDuration, :archivo, :textoOcr,
+      :periodoClave, :periodoParte, :userId, ${now}, ${now}
     )`, {
         id: facturaId,
         cliente: factura.cliente,
@@ -214,6 +223,8 @@ async function guardarFacturaCompleta(req, factura, textoOcr, filename) {
         fechaEmision: factura.fechaEmision,
         fechaVencimiento: factura.fechaVencimiento,
         periodoConsumo: factura.periodoConsumo,
+        periodoClave: factura.periodoClave || clavePeriodo(factura.periodoConsumo),
+        periodoParte: factura.periodoParte ?? null,
         codigoPago: factura.codigoPago,
         moneda: factura.moneda,
         nit: factura.nit,
@@ -360,46 +371,45 @@ export async function handleUploadFactura(req, res) {
             });
         }
         const factura = parseFacturaEtcsa(texto);
-        const duplicateSummary = await detectarDuplicadosFactura(factura, req.currentUser?.id || "");
-        if (duplicateSummary.hasDuplicates && !forceDuplicate) {
-            try {
-                fs.unlinkSync(tmpFile);
+        // ── Facturas por mes ─────────────────────────────────────────────────────
+        // Lo habitual es 2 facturas por mes (configurable con FACTURAS_POR_MES). Al
+        // cargar una factura se dice en qué parte del mes cae y cuántas van ya, para
+        // detectar de un vistazo una factura cargada dos veces o una que falta.
+        factura.periodoClave = clavePeriodo(factura.periodoConsumo);
+        const esperadasPorMes = facturasPorMesConfiguradas();
+        const situacion = await calcularParteDelPeriodo(factura.periodoConsumo, factura.noFactura, req.currentUser?.id || "");
+        factura.periodoParte = situacion.yaExiste ? null : situacion.parte;
+        const yaCargadas = situacion.yaExiste ? situacion.facturasDelPeriodo : situacion.facturasDelPeriodo;
+        if (factura.periodoClave) {
+            if (situacion.yaExiste) {
+                factura.diagnostics.push({
+                    level: "warn",
+                    code: "factura-ya-cargada",
+                    message: `La factura ${factura.noFactura} ya estaba cargada; se va a reemplazar.`,
+                });
             }
-            catch { }
-            // Mensaje explicito: la UI solo mostraba "posibles duplicados" y no decia
-            // si el choque era por el numero de factura o por servicios repetidos.
-            const motivos = [];
-            if (duplicateSummary.sameInvoice.length > 0) {
-                const previas = duplicateSummary.sameInvoice
-                    .slice(0, 3)
-                    .map((d) => `${d.no_factura}${d.periodo_consumo ? ` (periodo ${d.periodo_consumo})` : ""}`)
-                    .join(", ");
-                motivos.push(`ya existe la factura ${previas}`);
+            const numeroParte = situacion.yaExiste ? situacion.parte : situacion.parte;
+            const nombreParte = esperadasPorMes > 1
+                ? ` (factura ${Math.min(numeroParte, esperadasPorMes)} de ${esperadasPorMes} del mes)`
+                : "";
+            if (situacion.facturasDelPeriodo >= esperadasPorMes && !situacion.yaExiste) {
+                factura.diagnostics.push({
+                    level: "warn",
+                    code: "mas-facturas-de-las-esperadas",
+                    message: `Este mes ya tenia ${situacion.facturasDelPeriodo} factura(s) y se esperaban ${esperadasPorMes}. ` +
+                        "Si es una factura de mas, adelante; si no, compruebe que no la esta cargando dos veces. " +
+                        "El numero de facturas por mes se ajusta en Ajustes (FACTURAS_POR_MES).",
+                });
             }
-            if (duplicateSummary.repeatedSamePeriod.length > 0) {
-                const nums = Array.from(new Set(duplicateSummary.repeatedSamePeriod.map((d) => d.numero_servicio))).slice(0, 5);
-                motivos.push(`las lineas ${nums.join(", ")} ya estan facturadas en el periodo ${factura.periodoConsumo || "(sin periodo)"}`);
+            else if (!situacion.yaExiste) {
+                factura.diagnostics.push({
+                    level: "info",
+                    code: "parte-del-mes",
+                    message: `Periodo ${factura.periodoClave}${nombreParte}: ${yaCargadas + 1} de ${esperadasPorMes} facturas esperadas este mes.`,
+                });
             }
-            return sendJson(res, 409, {
-                success: false,
-                error: `Esta factura parece duplicada: ${motivos.join("; ")}. Compruebe el periodo de consumo; si aun asi quiere cargarla, use forceDuplicate=true.`,
-                data: {
-                    duplicateWarning: true,
-                    resumen: motivos,
-                    duplicates: duplicateSummary,
-                    mismoPeriodo: duplicateSummary.repeatedSamePeriod.map((d) => d.numero_servicio),
-                    otrosPeriodos: Array.from(new Set(duplicateSummary.repeatedOtherPeriod.map((d) => d.numero_servicio))),
-                    facturaPreview: {
-                        cliente: factura.cliente,
-                        noFactura: factura.noFactura,
-                        periodoConsumo: factura.periodoConsumo,
-                        servicios: factura.servicios.length,
-                        confidence: factura.confidence,
-                    },
-                    comoForzar: "POST /api/facturas/upload con { file, forceDuplicate: true }",
-                },
-            });
         }
+        const duplicateSummary = await detectarDuplicadosFactura(factura, req.currentUser?.id || "");
         // Forzar sobre una factura de OTRA persona: solo un administrador, y queda
         // registrado en el historial. Antes se borraba la factura del otro sin avisar.
         if (forceDuplicate && duplicateSummary.sameInvoiceOtrosUsuarios.length > 0) {
@@ -434,10 +444,24 @@ export async function handleUploadFactura(req, res) {
             });
         }
         if (duplicateSummary.sameInvoice.length > 0) {
+            // Reenviar una factura es la forma de CORREGIRLA (si la mandaron mal): se
+            // sustituye la anterior por la nueva, sin pedir nada mas.
             factura.diagnostics.push({
-                level: "warn",
-                code: "duplicate-invoice-overwrite",
-                message: `Ya existia una factura con el numero ${factura.noFactura}. Se reemplazara por la nueva carga.`,
+                level: "info",
+                code: "factura-sustituida",
+                message: `La factura ${factura.noFactura} ya estaba cargada y se ha SUSTITUIDO por esta version. Los datos anteriores se han descartado.`,
+            });
+        }
+        if (duplicateSummary.repeatedSamePeriod.length > 0) {
+            // Lo normal cuando el mes se factura en dos partes: las mismas lineas
+            // aparecen en la primera y en la segunda factura del mes.
+            const nums = Array.from(new Set(duplicateSummary.repeatedSamePeriod.map((d) => d.numero_servicio)));
+            factura.diagnostics.push({
+                level: "info",
+                code: "lineas-compartidas-con-otra-factura-del-mes",
+                message: `Estas lineas ya aparecen en otra factura de este mismo periodo ` +
+                    `(${nums.slice(0, 8).join(", ")}${nums.length > 8 ? "..." : ""}). ` +
+                    "Es normal si el mes se factura en varias partes; se carga igualmente.",
             });
         }
         if (duplicateSummary.repeatedOtherPeriod.length > 0) {
@@ -489,6 +513,15 @@ export async function handleUploadFactura(req, res) {
                 lineasEncontradas: enriquecimiento.lineas,
                 enriquecimiento,
                 duplicateSummary,
+                periodo: {
+                    clave: factura.periodoClave || "",
+                    parte: factura.periodoParte ?? null,
+                    facturasPorMes: esperadasPorMes,
+                    cargadasEsteMes: factura.periodoParte ? situacion.facturasDelPeriodo + 1 : situacion.facturasDelPeriodo,
+                    completa: factura.periodoParte
+                        ? situacion.facturasDelPeriodo + 1 >= esperadasPorMes
+                        : situacion.facturasDelPeriodo >= esperadasPorMes,
+                },
                 cliente: factura.cliente,
                 noFactura: factura.noFactura,
                 moneda: factura.moneda,

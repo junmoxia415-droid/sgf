@@ -58,3 +58,26 @@ SOPORTE
 Antes de llamar, abra el menu "Servidor" y copie el texto de "Registro de
 actividad": casi siempre dice exactamente que esta pasando.
 ==========================================================================
+
+==============================================================
+FACTURAS POR MES (novedad)
+==============================================================
+
+Lo normal es cargar 2 facturas cada mes (la primera y la segunda
+quincena). El programa ya lo sabe y lleva la cuenta.
+
+- Al cargar una factura, en el resultado pone en que parte del mes
+  va: "Mes 2026-09: factura 2 de 2".
+- Si llega una tercera (o una mas de las esperadas), NO se bloquea:
+  se carga y se avisa, por si es un error.
+- Si un mes se factura en 1, 3, 4 o 6 partes, se cambia en
+  Ajustes y guia -> "Facturas por mes". Se aplica al momento.
+
+SI UNA FACTURA VIENE MAL
+--------------------------------------------------------------
+Solo hay que volver a cargarla con el PDF corregido. El programa
+SUSTITUYE la anterior y lo dice: "La factura X ya estaba cargada y
+se ha SUSTITUIDO por esta version". No hay que borrar nada antes.
+
+Un aviso: no se puede reemplazar una factura cargada por OTRO
+usuario; eso solo lo puede hacer un administrador.

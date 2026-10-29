@@ -140,15 +140,17 @@ class _ProcesarState extends State<_Procesar> {
               totalLineas: (enriq['total'] ?? 0) as int? ?? 0,
               confianza: ((factura['confidence'] ?? 0) as num).toInt(),
               revisar: datos['requiereRevision'] == true || datos['extraccionVacia'] == true,
+              parteDelMes: _textoParteDelMes(datos),
+              sustitucion: _avisoDe(datos, 'factura-sustituida'),
             ),
           );
         });
       } on ApiError catch (e) {
         if (!mounted) return;
         setState(() {
-          // Un 409 puede ser un duplicado real (misma factura o mismas líneas en el
-          // mismo periodo) o que la factura ya se cargó antes. Se guarda la opción
-          // de forzarla, para no obligar a volver a buscarla y arrastrarla.
+          // El único 409 que queda es que el número de factura pertenezca a OTRO
+          // usuario. Se guarda el archivo para poder reintentar sin buscarlo, pero
+          // solo un administrador podrá reemplazarla.
           _resultados.insert(
             0,
             _Resultado(
@@ -199,6 +201,29 @@ class _ProcesarState extends State<_Procesar> {
       });
     }
     if (mounted) setState(() => _procesando = false);
+  }
+
+  /// "1 de 2 del mes" a partir de lo que devuelve el servidor.
+  static String? _textoParteDelMes(Map<String, dynamic> datos) {
+    final p = datos['periodo'] as Map<String, dynamic>?;
+    if (p == null) return null;
+    final esperadas = (p['facturasPorMes'] as num?)?.toInt() ?? 0;
+    final parte = (p['parte'] as num?)?.toInt();
+    final cargadas = (p['cargadasEsteMes'] as num?)?.toInt() ?? 0;
+    if (esperadas <= 0) return null;
+    final clave = (p['clave'] ?? '').toString();
+    if (parte == null) return 'Mes $clave: $cargadas de $esperadas facturas';
+    return 'Mes $clave: factura $parte de $esperadas';
+  }
+
+  /// Primer diagnóstico con ese código, si existe.
+  static String? _avisoDe(Map<String, dynamic> datos, String codigo) {
+    final factura = datos['factura'] as Map<String, dynamic>? ?? {};
+    final lista = (factura['diagnostics'] as List<dynamic>?) ?? const [];
+    for (final d in lista) {
+      if ((d as Map<String, dynamic>)['code'] == codigo) return (d['message'] ?? '').toString();
+    }
+    return null;
   }
 
   Future<void> _buscarArchivos() async {
@@ -357,6 +382,8 @@ class _Resultado {
     this.confianza = 0,
     this.revisar = false,
     this.archivoForzable,
+    this.parteDelMes,
+    this.sustitucion,
   });
 
   final String archivo;
@@ -368,9 +395,13 @@ class _Resultado {
   final int vinculadas;
   final int totalLineas;
   final int confianza;
-  /// Si la carga se rechazó por posible duplicado, el archivo queda aquí para
-  /// poder forzarla sin tener que volver a buscarlo.
+  /// Si la carga se rechazó porque la factura es de otro usuario, el archivo queda
+  /// aquí para poder reintentarlo sin volver a buscarlo.
   final File? archivoForzable;
+  /// "Mes 2026-09: factura 2 de 2", si el servidor lo indica.
+  final String? parteDelMes;
+  /// Aviso de que esta carga ha SUSTITUIDO a una factura anterior.
+  final String? sustitucion;
   final bool revisar;
 }
 
@@ -406,6 +437,30 @@ class _TarjetaResultado extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(r.mensaje, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          if (r.sustitucion != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.published_with_changes, size: 16, color: Color(0xFF1D6FB8)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(r.sustitucion!,
+                      style: const TextStyle(fontSize: 12.5, height: 1.35, color: Color(0xFF1D6FB8))),
+                ),
+              ],
+            ),
+          ],
+          if (r.parteDelMes != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.calendar_month, size: 16, color: Color(0xFF4B5563)),
+                const SizedBox(width: 6),
+                Text(r.parteDelMes!, style: const TextStyle(fontSize: 12.5, color: Color(0xFF4B5563))),
+              ],
+            ),
+          ],
           if (r.archivoForzable != null) ...[
             const SizedBox(height: 10),
             OutlinedButton.icon(

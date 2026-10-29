@@ -27,11 +27,57 @@ class AjustesPantalla extends StatefulWidget {
 
 class _AjustesPantallaState extends State<AjustesPantalla> {
   final _puerto = TextEditingController();
+  // Se parte del valor habitual (2). Si el servidor no responde, el usuario ve
+  // igualmente las opciones y un aviso, en vez de una tarjeta vacía.
+  int _facturasPorMes = 2;
+  List<dynamic> _meses = const [];
+  String? _errorPeriodos;
 
   @override
   void initState() {
     super.initState();
     _puerto.text = '${widget.ajustes.puerto}';
+    _cargarPeriodos();
+  }
+
+  Future<void> _cargarPeriodos() async {
+    try {
+      final datos = await widget.api.periodos();
+      if (!mounted) return;
+      setState(() {
+        _facturasPorMes = (datos['facturasPorMes'] as num?)?.toInt() ?? _facturasPorMes;
+        _meses = (datos['meses'] as List<dynamic>?) ?? const [];
+        _errorPeriodos = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorPeriodos = '$e');
+    }
+  }
+
+  Future<void> _guardarFacturasPorMes(int cuantas) async {
+    final anterior = _facturasPorMes;
+    setState(() => _facturasPorMes = cuantas);
+    try {
+      final r = await widget.api.guardarFacturasPorMes(cuantas);
+      if (!mounted) return;
+      avisar(context, (r['message'] ?? 'Guardado.').toString());
+      await _cargarPeriodos();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _facturasPorMes = anterior);
+      avisar(context, 'No se pudo guardar: $e', tipo: TipoAviso.error);
+    }
+  }
+
+  /// Nombre legible del mes: "2026-09" → "septiembre de 2026".
+  String _nombreMes(String clave) {
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    final partes = clave.split('-');
+    if (partes.length != 2) return clave;
+    final m = int.tryParse(partes[1]);
+    if (m == null || m < 1 || m > 12) return clave;
+    return '${meses[m - 1]} de ${partes[0]}';
   }
 
   @override
@@ -86,6 +132,88 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_month, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Facturas por mes', style: Theme.of(context).textTheme.titleMedium),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Lo habitual es cargar 2 facturas por mes (la primera y la segunda quincena). '
+                          'Elija cuántas se esperan; si un mes llega otra cantidad, se avisa pero nunca se bloquea.',
+                          style: TextStyle(fontSize: 13, height: 1.4),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_errorPeriodos != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Text(
+                              'No se pudo consultar el servidor, así que se muestra el valor habitual. '
+                              'Al elegir una opción se intentará guardar igualmente.',
+                              style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B), height: 1.35),
+                            ),
+                          ),
+                        ...[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final n in [1, 2, 3, 4, 5, 6, 8, 10])
+                                ChoiceChip(
+                                  label: Text(n == 1 ? '1 factura' : '$n facturas'),
+                                  selected: _facturasPorMes == n,
+                                  onSelected: (_) => _guardarFacturasPorMes(n),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _facturasPorMes == 1
+                                      ? 'Se espera 1 factura por mes.'
+                                      : 'Se esperan $_facturasPorMes facturas por mes (hasta $_facturasPorMes se aceptan sin aviso).',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _cargarPeriodos,
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('Actualizar'),
+                              ),
+                            ],
+                          ),
+                          if (_meses.isNotEmpty) ...[
+                            const Divider(height: 22),
+                            Text('Cómo van los últimos meses', style: Theme.of(context).textTheme.titleSmall),
+                            const SizedBox(height: 8),
+                            for (final m in _meses.take(6))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      m['completa'] == true ? Icons.check_circle : Icons.pending_outlined,
+                                      size: 18,
+                                      color: m['completa'] == true
+                                          ? const Color(0xFF1B7F4B)
+                                          : const Color(0xFFB8730B),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(_nombreMes('${m['periodo']}'), style: const TextStyle(fontSize: 13.5))),
+                                    Text(
+                                      '${m['facturas']} de ${m['esperadas']}',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ],
+                        const Divider(height: 24),
                         Text('Comportamiento', style: Theme.of(context).textTheme.titleMedium),
                         SwitchListTile(
                           value: a.arrancarAlAbrir,

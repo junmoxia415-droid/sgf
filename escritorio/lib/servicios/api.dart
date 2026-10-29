@@ -133,6 +133,15 @@ class Api {
   Future<Map<String, dynamic>> panelPing() async => (await get('/api/panel/ping'))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> crearCopia() async => await post('/api/panel/copia');
 
+  // ── Facturas por mes ──────────────────────────────────────────────────────
+  /// Cuántas facturas por mes se esperan y cómo va cada mes.
+  Future<Map<String, dynamic>> periodos() async =>
+      (await get('/api/panel/periodos'))['data'] as Map<String, dynamic>;
+
+  /// Cambia cuántas facturas se esperan por mes (1, 2, 3, 4, 6…).
+  Future<Map<String, dynamic>> guardarFacturasPorMes(int cuantas) =>
+      post('/api/panel/periodos', {'facturasPorMes': cuantas});
+
   // ── Facturas ──────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> listarFacturas({int pagina = 1, int porPagina = 15, String? busqueda}) async {
     final q = <String>['page=$pagina', 'pageSize=$porPagina', if ((busqueda ?? '').isNotEmpty) 'search=${Uri.encodeComponent(busqueda!)}'];

@@ -1,0 +1,69 @@
+name: Publicar Release con el instalador
+
+# Sirve para dos casos:
+#   1) quieres publicar una Release SIN recompilar (por ejemplo con un .exe que ya
+#      te has descargado de una ejecucion anterior);
+#   2) quieres reetiquetar una version.
+#
+# Uso: pestaña Actions → "Publicar Release con el instalador" → Run workflow,
+# indicando la version. Si no hay .exe en ninguna parte, el flujo avisa y termina
+# sin error (no rompe nada).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version a publicar (ej. 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buscar el instalador en el repositorio
+        id: buscar
+        run: |
+          # Un .exe no se suele versionar (pesa mucho); si esta, se usa.
+          encontrado=$(find . -name 'SGF-Escritorio-Setup-*.exe' -not -path './.git/*' | head -1)
+          if [ -z "$encontrado" ]; then
+            echo "No hay instalador en el repositorio."
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+            echo "ruta=$encontrado" >> "$GITHUB_OUTPUT"
+            ls -lh "$encontrado"
+          fi
+
+      - name: Aviso si no hay instalador
+        if: steps.buscar.outputs.hay == 'no'
+        run: |
+          echo "::warning::No se encontro ningun SGF-Escritorio-Setup-*.exe en el repositorio."
+          echo "Ejecuta primero el flujo 'Compilar e instalar SGF (Windows)', que ya publica"
+          echo "la Release automaticamente al terminar."
+
+      - name: Publicar la Release
+        if: steps.buscar.outputs.hay == 'si'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          etiqueta="v${{ github.event.inputs.version }}"
+          ruta='${{ steps.buscar.outputs.ruta }}'
+          cat > notas.md <<'EOF'
+          Aplicacion instalable para Windows. El instalador trae todo dentro: no hace
+          falta instalar Node ni ningun otro programa.
+
+          Al abrir por primera vez, un asistente guia los pasos. La cuenta inicial es
+          `admin` / `Admin123!` y el programa pide cambiarla.
+          EOF
+          if gh release view "$etiqueta" > /dev/null 2>&1; then
+            gh release upload "$etiqueta" "$ruta" --clobber
+          else
+            gh release create "$etiqueta" "$ruta" \
+              --title "SGF Escritorio $etiqueta" --notes-file notas.md
+          fi

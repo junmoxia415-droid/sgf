@@ -21,6 +21,10 @@ on:
 env:
   VERSION: ${{ github.event.inputs.version || '1.0.0' }}
 
+# Permiso para publicar la Release con el .exe dentro.
+permissions:
+  contents: write
+
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # 1. Comprobaciones rapidas: tipos del servidor, pruebas de la API y del
@@ -231,6 +235,47 @@ jobs:
             instalador/SGF-Escritorio-Setup-*.exe
             SGF-Escritorio-Portable-*.zip
           if-no-files-found: error
+
+      # ── Release automática ────────────────────────────────────────────────
+      # Antes el .exe solo quedaba como "artifact" de la ejecución (hay que estar
+      # registrado para descargarlo y caduca). Ahora cada compilación correcta
+      # publica una Release con el instalador dentro, que es lo que se descarga
+      # desde la página del repositorio.
+      - name: Publicar la Release con el instalador
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $etiqueta = "v${{ env.VERSION }}"
+          $instalador = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
+          $portable = (Get-ChildItem 'SGF-Escritorio-Portable-*.zip' | Select-Object -First 1).FullName
+          if (-not $instalador) { Write-Error "No se genero el instalador"; exit 1 }
+
+          $notas = @"
+          ## SGF Escritorio v${{ env.VERSION }}
+
+          Aplicacion instalable para Windows. **No hace falta instalar Node ni nada mas**: el instalador trae todo dentro.
+
+          - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador (recomendado). Se instala, se abre y arranca el servidor solo.
+          - ``SGF-Escritorio-Portable-${{ env.VERSION }}.zip`` — para probar sin instalar: descomprimir y ejecutar ``sgf_escritorio.exe``.
+
+          Al abrir por primera vez, un asistente guia los pasos. La cuenta inicial es ``admin`` / ``Admin123!`` y el programa pide cambiarla.
+          "@
+          $notas | Set-Content -Path notas-release.md -Encoding utf8
+
+          # Si la etiqueta ya existe se actualizan los archivos; si no, se crea.
+          gh release view $etiqueta --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "La release $etiqueta ya existe: se actualizan los archivos."
+            gh release upload $etiqueta $instalador $portable --clobber --repo ${{ github.repository }}
+          } else {
+            gh release create $etiqueta $instalador $portable `
+              --repo ${{ github.repository }} `
+              --title "SGF Escritorio v${{ env.VERSION }}" `
+              --notes-file notas-release.md
+          }
+          Write-Host "Release publicada: $etiqueta"
 
   # ───────────────────────────────────────────────────────────────────────────
   # 3. Pruebas de integracion: la app Flutter habla con el servidor real

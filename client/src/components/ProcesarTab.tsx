@@ -40,24 +40,26 @@ export function ProcesarTab({ showToast, trig }: Props) {
       const executeUpload = async (forceDuplicate = false) => api.uploadFactura(file.name, b64, { forceDuplicate });
 
       let res = await executeUpload(false);
-      if (!res.success && (res.data as any)?.duplicateWarning) {
+      // Solo hay conflicto real cuando el numero de factura es de otro usuario.
+      // Reenviar la misma factura la sustituye (para corregirla) y las lineas
+      // compartidas entre las dos facturas del mes son lo normal.
+      if (!res.success && (res.data as any)?.propietarioDistinto) {
         const duplicateData: any = res.data;
-        const sameInvoices = duplicateData?.duplicates?.sameInvoice || [];
+        const sameInvoices = duplicateData?.duplicates?.sameInvoiceOtrosUsuarios
+          || duplicateData?.duplicates?.sameInvoice || [];
         // Solo las lineas repetidas EN EL MISMO periodo son un problema; las que
         // ya estaban en facturas de otros meses son lo normal y no bloquean.
         const mismoPeriodo = duplicateData?.duplicates?.repeatedSamePeriod || [];
         const otrosPeriodos = duplicateData?.duplicates?.repeatedOtherPeriod || [];
         const lines = [
-          "Se detectaron posibles duplicados.",
-          sameInvoices.length ? `- Facturas con el mismo numero: ${sameInvoices.length}` : "",
-          mismoPeriodo.length ? `- Servicios ya facturados en este mismo periodo: ${mismoPeriodo.length}` : "",
-          otrosPeriodos.length ? `- (Tambien aparecen en facturas de otros periodos, lo cual es normal: ${otrosPeriodos.length})` : "",
+          "Ese numero de factura ya lo ha cargado otro usuario.",
+          sameInvoices.length ? `- Facturas con el mismo numero de otra persona: ${sameInvoices.length}` : "",
         ].filter(Boolean);
         const detail = [
           sameInvoices[0] ? `Factura existente: ${sameInvoices[0].no_factura} · ${sameInvoices[0].cliente}` : "",
-          mismoPeriodo[0] ? `Servicio repetido en el mismo periodo: ${mismoPeriodo[0].numero_servicio} en factura ${mismoPeriodo[0].no_factura} (periodo ${mismoPeriodo[0].periodo_consumo})` : "",
+          "Solo un administrador puede reemplazarla. Si la factura es suya, compruebe el numero.",
         ].filter(Boolean).join("\n");
-        const proceed = confirm(`${lines.join("\n")}\n\n${detail}\n\n¿Desea continuar y reemplazar/guardar de todas formas?`);
+        const proceed = confirm(`${lines.join("\n")}\n\n${detail}\n\n¿Desea continuar de todas formas?`);
         if (!proceed) {
           setError(lines.join(" "));
           showToast("info", "Carga cancelada por posible duplicado.");

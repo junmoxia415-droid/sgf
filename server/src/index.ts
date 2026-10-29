@@ -7,7 +7,7 @@ import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal } from "./middleware/local.js";
-import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPing } from "./routes/panel.routes.js";
+import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
 import type { AuthenticatedRequest } from "./middleware/auth.js";
 import { handleLogin, handleLogout, handleMe } from "./routes/auth.routes.js";
 import { handleDbConfig, handleDbConnect, handleDbDisconnect, handleDbTest } from "./routes/dbconfig.routes.js";
@@ -30,6 +30,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST_DIR = path.resolve(__dirname, "../../client/dist");
 const SERVER_INSTANCE_ID = randomUUID();
 const dbInfo = await initDatabase();
+  try {
+    // Columnas para "facturas por mes" en bases ya existentes (Oracle/SQL Server).
+    const { asegurarColumnasPeriodo } = await import("./utils/facturas-periodo.js");
+    await asegurarColumnasPeriodo();
+  } catch (error: any) {
+    console.warn("[SGF] No se pudieron preparar las columnas de periodo:", error?.message);
+  }
 console.log(`[SGF] BD: ${dbInfo.mode.toUpperCase()} ${dbInfo.ok ? "OK" : "ERROR"}`);
 
 const MIME: Record<string, string> = {
@@ -129,6 +136,7 @@ const server = http.createServer(
         if (requestPath === "/api/panel/estado" && req.method === "GET") return handlePanelEstado(req, res);
         if (requestPath === "/api/panel/copia" && req.method === "POST") return handlePanelCopia(req, res);
         if (requestPath === "/api/panel/ping" && req.method === "GET") return handlePanelPing(req, res);
+        if (requestPath === "/api/panel/periodos") return handlePanelPeriodos(req, res);
         return sendJson(res, 404, { success: false, error: "Ruta de panel desconocida." });
       }
 
