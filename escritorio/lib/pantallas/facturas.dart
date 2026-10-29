@@ -181,7 +181,7 @@ class _ProcesarState extends State<_Procesar> {
     final vacia = datos['extraccionVacia'] == true;
     final seguro = await confirmar(context,
       titulo: duplicada ? '¿Sustituir la factura anterior?' : '¿Guardar esta factura?',
-      mensaje: (duplicada ? 'Esta factura ya existe y se sustituirán sus datos anteriores. ' : '') +
+      mensaje: (duplicada ? (datos['registroAntiguoIdentificado'] == true ? 'Se identificó esta factura en un registro antiguo con número incompleto. Se sustituirá únicamente ese registro. ' : 'Esta factura ya existe y se sustituirán sus datos anteriores. ') : '') +
           (vacia ? 'No se detectó ningún servicio: se guardará solamente la cabecera para revisión. ' : '') +
           'Revise los datos extraídos antes de continuar.',
       textoConfirmar: duplicada ? 'Sí, sustituir' : 'Guardar factura',
@@ -484,7 +484,7 @@ class _TarjetaResultado extends StatelessWidget {
           if (r.exito && r.datos != null) ...[
             const SizedBox(height: 8),
             if (r.datos!['duplicadoPropio'] == true && !r.guardado)
-              const Text('Esta factura ya existe. Solo se sustituirá si lo confirma.', style: TextStyle(color: Color(0xFFB8730B))),
+              Text(r.datos!['registroAntiguoIdentificado'] == true ? 'Factura identificada en un registro antiguo con número incompleto. Se sustituirá solo con su confirmación.' : 'Esta factura ya existe. Solo se sustituirá si lo confirma.', style: const TextStyle(color: Color(0xFFB8730B))),
             if (r.datos!['posibleRegistroAntiguo'] == true)
               const Text('Existe un registro antiguo con número incompleto. Revise el historial antes de guardar.', style: TextStyle(color: Color(0xFFB3261E))),
             if (r.datos!['duplicadoAjeno'] == true)

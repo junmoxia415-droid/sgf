@@ -23,12 +23,24 @@ try {
  const [detalleStatus,detalle]=await req(`/api/facturas/${encodeURIComponent(id)}`,null,token);assert.equal(detalleStatus,200);assert.equal(detalle.data.cliente,'Entidad ficticia actualizada');assert(detalle.data.servicios.length>0);
 
  // Una versión antigua pudo guardar solo el prefijo de una factura alfanumérica.
- const [creado]=await req('/api/facturas',{cliente:'Entidad ficticia',noFactura:'765432'},token);assert.equal(creado,201);
+ const [creado,antiguaIncierta]=await req('/api/facturas',{cliente:'Entidad ficticia',noFactura:'765432'},token);assert.equal(creado,201);
  const pdf=await PDFDocument.create();const pagina=pdf.addPage([600,800]);const font=await pdf.embedFont(StandardFonts.Helvetica);
  ['Cliente: ENTIDAD FICTICIA','No. factura: 765432A998877','Numero de Cliente: 1234567','Numero de Cuenta: 7654321','Resumen por Servicios','Servicio Cuota Consumo Comision Impuesto Importe','50000001 1.00 2.00 0.00 0.00 3.00'].forEach((line,i)=>pagina.drawText(line,{x:30,y:760-i*15,size:10,font}));
  const oldBody={filename:'ficticio-antiguo.pdf',file:Buffer.from(await pdf.save()).toString('base64')};
  const [previewStatus,preview]=await req('/api/facturas/upload',{...oldBody,accion:'analizar'},token);assert.equal(previewStatus,200);assert.equal(preview.data.posibleRegistroAntiguo,true);
  const [conflict]=await req('/api/facturas/upload',{...oldBody,accion:'guardar',confirmarSustitucion:true},token);assert.equal(conflict,409);
  const [,conservadas]=await req('/api/facturas',null,token);assert.equal(conservadas.meta.total,2);
+ // Cuando el texto de la antigua permite identificar sin duda la factura, se
+ // sustituye solo la coincidencia propia y solo tras confirmar.
+ const [borrada]=await req(`/api/facturas/${antiguaIncierta.data.id}`,null,token,'DELETE');assert.equal(borrada,200);
+ const [,legacy]=await req('/api/facturas',{cliente:'Entidad ficticia',noFactura:'765432',textoOcr:'No. factura: 765432A998877'},token);
+ const [,distinta]=await req('/api/facturas',{cliente:'Entidad ficticia',noFactura:'765432',textoOcr:'No. factura: 765432A998878'},token);
+ const [pv2,v2]=await req('/api/facturas/upload',{...oldBody,accion:'analizar'},token);assert.equal(pv2,200);assert.equal(v2.data.registroAntiguoIdentificado,true);assert.equal(v2.data.posibleRegistroAntiguo,false);
+ const [sinConfirmacion]=await req('/api/facturas/upload',{...oldBody,accion:'guardar'},token);assert.equal(sinConfirmacion,409);
+ const [confirmado]=await req('/api/facturas/upload',{...oldBody,accion:'guardar',confirmarSustitucion:true},token);assert.equal(confirmado,200);
+ const [vieja]=await req(`/api/facturas/${legacy.data.id}`,null,token);assert.equal(vieja,404);
+ const [otra]=await req(`/api/facturas/${distinta.data.id}`,null,token);assert.equal(otra,200);
+ const [,final]=await req('/api/facturas',null,token);assert.equal(final.meta.total,3);
+
  console.log('OK: PDF ficticio: vista previa, concurrencia, sustitución, edición y protección de registros antiguos.');
 } finally {server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));rmSync(tmp,{recursive:true,force:true});}

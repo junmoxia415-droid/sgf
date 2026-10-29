@@ -19,6 +19,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.js";
 import {
   normalizarNumero,
   packStoredFacturaText,
+  unpackStoredFacturaText,
   parseFacturaEtcsa,
   type FacturaExtraida,
 } from "../utils/factura-parser.js";
@@ -454,14 +455,27 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     const duplicateSummary = await detectarDuplicadosFactura(factura, req.currentUser?.id || "");
     const prefijoAntiguo = factura.noFactura.match(/^(\d{6,})[A-Za-z]/)?.[1];
     const anteriores = prefijoAntiguo ? await query<any>(
-      `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`, {nf: prefijoAntiguo},
+      `SELECT ID, USER_ID, TEXTO_OCR FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`, {nf: prefijoAntiguo},
     ) : [];
-    const posibleRegistroAntiguo = anteriores.length > 0;
+    // Una versión anterior truncaba números alfanuméricos. Si el texto guardado
+    // identifica sin dudas el número completo, se puede ofrecer reemplazar SOLO
+    // ese registro propio; si no, se bloquea hasta revisarlo manualmente.
+    const identificados = anteriores.map((row: any) => {
+      const texto = row?.TEXTO_OCR ?? row?.texto_ocr;
+      const raw = typeof texto === "string" ? unpackStoredFacturaText(texto).text : "";
+      const identificador = raw.match(/no\.?\s*factura\s*:?\s*([A-Za-z0-9][A-Za-z0-9-]{5,})/i)?.[1] || "";
+      return { id:String(row?.ID ?? row?.id ?? ""), usuario:String(row?.USER_ID ?? row?.user_id ?? ""), identificador };
+    });
+    const iguales = identificados.filter((r: any) => r.identificador.toUpperCase() === factura.noFactura.toUpperCase());
+    const desconocidos = identificados.filter((r: any) => !r.identificador || r.identificador.toUpperCase() === prefijoAntiguo?.toUpperCase());
+    const legacyPropia = iguales.length === 1 && iguales[0].usuario === req.currentUser?.id ? iguales[0] : null;
+    const legacyAjena = iguales.some((r: any) => r.usuario !== req.currentUser?.id);
+    const posibleRegistroAntiguo = desconocidos.length > 0 || iguales.length > 1 || (iguales.length > 0 && isOracleLegacyTablesAvailable()) || (iguales.length > 0 && duplicateSummary.sameInvoice.length > 0);
 
 
     // La vista previa no modifica ninguna tabla. Los detalles de facturas de
     // otros usuarios no se devuelven a quien no tiene permiso para editarlas.
-    const deOtraPersona = duplicateSummary.sameInvoiceOtrosUsuarios.length > 0;
+    const deOtraPersona = duplicateSummary.sameInvoiceOtrosUsuarios.length > 0 || legacyAjena;
     if (analizar) {
       const enriquecimiento = await enriquecerLineas(factura);
       const propios = duplicateSummary.sameInvoice.filter(d => d.user_id === req.currentUser?.id);
@@ -471,7 +485,8 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
           estado: "vista_previa", factura: { ...factura, processingMs: Date.now() - startedAt },
           totalServicios: factura.servicios.length, extraccionVacia: factura.servicios.length === 0,
           requiereRevision: factura.requiresReview, enriquecimiento,
-          duplicadoPropio: propios.length > 0, duplicadoAjeno: deOtraPersona, posibleRegistroAntiguo,
+          duplicadoPropio: propios.length > 0 || Boolean(legacyPropia), duplicadoAjeno: deOtraPersona, posibleRegistroAntiguo,
+          registroAntiguoIdentificado: Boolean(legacyPropia),
           periodo: { clave: factura.periodoClave || "", parte: factura.periodoParte ?? null,
             facturasPorMes: esperadasPorMes, cargadasEsteMes: situacion.facturasDelPeriodo },
         },
@@ -483,13 +498,13 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
       error:"Hay una factura antigua con número incompleto que podría corresponder a este PDF. Revise el historial con el administrador; no se ha reemplazado ni duplicado."});
     if (deOtraPersona) return sendJson(res, 409, { success:false,
       error:"Esta factura pertenece a otra cuenta. No se ha guardado ni sustituido; consulte al administrador." });
-    if (duplicateSummary.sameInvoice.length > 0 && body.confirmarSustitucion !== true) {
+    if ((duplicateSummary.sameInvoice.length > 0 || legacyPropia) && body.confirmarSustitucion !== true) {
       return sendJson(res, 409, { success:false, error:"La factura ya existe. Confirme expresamente si quiere sustituirla.", data:{requiereConfirmarSustitucion:true} });
     }
     if (factura.servicios.length === 0 && body.confirmarSinServicios !== true) {
       return sendJson(res, 422, { success:false, error:"No se detectaron servicios. Revise el PDF; no se ha guardado la factura.", data:{requiereConfirmarSinServicios:true} });
     }
-    if (duplicateSummary.sameInvoice.length > 0) {
+    if (duplicateSummary.sameInvoice.length > 0 || legacyPropia) {
       factura.diagnostics.push({ level:"warn", code:"factura-sustituida",
         message:`La factura ${factura.noFactura} se ha sustituido después de su confirmación.` });
     }
@@ -525,6 +540,10 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     let guardados: string[] = [];
     const sgfFacturaId = await transaction(async () => {
       await limpiarFacturaExistente(factura.noFactura, req.currentUser?.id || "");
+      if (legacyPropia) {
+        await execute(`DELETE FROM SGF_SERVICIOS WHERE FACTURA_ID = :id`, {id:legacyPropia.id});
+        await execute(`DELETE FROM SGF_FACTURAS WHERE ID = :id AND USER_ID = :uid`, {id:legacyPropia.id, uid:legacyPropia.usuario});
+      }
       const id = await guardarFacturaCompleta(req, factura, texto, filename);
       guardados = await guardarEnCargararch(factura);
       return id;

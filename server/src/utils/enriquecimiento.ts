@@ -113,7 +113,9 @@ async function buscarEnOracle(numeros: string[]): Promise<Map<string, LineaVincu
   const encontradas = new Map<string, LineaVinculada>();
   if (!isOracleLegacyTablesAvailable() || numeros.length === 0) return encontradas;
 
-  for (const numero of numeros) {
+  for (const grupo of trocear(numeros, 100)) {
+    const params: Record<string, any> = {};
+    const placeholders = grupo.map((numero, i) => { params[`n${i}`] = numero; return `:n${i}`; }).join(", ");
     try {
       const rows = await query<any>(
         `SELECT l.NUMERO, l.IDENTID, p.NOMBRE, p.APELL1, p.APELL2, u.UNIDAD, o.ORGANO
@@ -121,10 +123,13 @@ async function buscarEnOracle(numeros: string[]): Promise<Map<string, LineaVincu
          LEFT JOIN PCELULAR.PERSONA p ON l.IDENTID = p.INDENTID
          LEFT JOIN PCELULAR.UNIDAD u ON l.COD_UNIDAD = u.COD_UNIDAD
          LEFT JOIN PCELULAR.ORGANO o ON u.COD_ORGANO = o.COD_ORGANO
-         WHERE l.NUMERO = :n`,
-        { n: numero },
+         WHERE l.NUMERO IN (${placeholders})`,
+        params,
       );
-      if (rows.length > 0) encontradas.set(numero, mapOracle(rows[0]));
+      for (const row of rows) {
+        const linea = mapOracle(row);
+        if (linea.NUMERO && !encontradas.has(linea.NUMERO)) encontradas.set(linea.NUMERO, linea);
+      }
     } catch {
       // Si la tabla legacy no existe o falla, se continua con el Excel.
     }
