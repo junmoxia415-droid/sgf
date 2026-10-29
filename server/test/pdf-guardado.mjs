@@ -41,6 +41,13 @@ try {
  const [vieja]=await req(`/api/facturas/${legacy.data.id}`,null,token);assert.equal(vieja,404);
  const [otra]=await req(`/api/facturas/${distinta.data.id}`,null,token);assert.equal(otra,200);
  const [,final]=await req('/api/facturas',null,token);assert.equal(final.meta.total,3);
+ // Otra cuenta no puede sustituir una factura ajena ni obtener sus detalles.
+ const [alta]=await req('/api/users',{username:'operador_ci',name:'Operador ficticio',password:'clave-para-pruebas-456',role:'usuario'},token);assert.equal(alta,201);
+ const [login,loginData]=await req('/api/auth/login',{username:'operador_ci',password:'clave-para-pruebas-456'});assert.equal(login,200);const otro=loginData.data.token;
+ const [pa,pvAjena]=await req('/api/facturas/upload',{...body,accion:'analizar'},otro);assert.equal(pa,200);assert.equal(pvAjena.data.duplicadoAjeno,true);assert.equal(pvAjena.data.duplicadoPropio,false);
+ const [rechazo]=await req('/api/facturas/upload',{...body,accion:'guardar',confirmarSustitucion:true},otro);assert.equal(rechazo,409);
+ const [sigue,det]=await req(`/api/facturas/${encodeURIComponent(id)}`,null,token);assert.equal(sigue,200);assert(det.data.servicios.length>0);
+
 
  console.log('OK: PDF ficticio: vista previa, concurrencia, sustitución, edición y protección de registros antiguos.');
 } finally {server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));rmSync(tmp,{recursive:true,force:true});}
