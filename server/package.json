@@ -9,7 +9,9 @@
     "start": "node dist/index.js",
     "db:init": "tsx src/scripts/init-db.ts",
     "parser:test": "tsx src/scripts/test-parser.ts",
-    "parser:fixtures": "tsx src/scripts/generate-synthetic-fixtures.ts"
+    "parser:fixtures": "tsx src/scripts/generate-synthetic-fixtures.ts",
+    "prueba:datos": "tsx src/utils/datos-prueba/generar.ts datos-prueba",
+    "prueba:pdf": "tsx src/scripts/probar-pdf-prueba.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

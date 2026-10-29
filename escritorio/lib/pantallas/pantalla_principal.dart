@@ -9,6 +9,7 @@ import '../widgets/comunes.dart';
 import 'ajustes_pantalla.dart';
 import 'facturas.dart';
 import 'importar.dart';
+import 'estadisticas.dart';
 import 'inicio.dart';
 import 'servidor.dart';
 import 'usuarios.dart';
@@ -114,6 +115,10 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               iniciarSesion: _pedirLogin,
             )),
         _Area('Facturas', Icons.receipt_long_outlined, Icons.receipt_long, (c) => FacturasPantalla(
+              api: api,
+              iniciarSesion: _pedirLogin,
+            )),
+        _Area('Estadísticas', Icons.insights_outlined, Icons.insights, (c) => EstadisticasPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
             )),

@@ -28,6 +28,14 @@ Future<void> main() async {
       titleBarStyle: TitleBarStyle.normal,
     );
     unawaited(windowManager.waitUntilReadyToShow(opciones, () async {
+      // Icono de la ventana (barra de tareas y Alt+Tab). En Windows el .exe ya
+      // lleva el icono incrustado, pero esto lo fija tambien en tiempo de
+      // ejecucion para que se vea igual en cualquier equipo.
+      try {
+        await windowManager.setIcon('assets/icono.png');
+      } catch (_) {
+        // si no se puede, se queda el icono del ejecutable
+      }
       await windowManager.show();
       await windowManager.focus();
     }));

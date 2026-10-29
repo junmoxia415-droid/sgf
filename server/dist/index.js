@@ -12,6 +12,7 @@ import { handleLogin, handleLogout, handleMe } from "./routes/auth.routes.js";
 import { handleDbConfig, handleDbConnect, handleDbDisconnect, handleDbTest } from "./routes/dbconfig.routes.js";
 import { handleCreateFactura, handleDeleteFactura, handleFacturaStats, handleGetFactura, handleGetFacturas, handleUpdateFactura, } from "./routes/facturas.routes.js";
 import { handleClearLogs, handleGetLogs } from "./routes/logs.routes.js";
+import { handleEstadisticasMeses } from "./routes/estadisticas.routes.js";
 import { handleBuscarLineas, handleSearchServicios } from "./routes/services.routes.js";
 import { handleUploadFactura } from "./routes/upload.routes.js";
 import { handleCreateUser, handleDeleteUser, handleGetUsers, handleUpdateUser } from "./routes/users.routes.js";
@@ -171,6 +172,9 @@ const server = http.createServer({ requestTimeout: SERVER_CONFIG.requestTimeoutM
             return handleGetFacturas(req, res, url);
         if (requestPath === "/api/facturas/stats" && req.method === "GET")
             return handleFacturaStats(req, res);
+        // Estadisticas por meses con seleccion de meses (consumo y ceros).
+        if (requestPath === "/api/estadisticas/meses" && req.method === "GET")
+            return handleEstadisticasMeses(req, res, url);
         if (requestPath === "/api/facturas/upload" && req.method === "POST")
             return handleUploadFactura(req, res);
         if (requestPath === "/api/facturas" && req.method === "POST")

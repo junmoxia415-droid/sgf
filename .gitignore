@@ -29,3 +29,6 @@ Thumbs.db
 # Paquete parcheado de SheetJS (npm no lo publica; se guarda para que la
 # compilacion sea reproducible y no dependa de una descarga externa).
 !server/vendor/*.tgz
+
+# Datos de prueba generados (se crean con npm run prueba:datos)
+server/datos-prueba/

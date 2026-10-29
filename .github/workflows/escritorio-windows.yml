@@ -293,7 +293,7 @@ jobs:
           - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador (recomendado). Se instala, se abre y arranca el servidor solo.
           - ``SGF-Escritorio-Portable-${{ env.VERSION }}.zip`` — para probar sin instalar: descomprimir y ejecutar ``sgf_escritorio.exe``.
 
-          Al abrir por primera vez, un asistente guia los pasos. La cuenta inicial es ``admin`` / ``Admin123!`` y el programa pide cambiarla.
+          Al abrir por primera vez, un asistente guia los pasos. La cuenta inicial es ``yolexis`` y el programa pide cambiar la contrasena en el primer acceso.
           "@
           $notas | Set-Content -Path notas-release.md -Encoding utf8
 

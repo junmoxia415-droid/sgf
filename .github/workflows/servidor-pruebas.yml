@@ -56,6 +56,17 @@ jobs:
           fi
           echo "Sin secretos visibles."
 
+      # Genera datos INVENTADOS (Excel de lineas, oficiales, 3 meses de consumo,
+      # facturas PDF de 1 a 120 servicios) y comprueba el flujo completo:
+      # importar Excel -> subir 12 facturas -> 2 por mes -> sustituir una ->
+      # cruzar factura con Excel -> estadisticas de los 3 meses.
+      - name: Prueba completa con datos inventados
+        working-directory: server
+        env:
+          DB_TYPE: sqlite
+          JWT_SECRET: secreto-solo-para-pruebas-123456
+        run: npx tsx src/scripts/prueba-extremo-a-extremo.ts
+
       - name: Pruebas del analizador de PDF
         working-directory: server
         env:

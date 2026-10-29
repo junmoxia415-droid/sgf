@@ -159,7 +159,7 @@ async function detectarDuplicadosFactura(factura, usuarioActual = "") {
         hasDuplicates: sameInvoiceOtrosUsuarios.length > 0,
     };
 }
-async function limpiarFacturaExistente(noFactura, userId) {
+export async function limpiarFacturaExistente(noFactura, userId) {
     if (!noFactura)
         return;
     // Sin usuario no se borra nada: la version anterior borraba las facturas de
@@ -197,7 +197,11 @@ async function limpiarFacturaExistente(noFactura, userId) {
         // ignore cleanup issues
     }
 }
-async function guardarFacturaCompleta(req, factura, textoOcr, filename) {
+/**
+ * Guarda la factura y sus servicios. Exportada para poder reutilizarla desde la
+ * prueba de extremo a extremo (misma logica que el endpoint, sin HTTP).
+ */
+export async function guardarFacturaCompleta(req, factura, textoOcr, filename) {
     const facturaId = randomUUID();
     const userId = req.currentUser?.id || "";
     const now = nowExpr();
