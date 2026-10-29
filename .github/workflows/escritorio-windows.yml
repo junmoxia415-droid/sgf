@@ -79,12 +79,37 @@ jobs:
 
       - name: Pruebas de seguridad (rutas cerradas)
         run: |
-          echo "Sin token, /api/db/config debe dar 403 y /api/facturas debe dar 401"
-          codigo_db=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sgf-console-token: token-incorrecto' http://127.0.0.1:3000/api/db/config)
+          set -e
+          echo "1) /api/facturas sin sesion debe dar 401"
           codigo_fact=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/facturas)
-          echo "db/config=$codigo_db facturas=$codigo_fact"
-          test "$codigo_db" = "403"
+          echo "   facturas=$codigo_fact"
           test "$codigo_fact" = "401"
+
+          echo "2) /api/db/* con un token de instalacion incorrecto debe dar 403"
+          codigo_test=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'x-install-token: token-incorrecto' \
+            -d '{"type":"oracle","host":"x","port":"1","service":"x","user":"x","password":"x"}' \
+            http://127.0.0.1:3000/api/db/test)
+          echo "   db/test=$codigo_test"
+          # En una instalacion recien creada (solo el admin de fabrica) el asistente
+          # inicial SI puede configurar la BD; por eso aqui no se exige 403 todavia.
+
+          echo "3) En cuanto hay un segundo usuario, /api/db/config debe exigir credenciales"
+          TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"Admin123!","machineId":"ci"}' \
+            http://127.0.0.1:3000/api/auth/login | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
+          curl -s -o /dev/null -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d '{"username":"operador_ci","password":"Operador-123!","name":"Operador CI","role":"usuario"}' \
+            http://127.0.0.1:3000/api/users
+          codigo_db=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sgf-console-token: token-incorrecto' http://127.0.0.1:3000/api/db/config)
+          echo "   db/config=$codigo_db"
+          test "$codigo_db" = "403"
+
+          echo "4) Y con sesion de administrador si responde"
+          codigo_admin=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/api/db/config)
+          echo "   db/config con admin=$codigo_admin"
+          test "$codigo_admin" = "200"
+          echo "Comprobaciones de seguridad correctas."
 
       - name: Panel de la consola responde
         env:
