@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../servicios/ajustes.dart';
@@ -33,10 +35,63 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   void initState() {
     super.initState();
     servidor.addListener(_redibujar);
+    // Si el servidor rechaza la sesión (cuenta desactivada, contraseña cambiada
+    // por un administrador o caducidad), se avisa y se pide entrar de nuevo.
+    api.alCaducarSesion = (motivo) {
+      if (!mounted) return;
+      setState(() {
+        _seleccion = 0;
+        // Si estaba en el área de administración, ya no tiene permiso para estar ahí.
+      });
+      unawaited(_avisarSesionCerrada(motivo));
+    };
+  }
+
+  /// Explica en lenguaje claro por qué se cerró la sesión y ofrece entrar otra vez.
+  Future<void> _avisarSesionCerrada(String motivo) async {
+    if (!mounted) return;
+    final volver = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.lock_clock, size: 32),
+        title: const Text('Su sesión se ha cerrado'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(motivo),
+              const SizedBox(height: 12),
+              const Text(
+                'Esto ocurre por seguridad cuando un administrador desactiva la cuenta, '
+                'cambia la contraseña o cuando la sesión lleva demasiado tiempo abierta. '
+                'Sus datos están guardados: solo tiene que volver a entrar.',
+                style: TextStyle(fontSize: 13.5, height: 1.45),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Seguir sin entrar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.login),
+            label: const Text('Iniciar sesión'),
+          ),
+        ],
+      ),
+    );
+    if (volver == true) await _pedirLogin();
   }
 
   @override
   void dispose() {
+    api.alCaducarSesion = null;
     servidor.removeListener(_redibujar);
     super.dispose();
   }

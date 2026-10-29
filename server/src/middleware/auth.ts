@@ -61,7 +61,23 @@ async function autenticarNucleo(
           );
 
     if (filaSesion.length === 0) {
-      if (respondiendo) sendJson(res, 401, { success: false, error: "Sesion expirada o cerrada." });
+      // No hay sesion valida. Se mira al usuario para poder dar un mensaje util
+      // ("te desactivaron" no es lo mismo que "caduco"): el usuario que acaba de
+      // ser dado de baja necesita saber por que le echan, no un "sesion expirada".
+      let aviso = "Sesion expirada o cerrada. Inicie sesion de nuevo.";
+      try {
+        const filas = dbMode === "sqlite"
+          ? await query<any>(`SELECT ACTIVO FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id })
+          : await query<any>(`SELECT ACTIVE FROM SGF_USUARIOS WHERE ID = :id`, { id: user.id });
+        if (filas.length === 0) {
+          aviso = "La cuenta ya no existe. Inicie sesion de nuevo.";
+        } else if (Number(filas[0].ACTIVO ?? filas[0].ACTIVE ?? 0) !== 1) {
+          aviso = "Usuario desactivado. Contacte con el administrador.";
+        }
+      } catch {
+        // si la consulta falla se deja el mensaje generico
+      }
+      if (respondiendo) sendJson(res, 401, { success: false, error: aviso });
       return null;
     }
 

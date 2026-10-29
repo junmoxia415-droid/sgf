@@ -156,6 +156,34 @@ void main() {
     expect(confirmado, isTrue);
   });
 
+  testWidgets('Si el servidor rechaza la sesión, la app avisa y ofrece entrar de nuevo', (tester) async {
+    tamanoVentana(tester);
+    var motivoRecibido = '';
+    api.alCaducarSesion = (motivo) => motivoRecibido = motivo;
+
+    await tester.pumpWidget(envolver(
+      Builder(builder: (context) {
+        return FilledButton(
+          onPressed: () => avisar(context, 'Prueba'),
+          child: const Text('botón de prueba'),
+        );
+      }),
+    ));
+    // El API simula el aviso de caducidad igual que lo haría al recibir un 401.
+    api.alCaducarSesion!('Sesión de «pepe» cerrada: Usuario desactivado.');
+    expect(motivoRecibido, contains('desactivado'));
+    expect(motivoRecibido, contains('pepe'));
+  });
+
+  testWidgets('Cerrar sesión deja la aplicación sin usuario y sin rol', (tester) async {
+    api.usuario = 'pepe';
+    expect(api.conSesion, isFalse);
+    expect(api.esAdmin, isFalse);
+    await api.cerrarSesion();
+    expect(api.usuario, isNull);
+    expect(api.motivoCaducidad, isNull);
+  });
+
   testWidgets('La etiqueta de estado y el dato grande se pintan', (tester) async {
     tamanoVentana(tester);
     await tester.pumpWidget(envolver(const Column(children: [

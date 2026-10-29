@@ -95,6 +95,20 @@ La guía completa está dentro de la app: **Ajustes y guía** (y `F1`).
 
 ---
 
+### 4.1 Qué pasa si el administrador te desactiva mientras trabajas
+
+El servidor comprueba en **cada petición** que la cuenta siga activa y que el rol
+no haya cambiado. Si un administrador desactiva la cuenta, la elimina o le cambia
+la contraseña, la sesión se cierra al instante (ya no hay que esperar 8 horas) y la
+aplicación muestra un aviso en español:
+
+> **Su sesión se ha cerrado** — «Usuario desactivado. Contacte con el administrador.»
+> Esto ocurre por seguridad… Sus datos están guardados: solo tiene que volver a entrar.
+
+Con el botón **Iniciar sesión** vuelve a entrar sin cerrar la aplicación. Lo mismo
+ocurre si la sesión supera su tope absoluto (24 h por defecto, ajustable con
+`SESSION_MAX_HOURS` en el `.env` del servidor).
+
 ## 5. Seguridad del modelo de escritorio
 
 - El servidor escucha **solo en `127.0.0.1`**: ninguna otra computadora de la red
@@ -128,8 +142,8 @@ La guía completa está dentro de la app: **Ajustes y guía** (y `F1`).
 
 | Comprobación | Archivo | Dónde se ejecuta |
 |---|---|---|
-| Interfaz: las 7 pantallas se pintan, los textos de ayuda están, la confirmación destructiva exige escribir la palabra | `escritorio/test/pruebas_widgets_test.dart` (8 pruebas) | Windows y Linux (GitHub Actions) |
-| Cliente HTTP contra el servidor real: panel, login, permisos | `escritorio/test_integracion/api_test.dart` (5 pruebas, **necesita servidor**) | Trabajo `integracion` |
+| Interfaz: las 7 pantallas se pintan, los textos de ayuda están, la confirmación destructiva exige escribir la palabra y, si el servidor rechaza la sesión, la app avisa y ofrece entrar de nuevo | `escritorio/test/pruebas_widgets_test.dart` (10 pruebas) | Windows y Linux (GitHub Actions) |
+| Cliente HTTP contra el servidor real: panel, login, permisos y **expulsión al desactivar la cuenta** | `escritorio/test_integracion/api_test.dart` (6 pruebas, **necesita servidor**) | Trabajo `integracion` |
 | Servidor: tipos, arranque real, rutas cerradas, panel | `.github/workflows/escritorio-windows.yml` → trabajo `servidor` | Ubuntu |
 | Secretos: que no haya `.env` ni claves versionadas | `.github/workflows/servidor-pruebas.yml` | Ubuntu |
 
@@ -138,7 +152,7 @@ En local:
 ```bash
 cd escritorio
 flutter analyze          # debe dar 0 errores
-flutter test             # 8 pruebas de interfaz (no necesita servidor)
+flutter test test/       # 10 pruebas de interfaz (no necesita servidor)
 
 # integración (con el servidor arrancado en el puerto 3000)
 SGF_BASE=http://127.0.0.1:3000 SGF_CONSOLE_TOKEN=<token> \

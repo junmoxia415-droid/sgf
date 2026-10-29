@@ -17,6 +17,15 @@ class Api {
   String? usuario;
   String? rol;
 
+  /// Se dispara cuando el servidor rechaza el token que teníamos: la cuenta se
+  /// desactivó o se eliminó, un administrador cambió la contraseña o la sesión
+  /// caducó. La ventana principal la usa para volver al inicio de sesión con un
+  /// mensaje claro, en vez de dejar la pantalla en blanco o con un error seco.
+  void Function(String motivo)? alCaducarSesion;
+
+  /// Último motivo de caducidad, para poder mostrarlo una sola vez.
+  String? motivoCaducidad;
+
   bool get conSesion => _tokenSesion != null;
   bool get esAdmin => rol == 'admin';
 
@@ -61,6 +70,22 @@ class Api {
       );
     }
 
+    // Sesión rechazada por el servidor: se cierra en la aplicación y se avisa.
+    // No se hace en el propio login (ruta /api/auth/login) porque allí un 401
+    // significa "contraseña incorrecta", no "sesión caducada".
+    if (respuesta.statusCode == 401 && _tokenSesion != null && !ruta.startsWith('/api/auth/login')) {
+      final motivo = (json['error'] ?? '').toString();
+      _tokenSesion = null;
+      final quien = usuario;
+      usuario = null;
+      rol = null;
+      motivoCaducidad = motivo.isNotEmpty ? motivo : 'La sesión ha caducado.';
+      final aviso = alCaducarSesion;
+      if (aviso != null) {
+        aviso(quien == null ? motivoCaducidad! : 'Sesión de «$quien» cerrada: $motivoCaducidad');
+      }
+    }
+
     if (respuesta.statusCode >= 400 || json['success'] == false) {
       throw ApiError(
         (json['error'] ?? json['message'] ?? 'Error ${respuesta.statusCode}').toString(),
@@ -98,6 +123,7 @@ class Api {
     _tokenSesion = null;
     usuario = null;
     rol = null;
+    motivoCaducidad = null;
   }
 
   // ── Panel (solo este equipo) ──────────────────────────────────────────────
