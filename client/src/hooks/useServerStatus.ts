@@ -42,8 +42,8 @@ export function useServerStatus() {
       return;
     }
 
-    applyStatus("offline", info);
-  }, [applyStatus, info]);
+    applyStatus("offline", null);
+  }, [applyStatus]);
 
   useEffect(() => {
     void check(false);

@@ -37,8 +37,11 @@ USO DIARIO
 - Si dice que el puerto esta ocupado, cierre las otras ventanas de SGF y abra
   de nuevo. Si sigue ocupado, reinicie Windows. Cambie el puerto solo cuando
   sea otro programa el que lo use, no para abrir dos servidores SGF a la vez.
-- Para ver la version web pulse "Ver la version web". Los archivos web vienen
-  incluidos; no hace falta conexion a internet.
+- Para abrir SGF en el navegador pulse "Abrir SGF en el navegador". Es el
+  mismo sistema y usa los mismos datos, cuentas y permisos, con diseno azul y
+  temas claro y oscuro. Los archivos vienen incluidos: no hace falta internet.
+- El tema se elige con el icono de luna/sol y se guarda en cada dispositivo o
+  navegador. El control del servidor y las copias se hacen en el equipo principal.
 
 
 COPIA DE SEGURIDAD (MUY IMPORTANTE)

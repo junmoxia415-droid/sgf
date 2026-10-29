@@ -76,16 +76,22 @@ export async function handleImportAnalyze(req: AuthenticatedRequest, res: Server
 }
 
 export async function handleImportExcel(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
-  // Escritura masiva y, con truncate=true, BORRADO de tablas completas:
-  // es una operacion de administracion, no de usuario.
   if (!requirePermiso(req, res, "importar_excel")) return;
+  // Importar líneas no autoriza por sí solo a modificar o vaciar facturas.
+  const solicitada = (url.searchParams.get("table") || "").trim().toUpperCase();
+  const puedeEditar = req.currentUser?.role === "admin" || req.currentUser?.permisos?.includes("editar_facturas");
+  if (solicitada && solicitada !== "SGF_LINEAS_IMPORTADAS" && !puedeEditar) {
+    return sendJson(res, 403, { success: false, error: "Para importar a otras tablas también necesita permiso para editar facturas." });
+  }
   try {
     const buffer = await getBufferFromRequest(req);
     if (buffer.length < 100) {
       return sendJson(res, 400, { success: false, error: "Archivo vacío" });
     }
 
-    const table = (url.searchParams.get("table") || "").trim().toUpperCase() || undefined;
+    // Sin tabla explícita y sin permiso de edición, no permitir que el
+    // detector de tipo escoja facturas o servicios en lugar del catálogo.
+    const table = solicitada || (puedeEditar ? undefined : "SGF_LINEAS_IMPORTADAS");
     const sheetIndex = Number(url.searchParams.get("sheetIndex") || 0);
     const headerRow = Number(url.searchParams.get("headerRow") || 0);
     const dataStartRow = Number(url.searchParams.get("dataStartRow") || headerRow + 1);

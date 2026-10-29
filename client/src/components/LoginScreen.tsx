@@ -1,16 +1,18 @@
 import { type FormEvent, useState } from "react";
-import { AlertCircle, LockKeyhole } from "lucide-react";
+import { AlertCircle, LockKeyhole, Moon, Sun } from "lucide-react";
 import type { HealthData } from "../types/api.ts";
 
 type Props = {
   serverInfo: HealthData | null;
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
   loginError: string;
   onLogin: (u: string, p: string) => Promise<boolean>;
   onOpenDbConfig?: () => void;
   onDbChange?: () => void;
 };
 
-export function LoginScreen({ serverInfo, loginError, onLogin }: Props) {
+export function LoginScreen({ serverInfo, loginError, onLogin, theme, onToggleTheme }: Props) {
   const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
   const submit = async (event: FormEvent) => {
@@ -21,7 +23,8 @@ export function LoginScreen({ serverInfo, loginError, onLogin }: Props) {
   };
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-blue-100 dark:from-slate-950 dark:to-slate-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-8">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-8 relative">
+        <button type="button" onClick={onToggleTheme} aria-label={theme === "light" ? "Activar tema oscuro" : "Activar tema claro"} className="absolute top-4 right-4 p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">{theme === "light" ? <Moon size={18}/> : <Sun size={18}/>}</button>
         <div className="text-center mb-7">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-600 flex items-center justify-center"><LockKeyhole className="w-8 h-8 text-white" /></div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Bienvenido a SGF</h1>

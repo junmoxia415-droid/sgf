@@ -19,6 +19,7 @@ import {
   handleGetFacturas,
   handleUpdateFactura,
 } from "./routes/facturas.routes.js";
+import { handleInicioResumen } from "./routes/inicio.routes.js";
 import { handleClearLogs, handleGetLogs } from "./routes/logs.routes.js";
 import { handleEstadisticasMeses } from "./routes/estadisticas.routes.js";
 import { handleSetupAdmin, handleSetupEstado } from "./routes/setup.routes.js";
@@ -71,7 +72,7 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
   try {
     const content = await fs.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache, no-store, must-revalidate" : "public, max-age=3600" });
     res.end(content);
     return;
   } catch {
@@ -81,7 +82,7 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
   try {
     const indexFile = path.join(CLIENT_DIST_DIR, "index.html");
     const content = await fs.readFile(indexFile);
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
     res.end(content);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
@@ -188,6 +189,7 @@ const server = http.createServer(
       const user = await authenticate(req, res);
       if (!user) return;
 
+      if (requestPath === "/api/inicio/resumen" && req.method === "GET") return handleInicioResumen(req, res);
       if (requestPath === "/api/auth/me" && req.method === "GET") return handleMe(req, res);
       if (requestPath === "/api/auth/logout" && req.method === "POST") return handleLogout(req, res);
 

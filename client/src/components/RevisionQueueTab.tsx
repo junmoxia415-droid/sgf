@@ -70,14 +70,14 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-        <div className="grid md:grid-cols-[1fr,200px,auto] gap-2">
+        <div className="grid md:grid-cols-[1fr_200px_auto] gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por cliente, factura, cuenta o codigo..."
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-emerald-400"
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400"
             />
           </div>
           <select value={estado} onChange={(e) => setEstado(e.target.value as typeof estado)} className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300">
@@ -85,7 +85,7 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
             <option value="pendiente">Solo pendientes</option>
             <option value="error">Solo errores</option>
           </select>
-          <button onClick={() => void Promise.all([fetchRows(), loadStats()])} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-xl flex items-center gap-1.5 transition-colors justify-center">
+          <button onClick={() => void Promise.all([fetchRows(), loadStats()])} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center gap-1.5 transition-colors justify-center">
             <RefreshCcw className="w-3.5 h-3.5" />
             Actualizar
           </button>
@@ -121,7 +121,7 @@ export function RevisionQueueTab({ showToast, refresh, onEdit }: Props) {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-gray-300 dark:text-gray-600">No hay facturas en revision.</td>
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-500 dark:text-gray-400">No hay facturas en revision.</td>
                 </tr>
               ) : (
                 rows.map((row) => (

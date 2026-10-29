@@ -153,7 +153,7 @@ export function EditInvoiceModal({ invoice, onClose, onSaved, showToast }: Props
             </div>
             <div className="flex items-center gap-2">
               <button onClick={onClose} className="px-3 py-2 border rounded-lg text-sm">Cancelar</button>
-              <button onClick={save} disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm flex items-center gap-1.5 disabled:opacity-50">
+              <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5 disabled:opacity-50">
                 <Pencil className="w-4 h-4" />
                 {saving ? "Guardando..." : "Guardar"}
               </button>

@@ -177,6 +177,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               servidor: servidor,
               api: api,
               onLogin: _pedirLogin,
+              onCambiarTema: () async {
+                widget.ajustes.temaOscuro = !widget.ajustes.temaOscuro;
+                await widget.ajustes.guardar();
+                if (mounted) { widget.alCambiarTema?.call(); setState(() {}); }
+              },
               onLogout: () async {
                 await api.cerrarSesion();
                 if (mounted && widget.alCerrarSesion != null) {
@@ -271,6 +276,7 @@ class _BarraSuperior extends StatelessWidget {
     required this.servidor,
     required this.api,
     required this.onLogin,
+    required this.onCambiarTema,
     required this.onLogout,
     required this.onAbrirNavegador,
   });
@@ -278,11 +284,13 @@ class _BarraSuperior extends StatelessWidget {
   final ControladorServidor servidor;
   final Api api;
   final Future<bool> Function() onLogin;
+  final VoidCallback onCambiarTema;
   final Future<void> Function() onLogout;
   final VoidCallback onAbrirNavegador;
 
   @override
   Widget build(BuildContext context) {
+    final compacto = MediaQuery.sizeOf(context).width < 1200;
     final (color, texto, icono) = switch (servidor.estado) {
       EstadoServidor.enMarcha => (const Color(0xFF1B7F4B), 'Servidor en marcha', Icons.check_circle),
       EstadoServidor.arrancando => (const Color(0xFF1D6FB8), 'Iniciando…', Icons.sync),
@@ -297,7 +305,7 @@ class _BarraSuperior extends StatelessWidget {
         children: [
           Etiqueta(texto: texto, color: color, icono: icono),
           const SizedBox(width: 10),
-          if (servidor.enMarcha)
+          if (servidor.enMarcha && !compacto)
             Etiqueta(
               texto: 'Puerto ${servidor.ajustes.puerto}',
               color: const Color(0xFF4B5563),
@@ -305,11 +313,19 @@ class _BarraSuperior extends StatelessWidget {
             ),
           const Spacer(),
           if (servidor.enMarcha)
-            TextButton.icon(
-              onPressed: onAbrirNavegador,
-              icon: const Icon(Icons.open_in_browser, size: 18),
-              label: const Text('Ver la versión web'),
-            ),
+            if (compacto)
+              IconButton(tooltip: 'Abrir SGF en el navegador', onPressed: onAbrirNavegador, icon: const Icon(Icons.open_in_browser))
+            else
+              TextButton.icon(
+                onPressed: onAbrirNavegador,
+                icon: const Icon(Icons.open_in_browser, size: 18),
+                label: const Text('Abrir SGF en el navegador'),
+              ),
+          IconButton(
+            tooltip: servidor.ajustes.temaOscuro ? 'Activar tema claro' : 'Activar tema oscuro',
+            onPressed: onCambiarTema,
+            icon: Icon(servidor.ajustes.temaOscuro ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+          ),
           const SizedBox(width: 8),
           if (api.conSesion)
             PopupMenuButton<String>(
@@ -326,6 +342,7 @@ class _BarraSuperior extends StatelessWidget {
                 const PopupMenuItem(value: 'salir', child: Text('Cerrar sesión')),
               ],
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   CircleAvatar(
                     radius: 16,
@@ -333,7 +350,10 @@ class _BarraSuperior extends StatelessWidget {
                     child: Icon(Icons.person, size: 18, color: Theme.of(context).colorScheme.primary),
                   ),
                   const SizedBox(width: 8),
-                  Text('${api.usuario}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Text('${api.usuario}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
                   const Icon(Icons.arrow_drop_down),
                 ],
               ),

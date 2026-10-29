@@ -73,10 +73,10 @@ export function ServiciosTab({ showToast, onEdit }: Props) {
               value={numero}
               onChange={(e) => setNumero(e.target.value)}
               placeholder="Buscar por numero de servicio, ej: 52587423"
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-emerald-400"
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400"
             />
           </div>
-          <button onClick={() => void fetchRows(1, numero)} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-1.5 transition-colors min-w-[130px]">
+          <button onClick={() => void fetchRows(1, numero)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-1.5 transition-colors min-w-[130px]">
             <Search className="w-3.5 h-3.5" />
             Buscar
           </button>
@@ -109,7 +109,7 @@ export function ServiciosTab({ showToast, onEdit }: Props) {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-gray-300 dark:text-gray-600">Escribe un numero de servicio para buscar.</td>
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-500 dark:text-gray-400">Escribe un numero de servicio para buscar.</td>
                 </tr>
               ) : (
                 rows.map((row) => (

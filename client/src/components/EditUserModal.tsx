@@ -37,7 +37,7 @@ export function EditUserModal({ user, onClose, onSaved, showToast }: Props) {
             <label key={id} className="flex items-center gap-2"><input type="checkbox" checked={form.permisos.includes(id)} onChange={e => setForm({...form, permisos: e.target.checked ? [...form.permisos, id] : form.permisos.filter(p => p !== id)})}/>{label}</label>)}
         </fieldset>}
         <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.active} onChange={e=>setForm({...form,active:e.target.checked})} className="w-4 h-4 rounded text-emerald-600"/>Usuario activo</label>
-        <div className="flex justify-end gap-2 pt-2"><button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Cancelar</button><button onClick={save} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">Guardar</button></div>
+        <div className="flex justify-end gap-2 pt-2"><button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Cancelar</button><button onClick={save} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Guardar</button></div>
       </motion.div>
     </motion.div></AnimatePresence>
   );

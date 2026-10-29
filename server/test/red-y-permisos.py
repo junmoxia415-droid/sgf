@@ -53,6 +53,9 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
         expect(403,call('/api/users','POST',setup,usr,host=host_lan))
         expect(403,call('/api/lineas?q=555',headers=usr,host=host_lan))
         expect(403,call('/api/facturas/stats',headers=usr,host=host_lan))
+        expect(403,call('/api/inicio/resumen',headers=usr,host=host_lan))
+        resumen = expect(200,call('/api/inicio/resumen',headers=adm,host=host_lan))
+        assert resumen['usuarios'] == 2 and resumen['facturas'] == 0
         expect(403,call('/api/estadisticas/meses',headers=usr,host=host_lan))
         expect(403,call('/api/import/tables',headers=usr,host=host_lan))
         expect(403,call('/api/facturas/123','DELETE',headers=usr,host=host_lan))
@@ -65,6 +68,9 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
         assert set(actual['permisos']) == {'ver_estadisticas','importar_excel','editar_facturas'}
         assert call('/api/facturas/123','DELETE',headers=usr,host=host_lan)[0] != 403
         expect(403,call('/api/users','GET',headers=usr,host=host_lan))
+        expect(200,call('/api/users/'+uid,'PUT',{'permisos':['importar_excel']},adm))
+        expect(403,call('/api/import/excel?table=SGF_FACTURAS&truncate=true','POST',{},usr,host=host_lan))
+        expect(403,call('/api/import/excel?table=SGF_SERVICIOS','POST',{},usr,host=host_lan))
         expect(200,call('/api/users/'+uid,'PUT',{'permisos':[]},adm))
         expect(403,call('/api/estadisticas/meses',headers=usr,host=host_lan))
         expect(403,call('/api/import/tables',headers=usr,host=host_lan))

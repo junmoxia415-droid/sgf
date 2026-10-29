@@ -3,6 +3,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Database
 
 type Props = {
   showToast: (type: "success" | "error" | "info", message: string) => void;
+  canEdit: boolean;
 };
 
 type AnalyzeResult = {
@@ -23,7 +24,7 @@ type ImportResult = {
   durationMs: number;
 };
 
-export function ImportarExcelTab({ showToast }: Props) {
+export function ImportarExcelTab({ showToast, canEdit }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -72,7 +73,7 @@ export function ImportarExcelTab({ showToast }: Props) {
       const data = await res.json();
       if (data.success) {
         setAnalysis(data.data);
-        setSelectedTable(data.data.suggestedTable || "SGF_LINEAS_IMPORTADAS");
+        setSelectedTable(canEdit ? (data.data.suggestedTable || "SGF_LINEAS_IMPORTADAS") : "SGF_LINEAS_IMPORTADAS");
         showToast("success", `Análisis: ${data.data.sheets.length} hojas, tabla sugerida ${data.data.suggestedTable}`);
       } else {
         showToast("error", data.error || "Error analizando");
@@ -85,6 +86,10 @@ export function ImportarExcelTab({ showToast }: Props) {
 
   const importar = async () => {
     if (!file) return;
+    if (truncate && window.prompt(`Se borrarán todas las filas de ${selectedTable}. Escriba REEMPLAZAR para confirmar.`) !== "REEMPLAZAR") {
+      showToast("info", "Importación cancelada; no se ha borrado nada.");
+      return;
+    }
     setImporting(true);
     setResult(null);
     try {
@@ -123,14 +128,14 @@ export function ImportarExcelTab({ showToast }: Props) {
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
           <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-          Importar Excel Masivo
+          Importar Excel de líneas
         </h2>
 
         <div className="mt-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center bg-gray-50 dark:bg-gray-900/50">
           <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" id="excel-input" />
           <label htmlFor="excel-input" className="cursor-pointer flex flex-col items-center gap-2">
             <Upload className="w-8 h-8 text-gray-400" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{file ? file.name : "Arrastra prueba.xlsx aquí o haz click para seleccionar"}</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{file ? file.name : "Pulse para seleccionar un archivo Excel"}</span>
             <span className="text-xs text-gray-400">Máx 20MB, formato XLSX</span>
           </label>
           {file && <div className="mt-2 text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB - {file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}</div>}
@@ -140,7 +145,7 @@ export function ImportarExcelTab({ showToast }: Props) {
           <button
             onClick={analyze}
             disabled={!file || analyzing || importing}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm rounded-lg flex items-center gap-2"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-indigo-300 text-white text-sm rounded-lg flex items-center gap-2"
           >
             {analyzing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
             1. Analizar Excel
@@ -152,10 +157,8 @@ export function ImportarExcelTab({ showToast }: Props) {
                 onChange={(e) => setSelectedTable(e.target.value)}
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
               >
-                {tables.map(t => <option key={t} value={t}>{t}</option>)}
-                <option value="SGF_LINEAS_IMPORTADAS">SGF_LINEAS_IMPORTADAS (recomendado para prueba.xlsx)</option>
-                <option value="SGF_FACTURAS">SGF_FACTURAS</option>
-                <option value="SGF_SERVICIOS">SGF_SERVICIOS</option>
+                <option value="SGF_LINEAS_IMPORTADAS">SGF_LINEAS_IMPORTADAS (recomendado para líneas)</option>
+                {canEdit && tables.filter(t => t !== "SGF_LINEAS_IMPORTADAS").map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <label className="flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={truncate} onChange={e => setTruncate(e.target.checked)} />
@@ -164,7 +167,7 @@ export function ImportarExcelTab({ showToast }: Props) {
               <button
                 onClick={importar}
                 disabled={importing}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white text-sm rounded-lg flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm rounded-lg flex items-center gap-2"
               >
                 {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
                 2. Importar a {selectedTable}
@@ -188,7 +191,7 @@ export function ImportarExcelTab({ showToast }: Props) {
               </div>
               {sh.preview.length > 0 && (
                 <div className="mt-2 text-xs">
-                  <div className="font-semibold">Preview:</div>
+                  <div className="font-semibold">Vista previa:</div>
                   <pre className="bg-white dark:bg-gray-800 p-2 rounded border overflow-x-auto text-[11px]">{JSON.stringify(sh.preview, null, 2)}</pre>
                 </div>
               )}

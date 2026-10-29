@@ -158,7 +158,7 @@ class _ImportarPantallaState extends State<ImportarPantalla> {
                         const SizedBox(height: 20),
                         Text('2. ¿Dónde se guarda?', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 10),
-                        ..._tablas.entries.map(
+                        ..._tablas.entries.where((e) => e.key == 'SGF_LINEAS_IMPORTADAS' || widget.api.tienePermiso('editar_facturas')).map(
                           (e) => RadioListTile<String>(
                             value: e.key,
                             groupValue: _tabla,

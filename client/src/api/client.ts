@@ -277,7 +277,9 @@ export const createFactura = (data: unknown) => req("POST", "/api/facturas", dat
 export const updateFactura = (id: string, data: unknown) => req("PUT", `/api/facturas/${encodeURIComponent(id)}`, data);
 export const updateInvoice = updateFactura;
 export const deleteFactura = (id: string) => req("DELETE", `/api/facturas/${encodeURIComponent(id)}`);
+export const getInicioResumen = () => req<{facturas: number; servicios: number; lineasExcel: number; usuarios: number}>("GET", "/api/inicio/resumen");
 export const getFacturaStats = () => req<Record<string, unknown>>("GET", "/api/facturas/stats");
+export const getEstadisticasMeses = (periodos: string[]) => req<unknown>("GET", `/api/estadisticas/meses${periodos.length ? `?periodos=${encodeURIComponent(periodos.join(","))}` : ""}`);
 export const uploadFactura = (filename: string, base64: string, options?: { forceDuplicate?: boolean }) => req("POST", "/api/facturas/upload", { filename, file: base64, forceDuplicate: options?.forceDuplicate });
 
 // --- Migracion desde SQLite local ---

@@ -319,7 +319,7 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
               </button>
 
               {testResult?.success && (
-                <button onClick={connectDb} disabled={connecting || testing} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white text-sm rounded-lg font-medium flex items-center gap-2 transition-colors">
+                <button onClick={connectDb} disabled={connecting || testing} className="px-5 py-2 bg-emerald-600 hover:bg-blue-700 disabled:bg-emerald-300 text-white text-sm rounded-lg font-medium flex items-center gap-2 transition-colors">
                   {connecting ? <><Activity className="w-4 h-4 animate-spin" />Conectando...</> : <><Plug className="w-4 h-4" />4. Conectarse y Reiniciar</>}
                 </button>
               )}

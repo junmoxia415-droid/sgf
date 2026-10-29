@@ -52,6 +52,25 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     servidor.dispose();
   });
+  testWidgets('El tema se puede cambiar desde la barra para cualquier usuario', (tester) async {
+    tester.view.physicalSize = const Size(1040, 680);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final ajustes = AjustesPrueba();
+    final api = ApiPrueba()..rol = 'usuario';
+    await api.usarToken('temporal', 'persona');
+    api.rol = 'usuario';
+    final servidor = ControladorServidor(ajustes: ajustes, api: api)..estado = EstadoServidor.enMarcha;
+    await tester.pumpWidget(AppPrueba(ajustes: ajustes, api: api, servidor: servidor));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Activar tema oscuro'));
+    await tester.pumpAndSettle();
+    expect(ajustes.temaOscuro, isTrue);
+    expect(Theme.of(tester.element(find.byTooltip('Activar tema claro'))).brightness, Brightness.dark);
+    await tester.pumpWidget(const SizedBox.shrink());
+    servidor.dispose();
+  });
   testWidgets('Inicio y ajustes caben en la ventana mínima de 1040 por 680', (tester) async {
     tester.view.physicalSize = const Size(1040, 680);
     tester.view.devicePixelRatio = 1;

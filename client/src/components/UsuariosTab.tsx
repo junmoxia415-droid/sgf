@@ -73,13 +73,13 @@ export function UsuariosTab({ currentUser, showToast, onEdited, onEdit, refresh 
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
         <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2 text-sm">
           <Plus className="w-4 h-4 text-emerald-500" />
-          Nuevo Usuario
+          Nuevo usuario
         </h3>
 
         <form onSubmit={create} className="grid sm:grid-cols-4 gap-2">
           <input
             type="text"
-            placeholder="Username"
+            placeholder="Usuario"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
             className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none"
@@ -93,7 +93,7 @@ export function UsuariosTab({ currentUser, showToast, onEdited, onEdit, refresh 
           />
           <input
             type="password"
-            placeholder="Contrasena"
+            placeholder="Contraseña"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none"
@@ -107,7 +107,7 @@ export function UsuariosTab({ currentUser, showToast, onEdited, onEdit, refresh 
               <option value="usuario">Usuario</option>
               <option value="admin">Admin</option>
             </select>
-            <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-xl transition-colors">
+            <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors">
               Crear
             </button>
           </div>

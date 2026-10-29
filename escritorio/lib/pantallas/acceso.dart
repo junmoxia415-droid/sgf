@@ -56,6 +56,15 @@ class _AccesoSgfState extends State<AccesoSgf> {
         constraints: const BoxConstraints(maxWidth: 460),
         child: Tarjeta(padding: const EdgeInsets.all(32), child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Align(alignment: Alignment.centerRight, child: IconButton(
+              tooltip: widget.ajustes.temaOscuro ? 'Activar tema claro' : 'Activar tema oscuro',
+              onPressed: () async {
+                widget.ajustes.temaOscuro = !widget.ajustes.temaOscuro;
+                await widget.ajustes.guardar();
+                if (mounted) { widget.alCambiarTema?.call(); setState(() {}); }
+              },
+              icon: Icon(widget.ajustes.temaOscuro ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+            )),
             Icon(Icons.receipt_long, size: 56, color: tema.colorScheme.primary),
             const SizedBox(height: 12),
             Text('Bienvenido a SGF', textAlign: TextAlign.center, style: tema.textTheme.headlineSmall),

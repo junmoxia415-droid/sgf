@@ -78,7 +78,7 @@ export function HistorialTab({ showToast, refresh, canEdit = false, onEdit }: Pr
   return (
     <motion.div key="historial" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }} className="space-y-5">
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-        <div className="grid md:grid-cols-[1fr,180px,auto] gap-2">
+        <div className="grid md:grid-cols-[1fr_180px_auto] gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
             <input
@@ -86,7 +86,7 @@ export function HistorialTab({ showToast, refresh, canEdit = false, onEdit }: Pr
               placeholder="Buscar por cliente, factura, cuenta o codigo..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-emerald-400"
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400"
             />
           </div>
           <select value={estado} onChange={(e) => setEstado(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300">
@@ -95,7 +95,7 @@ export function HistorialTab({ showToast, refresh, canEdit = false, onEdit }: Pr
             <option value="pendiente">Pendiente</option>
             <option value="error">Error</option>
           </select>
-          <button onClick={() => void fetchRows(1)} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-xl flex items-center gap-1.5 transition-colors justify-center">
+          <button onClick={() => void fetchRows(1)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center gap-1.5 transition-colors justify-center">
             <Filter className="w-3.5 h-3.5" />
             Buscar
           </button>
@@ -119,8 +119,8 @@ export function HistorialTab({ showToast, refresh, canEdit = false, onEdit }: Pr
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-20 text-center text-gray-300 dark:text-gray-600">
-                    Sin facturas guardadas en SGF_FACTURAS
+                  <td colSpan={7} className="px-4 py-20 text-center text-gray-500 dark:text-gray-400">
+                    No hay facturas registradas todavía.
                   </td>
                 </tr>
               ) : (
@@ -143,9 +143,9 @@ export function HistorialTab({ showToast, refresh, canEdit = false, onEdit }: Pr
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={() => del(r.id, r.no_factura)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-gray-400 hover:text-red-500">
+                        {canEdit && <button title="Eliminar factura" onClick={() => del(r.id, r.no_factura)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-gray-400 hover:text-red-500">
                           <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>

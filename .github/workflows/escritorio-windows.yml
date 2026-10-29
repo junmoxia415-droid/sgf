@@ -146,7 +146,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   escritorio:
     name: Escritorio · Flutter (Windows)
-    needs: [servidor, integracion]
+    needs: [servidor, integracion, web]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -384,6 +384,32 @@ jobs:
           Write-Host "Release publicada: $etiqueta"
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Navegador real con datos ficticios: la web servida por el mismo servidor
+  # conserva acceso, permisos, temas y el flujo Excel/PDF/estadísticas.
+  web:
+    name: Navegador · interfaz y facturas
+    needs: servidor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar servidor SQLite de prueba
+        working-directory: server
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc
+      - name: Compilar la interfaz del navegador
+        working-directory: client
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Probar navegador con datos ficticios
+        working-directory: client
+        run: node test/navegador.mjs
+
   # 3. Pruebas de integracion: la app Flutter habla con el servidor real
   # ───────────────────────────────────────────────────────────────────────────
   integracion:

@@ -10,7 +10,7 @@ export function ServerOfflineScreen({ onRetry }: { onRetry: () => void }) {
         <ul className="text-left text-sm text-gray-500 max-w-xs mx-auto space-y-1 mb-6">
           <li>- Servidor encendido</li><li>- IP y puerto correctos</li><li>- Red LAN funcionando</li><li>- Firewall permite conexion</li>
         </ul>
-        <button onClick={onRetry} className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"><RefreshCcw className="w-4 h-4"/>Reintentar</button>
+        <button onClick={onRetry} className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><RefreshCcw className="w-4 h-4"/>Reintentar</button>
         <p className="mt-6 text-xs text-gray-400">Sin servidor, la aplicacion no funciona.</p>
       </div>
     </div>

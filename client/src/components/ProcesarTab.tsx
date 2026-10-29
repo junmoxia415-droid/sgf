@@ -135,7 +135,7 @@ export function ProcesarTab({ showToast, trig }: Props) {
         <button
           onClick={process}
           disabled={loading || !file}
-          className="mt-5 w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+          className="mt-5 w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
         >
           {loading ? (
             <>
@@ -290,7 +290,7 @@ export function ProcesarTab({ showToast, trig }: Props) {
             )}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-300 dark:text-gray-600">
+          <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
             <FileText className="w-16 h-16 mb-4 opacity-30" />
             <p className="text-sm">Resultados apareceran aqui</p>
           </div>
