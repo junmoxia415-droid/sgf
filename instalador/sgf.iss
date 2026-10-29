@@ -56,16 +56,16 @@ begin
   faltan := '';
 
   if not FileExists(ExpandConstant('{src}\..\distribucion\sgf_escritorio.exe')) then
-    faltan := faltan + #13#10 + '- El programa principal (sgf_escritorio.exe)';
+    faltan := faltan + '- El programa principal (sgf_escritorio.exe)' + NewLine;
   if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\runtime\node.exe')) then
-    faltan := faltan + #13#10 + '- El componente interno (node.exe)';
+    faltan := faltan + '- El componente interno (node.exe)' + NewLine;
   if not FileExists(ExpandConstant('{src}\..\distribucion\servidor\dist\index.js')) then
-    faltan := faltan + #13#10 + '- El servicio interno del programa (index.js)';
+    faltan := faltan + '- El servicio interno del programa (index.js)' + NewLine;
 
   if faltan <> '' then
   begin
-    MsgBox('El paquete esta incompleto; faltan estos archivos:' + #13#10 + faltan +
-      #13#10#13#10 + 'Vuelva a generar el paquete con GitHub Actions.', mbError, MB_OK);
+    MsgBox('El paquete esta incompleto; faltan estos archivos:' + NewLine + faltan +
+      NewLine + 'Vuelva a generar el paquete con GitHub Actions.', mbError, MB_OK);
     Result := False;
   end;
 end;
@@ -74,8 +74,8 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    MsgBox('SGF se ha instalado correctamente.' + #13#10#13#10 +
-      'Al abrirlo por primera vez, el asistente le guiara paso a paso.' + #13#10 +
+    MsgBox('SGF se ha instalado correctamente.' + NewLine + NewLine +
+      'Al abrirlo por primera vez, el asistente le guiara paso a paso.' + NewLine +
       'La cuenta inicial es "admin" con la contrasena "Admin123!" y el programa le ' +
       'pedira cambiarla: hagalo antes de usar datos reales.',
       mbInformation, MB_OK);
