@@ -177,9 +177,10 @@ export function DbConfigPanel({ onClose, showToast }: Props) {
   };
 
   const connectDb = async () => {
+    if (!window.confirm("Cambiar de base cambia las cuentas y datos disponibles. No se migrará ni borrará la base anterior. SGF puede crear o ampliar sus tablas. ¿Continuar?")) return;
     setConnecting(true);
     try {
-      const payload = dbType === "mssql" ? { type: "mssql", ...mssqlForm } : { type: "oracle", ...oracleForm };
+      const payload = dbType === "mssql" ? { type: "mssql", ...mssqlForm, confirmarCambio: true } : { type: "oracle", ...oracleForm, confirmarCambio: true };
       const res = await ejecutarConAcceso("/api/db/connect", payload);
       const data = await res.json();
       if (data.success) {

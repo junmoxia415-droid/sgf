@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import dotenv from "dotenv";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerResponse } from "node:http";
@@ -13,13 +15,14 @@ import {
   consumirTokenInstalacion,
   denegarConfigBd,
   evaluarAccesoConfigBd,
+  hayUsuariosRegistrados,
   sendJson,
   readJsonBody,
 } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ENV_PATH = path.resolve(__dirname, "../../.env");
+const ENV_PATH = process.env.SGF_ENV_FILE ? path.resolve(process.env.SGF_ENV_FILE) : path.resolve(__dirname, "../../.env");
 
 type DbType = "oracle" | "mssql" | "sqlite";
 
@@ -63,78 +66,29 @@ function currentConfig() {
   };
 }
 
-const ENV_KEYS_ORDER = [
-  "DB_TYPE",
-  "PORT",
-  "HOST",
-  "ORACLE_USER",
-  "ORACLE_PASSWORD",
-  "ORACLE_HOST",
-  "ORACLE_PORT",
-  "ORACLE_SERVICE",
-  "ORACLE_POOL_MIN",
-  "ORACLE_POOL_MAX",
-  "ORACLE_POOL_INCREMENT",
-  "ORACLE_POOL_TIMEOUT",
-  "MSSQL_USER",
-  "MSSQL_PASSWORD",
-  "MSSQL_SERVER",
-  "MSSQL_PORT",
-  "MSSQL_DATABASE",
-  "MSSQL_ENCRYPT",
-  "MSSQL_TRUST_CERT",
-  "MSSQL_POOL_MIN",
-  "MSSQL_POOL_MAX",
-  "MSSQL_POOL_IDLE_MS",
-  "JWT_SECRET",
-  "JWT_EXPIRES_IN",
-  "REQUEST_TIMEOUT_MS",
-  "MAX_FILE_SIZE_MB",
-  "LOGIN_RATE_PER_MIN",
-  "LOGIN_RATE_PER_15MIN",
-  "TRUST_PROXY",
-];
-
-function readEnvMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  if (!fs.existsSync(ENV_PATH)) return map;
-  const text = fs.readFileSync(ENV_PATH, "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.includes("=") || line.trimStart().startsWith("#")) continue;
-    const idx = line.indexOf("=");
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1);
-    map.set(key, value);
-  }
-  return map;
-}
-
-function saveEnvConfig(values: Record<string, string | undefined>) {
-  const map = readEnvMap();
-  for (const [k, v] of Object.entries(values)) {
-    if (v !== undefined) map.set(k, v);
-  }
-  // Garantizar defaults razonables
-  if (!map.get("DB_TYPE")) map.set("DB_TYPE", "");
-  if (!map.get("PORT")) map.set("PORT", "3000");
-  if (!map.get("HOST")) map.set("HOST", "0.0.0.0");
-  if (!map.get("JWT_SECRET")) map.set("JWT_SECRET", "sgf-jwt-secret-cambiar-en-produccion");
-  if (!map.get("JWT_EXPIRES_IN")) map.set("JWT_EXPIRES_IN", "8h");
-  if (!map.get("REQUEST_TIMEOUT_MS")) map.set("REQUEST_TIMEOUT_MS", "30000");
-  if (!map.get("MAX_FILE_SIZE_MB")) map.set("MAX_FILE_SIZE_MB", "10");
-  if (!map.get("LOGIN_RATE_PER_MIN")) map.set("LOGIN_RATE_PER_MIN", "30");
-  if (!map.get("LOGIN_RATE_PER_15MIN")) map.set("LOGIN_RATE_PER_15MIN", "200");
-  if (!map.get("ORACLE_POOL_MIN")) map.set("ORACLE_POOL_MIN", "2");
-  if (!map.get("ORACLE_POOL_MAX")) map.set("ORACLE_POOL_MAX", "20");
-  if (!map.get("ORACLE_POOL_INCREMENT")) map.set("ORACLE_POOL_INCREMENT", "2");
-  if (!map.get("ORACLE_POOL_TIMEOUT")) map.set("ORACLE_POOL_TIMEOUT", "60");
-  if (!map.get("MSSQL_POOL_MIN")) map.set("MSSQL_POOL_MIN", "0");
-  if (!map.get("MSSQL_POOL_MAX")) map.set("MSSQL_POOL_MAX", "10");
-  if (!map.get("MSSQL_POOL_IDLE_MS")) map.set("MSSQL_POOL_IDLE_MS", "30000");
-
-  const content =
-    ENV_KEYS_ORDER.map((k) => `${k}=${map.get(k) ?? ""}`).join("\n") + "\n";
-  fs.writeFileSync(ENV_PATH, content, "utf8");
+/** Prepara la configuración en el mismo directorio sin modificar la actual. */
+function prepararEnvConfig(values: Record<string, string>) {
+  const source = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, "utf8") : "";
+  const keys = new Set(Object.keys(values));
+  const preserved = source.split(/\r?\n/).filter(line => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    return !match || !keys.has(match[1]);
+  }).join("\n").replace(/\n+$/, "");
+  const lines = Object.entries(values).map(([key,value]) => {
+    if (/[\r\n]/.test(value)) throw new Error("La configuración no puede contener saltos de línea.");
+    const options = [`'${value}'`, `"${value}"`, value];
+    const encoded = options.find(candidate => dotenv.parse(`${key}=${candidate}`)[key] === value);
+    if (encoded === undefined) throw new Error(`No se puede guardar el valor de ${key}; contiene caracteres incompatibles.`);
+    return `${key}=${encoded}`;
+  });
+  const content = (preserved ? preserved + "\n" : "") + lines.join("\n") + "\n";
+  fs.mkdirSync(path.dirname(ENV_PATH), {recursive:true});
+  const staged = `${ENV_PATH}.tmp-${randomUUID()}`;
+  fs.writeFileSync(staged, content, {encoding:"utf8", mode:0o600, flag:"wx"});
+  return {
+    commit() { fs.renameSync(staged, ENV_PATH); },
+    limpiar() { try { fs.unlinkSync(staged); } catch {} },
+  };
 }
 
 async function testOracle(config: OracleConnectPayload) {
@@ -273,7 +227,7 @@ export async function handleDbTest(req: AuthenticatedRequest, res: ServerRespons
       port: String(body.port || process.env.MSSQL_PORT || "1433").trim(),
       database: String(body.database || process.env.MSSQL_DATABASE || "sgf").trim(),
       user: String(body.user || process.env.MSSQL_USER || "sa").trim(),
-      password: String(body.password || process.env.MSSQL_PASSWORD || "").trim(),
+      password: String(body.password ?? process.env.MSSQL_PASSWORD ?? ""),
       encrypt: body.encrypt !== undefined ? Boolean(body.encrypt) : undefined,
       trustServerCertificate: body.trustServerCertificate !== undefined ? Boolean(body.trustServerCertificate) : undefined,
     };
@@ -287,7 +241,7 @@ export async function handleDbTest(req: AuthenticatedRequest, res: ServerRespons
     port: String(body.port || process.env.ORACLE_PORT || "1521").trim(),
     service: String(body.service || process.env.ORACLE_SERVICE || "PCELULAR").trim(),
     user: String(body.user || process.env.ORACLE_USER || "pcelular").trim(),
-    password: String(body.password || process.env.ORACLE_PASSWORD || "pcelular").trim(),
+    password: String(body.password ?? process.env.ORACLE_PASSWORD ?? "pcelular"),
   };
   return sendJson(res, 200, await testOracle(config));
 }
@@ -303,8 +257,12 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
   // Escribe server/.env y cambia la BD en caliente: solo admin o instalacion.
   const acceso = await evaluarAccesoConfigBd(req, body);
   if (!acceso.permitido) return denegarConfigBd(res, acceso);
+  if (await hayUsuariosRegistrados() && body.confirmarCambio !== true) {
+    return sendJson(res, 409, {success:false, error:"Confirme el cambio de base: las cuentas y los datos son independientes y no se migrarán automáticamente."});
+  }
 
   const type = (String(body.type || "oracle").toLowerCase()) as DbType;
+  if (type !== "oracle" && type !== "mssql") return sendJson(res, 400, {success:false,error:"Seleccione Oracle o SQL Server."});
 
   try {
     if (type === "mssql") {
@@ -314,11 +272,11 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
         port: String(body.port || process.env.MSSQL_PORT || "1433").trim(),
         database: String(body.database || process.env.MSSQL_DATABASE || "sgf").trim(),
         user: String(body.user || process.env.MSSQL_USER || "sa").trim(),
-        password: String(body.password || process.env.MSSQL_PASSWORD || "").trim(),
+        password: String(body.password ?? process.env.MSSQL_PASSWORD ?? ""),
         encrypt: body.encrypt !== undefined ? Boolean(body.encrypt) : undefined,
         trustServerCertificate: body.trustServerCertificate !== undefined ? Boolean(body.trustServerCertificate) : undefined,
       };
-      saveEnvConfig({
+      const configPendiente = prepararEnvConfig({
         DB_TYPE: "mssql",
         MSSQL_SERVER: payload.server,
         MSSQL_PORT: payload.port,
@@ -328,7 +286,8 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
         MSSQL_ENCRYPT: String(payload.encrypt ?? false),
         MSSQL_TRUST_CERT: String(payload.trustServerCertificate ?? true),
       });
-      await connectMssqlRuntime(payload);
+      try { await connectMssqlRuntime(payload); configPendiente.commit(); process.env.DB_TYPE = "mssql"; }
+      finally { configPendiente.limpiar(); }
       return sendJson(res, 200, {
         success: true,
         message: `Conectado a SQL Server ${payload.server}/${payload.database}. Debe iniciar sesion nuevamente.`,
@@ -347,9 +306,9 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
       port: String(body.port || process.env.ORACLE_PORT || "1521").trim(),
       service: String(body.service || process.env.ORACLE_SERVICE || "PCELULAR").trim(),
       user: String(body.user || process.env.ORACLE_USER || "pcelular").trim(),
-      password: String(body.password || process.env.ORACLE_PASSWORD || "pcelular").trim(),
+      password: String(body.password ?? process.env.ORACLE_PASSWORD ?? "pcelular"),
     };
-    saveEnvConfig({
+    const configPendiente = prepararEnvConfig({
       DB_TYPE: "oracle",
       ORACLE_HOST: payload.host,
       ORACLE_PORT: payload.port,
@@ -357,7 +316,8 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
       ORACLE_USER: payload.user,
       ORACLE_PASSWORD: payload.password,
     });
-    await connectOracleRuntime(payload);
+    try { await connectOracleRuntime(payload); configPendiente.commit(); process.env.DB_TYPE = "oracle"; }
+    finally { configPendiente.limpiar(); }
     return sendJson(res, 200, {
       success: true,
       message: `Conectado a Oracle ${payload.host}:${payload.port}/${payload.service}. Debe iniciar sesion nuevamente.`,
@@ -386,16 +346,23 @@ export async function handleDbDisconnect(req: AuthenticatedRequest, res: ServerR
   // Antes un anonimo podia dejar la instalacion en SQLite (y "perder" Oracle).
   const acceso = await evaluarAccesoConfigBd(req, body);
   if (!acceso.permitido) return denegarConfigBd(res, acceso);
+  if (await hayUsuariosRegistrados() && body.confirmarCambio !== true) {
+    return sendJson(res, 409, {success:false, error:"Confirme el cambio de base: las cuentas y los datos son independientes y no se migrarán automáticamente."});
+  }
   try {
-    // Guardar DB_TYPE = sqlite
-    saveEnvConfig({
-      DB_TYPE: "sqlite",
-    });
-    process.env.DB_TYPE = "sqlite";
-    // Cerrar pools actuales
-    try { await closeDb(); } catch {}
-    // Reiniciar en modo sqlite
-    const result = await initDatabase();
+    const configPendiente = prepararEnvConfig({ DB_TYPE: "sqlite" });
+    const anterior = process.env.DB_TYPE;
+    let result;
+    try {
+      process.env.DB_TYPE = "sqlite";
+      // Se conservan los archivos de cada base. No se migran ni se borran.
+      await closeDb();
+      result = await initDatabase();
+      configPendiente.commit();
+    } catch (error) {
+      if (anterior === undefined) delete process.env.DB_TYPE; else process.env.DB_TYPE = anterior;
+      throw error;
+    } finally { configPendiente.limpiar(); }
     return sendJson(res, 200, {
       success: true,
       message: "Desconectado de BD enterprise, ahora en SQLite local.",

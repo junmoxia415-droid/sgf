@@ -121,3 +121,21 @@ export async function handleBuscarLineas(req: AuthenticatedRequest, res: ServerR
     return sendJson(res, 503, { success: false, error: `Error: ${error.message}` });
   }
 }
+
+/** Catálogo de líneas importadas, paginado y solo para cuentas autorizadas. */
+export async function handleCatalogoLineas(req: AuthenticatedRequest, res: ServerResponse, url: URL) {
+  if (!requirePermiso(req, res, "importar_excel")) return;
+  const page = Math.max(1, Math.trunc(Number(url.searchParams.get("page")) || 1));
+  const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(url.searchParams.get("pageSize")) || 30)));
+  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const where = q ? "WHERE UPPER(NUMERO) LIKE :q OR UPPER(USUARIO_PUESTO) LIKE :q OR UPPER(UNIDAD) LIKE :q" : "";
+  const params: Record<string, any> = q ? {q:`%${q.toUpperCase()}%`} : {};
+  try {
+    const counts = await query<any>(`SELECT COUNT(*) AS CNT FROM SGF_LINEAS_IMPORTADAS ${where}`, params);
+    const total = Number(counts[0]?.CNT ?? counts[0]?.cnt ?? 0);
+    const filas = await query<any>(`SELECT * FROM SGF_LINEAS_IMPORTADAS ${where} ORDER BY NUMERO ${paginationExpr("off", "lim")}`, {...params, off:(page-1)*pageSize,lim:pageSize});
+    return sendJson(res, 200, {success:true, data:filas, meta:{total,page,pageSize,totalPages:Math.max(1,Math.ceil(total/pageSize))}});
+  } catch {
+    return sendJson(res, 503, {success:false,error:"No se pudieron consultar las líneas importadas."});
+  }
+}

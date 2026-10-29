@@ -150,6 +150,10 @@ class Api {
     permisos = {};
   }
 
+  void limpiarSesionLocal() {
+    _tokenSesion = null; usuario = null; rol = null; permisos = {}; motivoCaducidad = null;
+  }
+
   Future<void> cerrarSesion() async {
     try {
       if (_tokenSesion != null) await post('/api/auth/logout');
@@ -189,10 +193,10 @@ class Api {
   Future<Map<String, dynamic>> detalleFactura(String id) async =>
       (await get('/api/facturas/${Uri.encodeComponent(id)}'));
 
-  Future<Map<String, dynamic>> subirFactura(List<int> bytes, String nombre, {bool forzar = false}) async {
+  Future<Map<String, dynamic>> subirFactura(List<int> bytes, String nombre, {required bool guardar, bool confirmarSustitucion = false, bool confirmarSinServicios = false}) async {
     final b64 = base64Encode(bytes);
     return (await _pedir('POST', '/api/facturas/upload',
-        cuerpo: {'file': b64, 'filename': nombre, 'forceDuplicate': forzar},
+        cuerpo: {'file': b64, 'filename': nombre, 'accion': guardar ? 'guardar' : 'analizar', 'confirmarSustitucion': confirmarSustitucion, 'confirmarSinServicios': confirmarSinServicios},
         espera: const Duration(minutes: 2)));
   }
 

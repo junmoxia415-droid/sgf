@@ -61,6 +61,10 @@ jobs:
         run: |
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
+          node test/pdf-guardado.mjs
+          node test/transacciones.mjs
+          node test/dbconfig-sqlite.mjs
+          npx tsx src/scripts/prueba-pdf-layout.ts
 
       - name: Arrancar servidor de pruebas
         working-directory: server

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../servicios/api.dart';
 import '../servicios/controlador_servidor.dart';
 import '../widgets/comunes.dart';
+import 'configurar_base.dart';
 
 /// Control del servidor: iniciar / detener / reiniciar, copias de seguridad y
 /// registro de lo que va pasando, con explicación de cada botón.
@@ -15,12 +16,14 @@ class ServidorPantalla extends StatefulWidget {
     required this.api,
     required this.ajustes,
     required this.iniciarSesion,
+    this.alCambiarBase,
   });
 
   final ControladorServidor servidor;
   final Api api;
   final dynamic ajustes;
   final Future<bool> Function() iniciarSesion;
+  final VoidCallback? alCambiarBase;
 
   @override
   State<ServidorPantalla> createState() => _ServidorPantallaState();
@@ -228,6 +231,18 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Text('Dónde están los datos', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 12),
                         _Fila(etiqueta: 'Base de datos', valor: '${_estado?['modoBd'] ?? 'sqlite'}'.toUpperCase()),
+                        OutlinedButton.icon(
+                          onPressed: !enMarcha || _trabajando ? null : () async {
+                            final modo = await showDialog<String>(context: context, builder: (_) => ConfigurarBaseDialogo(api: widget.api));
+                            if (modo == null || !mounted) return;
+                            widget.ajustes.modoBd = modo;
+                            await widget.ajustes.guardar();
+                            if (!mounted) return;
+                            widget.api.limpiarSesionLocal();
+                            widget.alCambiarBase?.call();
+                          },
+                          icon: const Icon(Icons.settings_outlined), label: const Text('Configurar base de datos'),
+                        ),
                         _Fila(etiqueta: 'Archivo', valor: '${disco['carpetaDatos'] ?? servidor.carpetaDatos.path}'),
                         _Fila(etiqueta: 'Tamaño', valor: _textoBytes((disco['bytes'] ?? 0) as int)),
                         _Fila(etiqueta: 'Configuración', valor: '${disco['archivoEnv'] ?? servidor.archivoEnv.path}'),

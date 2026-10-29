@@ -90,7 +90,9 @@ export async function handleLogin(req: AuthenticatedRequest, res: ServerResponse
   }
 
   const username = usernameAttempt;
-  const password = String(body.password || "").trim();
+  // Se valida lo que se escribió exactamente. El asistente ya guardaba espacios
+  // iniciales/finales, pero login los eliminaba y podía rechazar la cuenta.
+  const password = String(body.password || "");
   const machineId = String(body.machineId || "pc").trim();
 
   if (!username || !password) {
@@ -113,7 +115,10 @@ export async function handleLogin(req: AuthenticatedRequest, res: ServerResponse
       return sendJson(res, 403, { success: false, error: "Usuario inactivo. Contacte al administrador." });
     }
 
-    const ok = await bcrypt.compare(password, internal.passwordHash);
+    let ok = await bcrypt.compare(password, internal.passwordHash);
+    // Compatibilidad: las cuentas creadas en versiones anteriores desde Usuarios
+    // eliminaban espacios al guardarse. Nunca alteramos una contraseña existente.
+    if (!ok && password !== password.trim()) ok = await bcrypt.compare(password.trim(), internal.passwordHash);
     if (!ok) {
       return sendJson(res, 401, { success: false, error: "Usuario o contrasena incorrectos." });
     }

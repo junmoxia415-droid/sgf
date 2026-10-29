@@ -45,7 +45,7 @@ export async function handleCreateUser(req: AuthenticatedRequest, res: ServerRes
 
   const username = String(body.username || "").trim();
   const name = String(body.name || "").trim();
-  const password = String(body.password || "").trim();
+  const password = String(body.password || "");
   const role = body.role === "admin" ? "admin" : "usuario";
   if (body.permisos !== undefined && (!Array.isArray(body.permisos) || body.permisos.some((p: unknown) => typeof p !== "string" || !(PERMISOS_DISPONIBLES as readonly string[]).includes(p)))) {
     return sendJson(res, 400, { success: false, error: "Lista de permisos inválida." });

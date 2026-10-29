@@ -1,326 +1,63 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Activity, CheckCircle2, Database, FileText, Search, Upload, Zap } from "lucide-react";
+import { AlertTriangle, FileText, Save, Upload, X } from "lucide-react";
 import * as api from "../api/client.ts";
-import { fmtMoney } from "./Mini.tsx";
 
 type Props = { showToast: (t: "success" | "error" | "info", m: string) => void; trig: () => void };
+type Vista = { estado: string; factura: any; totalServicios: number; extraccionVacia: boolean; requiereRevision: boolean; duplicadoPropio: boolean; duplicadoAjeno: boolean; posibleRegistroAntiguo: boolean; enriquecimiento?: { encontradas: number; total: number; lineas: any[] }; };
+const campos: Array<[string,string]> = [["Factura","noFactura"],["Cliente","cliente"],["Cuenta","cuenta"],["Número de cliente","numeroCliente"],["Número de cuenta","numeroCuenta"],["Dirección","direccion"],["Fecha de emisión","fechaEmision"],["Vencimiento","fechaVencimiento"],["Periodo","periodoConsumo"],["Código de pago","codigoPago"],["Moneda","moneda"],["NIT","nit"],["Total a pagar","totalPagar"]];
 
 export function ProcesarTab({ showToast, trig }: Props) {
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<any>(null);
-
-  const process = async () => {
-    if (!file) {
-      setError("Seleccione un archivo PDF.");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Archivo supera 10 MB.");
-      return;
-    }
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Solo archivos PDF.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setResult(null);
-
+  const [file, setFile] = useState<File | null>(null); const [vista, setVista] = useState<Vista | null>(null);
+  const [contenido, setContenido] = useState(""); const [nombre, setNombre] = useState("");
+  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [guardado, setGuardado] = useState(false);
+  const elegir = (f: File | null) => { setFile(f); setVista(null); setContenido(""); setGuardado(false); setError(""); };
+  const analizar = async () => {
+    if (!file) return;
+    if (file.size > 10*1024*1024 || !file.name.toLowerCase().endsWith('.pdf')) { setError('Seleccione un PDF de hasta 10 MB.'); return; }
+    setLoading(true); setError(""); setVista(null); setGuardado(false);
     try {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-      const b64 = btoa(binary);
-
-      const executeUpload = async (forceDuplicate = false) => api.uploadFactura(file.name, b64, { forceDuplicate });
-
-      let res = await executeUpload(false);
-      // Solo hay conflicto real cuando el numero de factura es de otro usuario.
-      // Reenviar la misma factura la sustituye (para corregirla) y las lineas
-      // compartidas entre las dos facturas del mes son lo normal.
-      if (!res.success && (res.data as any)?.propietarioDistinto) {
-        const duplicateData: any = res.data;
-        const sameInvoices = duplicateData?.duplicates?.sameInvoiceOtrosUsuarios
-          || duplicateData?.duplicates?.sameInvoice || [];
-        // Solo las lineas repetidas EN EL MISMO periodo son un problema; las que
-        // ya estaban en facturas de otros meses son lo normal y no bloquean.
-        const mismoPeriodo = duplicateData?.duplicates?.repeatedSamePeriod || [];
-        const otrosPeriodos = duplicateData?.duplicates?.repeatedOtherPeriod || [];
-        const lines = [
-          "Ese numero de factura ya lo ha cargado otro usuario.",
-          sameInvoices.length ? `- Facturas con el mismo numero de otra persona: ${sameInvoices.length}` : "",
-        ].filter(Boolean);
-        const detail = [
-          sameInvoices[0] ? `Factura existente: ${sameInvoices[0].no_factura} · ${sameInvoices[0].cliente}` : "",
-          "Solo un administrador puede reemplazarla. Si la factura es suya, compruebe el numero.",
-        ].filter(Boolean).join("\n");
-        const proceed = confirm(`${lines.join("\n")}\n\n${detail}\n\n¿Desea continuar de todas formas?`);
-        if (!proceed) {
-          setError(lines.join(" "));
-          showToast("info", "Carga cancelada por posible duplicado.");
-          setLoading(false);
-          return;
-        }
-        res = await executeUpload(true);
-      }
-
-      if (res.success) {
-        const data: any = res.data;
-        setResult(data);
-        if ((data?.duplicateSummary?.sameInvoice?.length || 0) > 0 || (data?.duplicateSummary?.repeatedSamePeriod?.length || 0) > 0) {
-          showToast("info", "Factura guardada con advertencia de duplicados. Revise el diagnostico.");
-        } else {
-          showToast("success", `${data?.guardados?.length || 0} servicios en CARGARARCH y ${data?.factura?.servicios?.length || 0} servicios en SGF.`);
-        }
-        trig();
-      } else {
-        setError(res.error || "Error al procesar.");
-        showToast("error", res.error || "Error.");
-      }
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      const bytes = new Uint8Array(await file.arrayBuffer()); let binario = "";
+      for (let i=0;i<bytes.length;i++) binario += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binario); const r = await api.uploadFactura(file.name, b64, {accion:"analizar"});
+      if (!r.success || !r.data) { setError(r.error || "No se pudo leer el PDF."); return; }
+      setContenido(b64); setNombre(file.name); setVista(r.data as Vista);
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el PDF.'); }
+    finally { setLoading(false); }
   };
-
-  const factura = result?.factura;
-
-  return (
-    <motion.div key="procesar" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }} className="grid lg:grid-cols-2 gap-6">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-5 flex items-center gap-2">
-          <Upload className="w-5 h-5 text-emerald-500" />
-          Subir Factura PDF
-        </h2>
-
-        <label
-          className={`border-2 border-dashed rounded-2xl p-8 text-center block cursor-pointer transition-all ${file ? "border-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10" : "border-gray-200 dark:border-gray-700 hover:border-emerald-300"}`}
-          onDrop={(e) => {
-            e.preventDefault();
-            const f = e.dataTransfer.files[0];
-            if (f) setFile(f);
-          }}
-          onDragOver={(e) => e.preventDefault()}
-        >
-          <input type="file" className="hidden" accept=".pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); }} />
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <CheckCircle2 className="w-12 h-12 text-emerald-500" />
-              <p className="font-semibold text-gray-900 dark:text-white">{file.name}</p>
-              <p className="text-sm text-gray-400">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
-              <span className="text-xs text-emerald-600 cursor-pointer hover:underline" onClick={(e) => { e.stopPropagation(); setFile(null); }}>
-                Cambiar archivo
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                <Upload className="w-7 h-7 text-gray-300" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-700 dark:text-gray-300">Arrastre el PDF aqui</p>
-                <p className="text-sm text-gray-400 mt-1">o haga clic para seleccionar</p>
-              </div>
-              <span className="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-500">PDF · Max 10 MB</span>
-            </div>
-          )}
-        </label>
-
-        <button
-          onClick={process}
-          disabled={loading || !file}
-          className="mt-5 w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
-        >
-          {loading ? (
-            <>
-              <Activity className="w-4 h-4 animate-spin" />
-              Procesando PDF...
-            </>
-          ) : (
-            <>
-              <Zap className="w-4 h-4" />
-              Procesar Factura
-            </>
-          )}
-        </button>
-
-        {error && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">{error}</div>}
-      </div>
-
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-5 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-emerald-500" />
-          Resultados
-        </h2>
-
-        {result ? (
-          <div className="space-y-4">
-            <div className="grid sm:grid-cols-3 gap-3">
-              <InfoCard icon={Database} label="SGF_FACTURAS" value={result.sgfFacturaId ? "Guardada" : "-"} tone="indigo" />
-              <InfoCard icon={CheckCircle2} label="SGF_SERVICIOS" value={String(factura?.servicios?.length || 0)} tone="emerald" />
-              <InfoCard icon={CheckCircle2} label="CARGARARCH" value={String(result.guardados?.length || 0)} tone="blue" />
-            </div>
-
-            <div className={`rounded-xl border px-4 py-3 text-sm ${factura?.reviewStatus === "high" ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-900 dark:text-emerald-300" : factura?.reviewStatus === "review" ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-900 dark:text-amber-300" : "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-900 dark:text-red-300"}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold">{factura?.reviewLabel || "Resultado del parser"}</p>
-                  <p className="text-xs opacity-90 mt-1">{factura?.reviewStatus === "high" ? "La factura fue extraida con buena consistencia." : factura?.reviewStatus === "review" ? "La factura parece correcta, pero conviene revisar manualmente algunos campos." : "La extraccion tiene inconsistencias importantes y debe revisarse antes de usarla."}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs opacity-70">Confianza</p>
-                  <p className="text-lg font-bold">{factura?.confidence || 0}%</p>
-                </div>
-              </div>
-            </div>
-
-            {((result?.duplicateSummary?.sameInvoice?.length || 0) > 0 || (result?.duplicateSummary?.repeatedServices?.length || 0) > 0) && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
-                <p className="font-semibold mb-1">Advertencia de duplicados</p>
-                {(result?.duplicateSummary?.sameInvoice?.length || 0) > 0 && <p className="text-xs">Facturas con mismo numero detectadas: {result.duplicateSummary.sameInvoice.length}</p>}
-                {(result?.duplicateSummary?.repeatedServices?.length || 0) > 0 && <p className="text-xs">Servicios ya existentes en otras facturas: {result.duplicateSummary.repeatedServices.length}</p>}
-              </div>
-            )}
-
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 space-y-2">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <Mini label="Cliente" value={factura?.cliente} />
-                <Mini label="No. Factura" value={factura?.noFactura} />
-                <Mini label="No. Cliente" value={factura?.numeroCliente} />
-                <Mini label="No. Cuenta" value={factura?.numeroCuenta} />
-                <Mini label="Fecha Factura" value={factura?.fechaEmision} />
-                <Mini label="Fecha Vencimiento" value={factura?.fechaVencimiento} />
-                <Mini label="Periodo" value={factura?.periodoConsumo} />
-                <Mini label="Moneda" value={factura?.moneda} />
-                <Mini label="NIT" value={factura?.nit} />
-                <Mini label="Codigo Pago" value={factura?.codigoPago} />
-                <Mini label="Facturado" value={`$${fmtMoney(Number(factura?.totales?.facturado) || 0)}`} />
-                <Mini label="Total a Pagar" value={`$${fmtMoney(Number(factura?.totales?.totalPagar || result.totalPagar) || 0)}`} />
-              </div>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-3">
-              <InfoCard icon={Zap} label="Confianza" value={`${factura?.confidence || 0}%`} tone="emerald" />
-              <InfoCard icon={FileText} label="Servicios detectados" value={String(factura?.servicios?.length || 0)} tone="indigo" />
-              <InfoCard icon={Activity} label="Tiempo" value={`${factura?.processingMs || 0} ms`} tone="blue" />
-            </div>
-
-            {(factura?.diagnostics || []).length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Diagnostico del parser</h3>
-                {(factura?.diagnostics || []).map((d: any, i: number) => (
-                  <div key={`${d.code}-${i}`} className={`rounded-xl border px-3 py-2 text-xs ${d.level === "error" ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-900 dark:text-red-300" : d.level === "warn" ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-900 dark:text-amber-300" : "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-900 dark:text-blue-300"}`}>
-                    <strong className="uppercase mr-2">{d.level}</strong>{d.message}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                Servicios extraidos ({factura?.servicios?.length || 0})
-              </h3>
-              <div className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500">Numero</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Cuota</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Consumo</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Comision</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Impuesto</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Importe</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {factura?.servicios?.map((s: any, i: number) => (
-                      <tr key={`${s.numero}-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300">{s.numero}</td>
-                        <td className="px-3 py-1.5 text-right text-gray-500">${fmtMoney(Number(s.cuota) || 0)}</td>
-                        <td className="px-3 py-1.5 text-right text-gray-500">${fmtMoney(Number(s.consumo) || 0)}</td>
-                        <td className="px-3 py-1.5 text-right text-gray-500">${fmtMoney(Number(s.comision) || 0)}</td>
-                        <td className="px-3 py-1.5 text-right text-gray-500">${fmtMoney(Number(s.impuesto) || 0)}</td>
-                        <td className="px-3 py-1.5 text-right font-semibold text-gray-700 dark:text-gray-300">${fmtMoney(Number(s.importe) || 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {(result.lineasEncontradas?.length > 0 || result.enriquecimiento?.sinVincular?.length > 0) && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-                  <Search className="w-4 h-4 text-blue-500" />
-                  Lineas Vinculadas ({result.enriquecimiento?.encontradas ?? result.lineasEncontradas?.length ?? 0}
-                  {result.enriquecimiento?.total ? `/${result.enriquecimiento.total}` : ""})
-                  {result.enriquecimiento?.fuente && result.enriquecimiento.fuente !== "NINGUNA" && (
-                    <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                      {result.enriquecimiento.fuente === "EXCEL" ? "datos del Excel importado" : "datos del sistema (PCELULAR)"}
-                    </span>
-                  )}
-                </h3>
-                <div className="space-y-1">
-                  {(result.lineasEncontradas || []).map((l: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg text-xs gap-2">
-                      <span className="font-mono text-blue-700 dark:text-blue-300">{l.NUMERO}</span>
-                      <span className="text-blue-600 dark:text-blue-400 text-center flex-1">
-                        {l.NOMBRE_COMPLETO || `${l.NOMBRE || ""} ${l.APELL1 || ""}`.trim() || "-"}
-                        {l.CARGO ? <span className="text-blue-400"> · {l.CARGO}</span> : null}
-                      </span>
-                      <span className="text-blue-500">{l.ORGANO || l.UNIDAD || l.MUNICIPIO || "-"}</span>
-                    </div>
-                  ))}
-                </div>
-                {result.enriquecimiento?.sinVincular?.length > 0 && (
-                  <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-                    Sin datos para {result.enriquecimiento.sinVincular.length} numero(s):{" "}
-                    {result.enriquecimiento.sinVincular.slice(0, 8).join(", ")}
-                    {result.enriquecimiento.sinVincular.length > 8 ? "…" : ""}. Importe el Excel de lineas actualizado para completarlos.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
-            <FileText className="w-16 h-16 mb-4 opacity-30" />
-            <p className="text-sm">Resultados apareceran aqui</p>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-function Mini({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-gray-400 text-xs">{label}</p>
-      <p className="font-medium text-gray-800 dark:text-gray-200 text-sm">{value || "-"}</p>
-    </div>
-  );
-}
-
-function InfoCard({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone: "indigo" | "emerald" | "blue" }) {
-  const tones = {
-    indigo: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300",
-    emerald: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300",
-    blue: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300",
+  const guardar = async () => {
+    if (!vista || !contenido || guardado) return;
+    if (vista.posibleRegistroAntiguo) { setError("Hay un registro anterior con número incompleto. Revise el historial con un administrador antes de guardar."); return; }
+    if (vista.duplicadoAjeno) { setError("Esta factura pertenece a otra cuenta. No se ha guardado; consulte al administrador."); return; }
+    if (vista.duplicadoPropio && !window.confirm('Esta factura ya existe. ¿Desea sustituir la anterior por esta lectura? Esta acción reemplaza sus datos anteriores.')) return;
+    if (vista.extraccionVacia && !window.confirm('No se detectó ningún servicio. ¿Guardar solo la cabecera para revisión? No se registrarán líneas.')) return;
+    if (!vista.duplicadoPropio && !vista.extraccionVacia && !window.confirm('¿Guardar esta factura y sus líneas en SGF?')) return;
+    setLoading(true); setError("");
+    try {
+      const r = await api.uploadFactura(nombre,contenido,{accion:"guardar",confirmarSustitucion:vista.duplicadoPropio,confirmarSinServicios:vista.extraccionVacia});
+      if (!r.success) { setError(r.error || 'No se pudo guardar.'); return; }
+      setGuardado(true); showToast('success','Factura guardada.'); trig();
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar.'); }
+    finally { setLoading(false); }
   };
-
-  return (
-    <div className={`rounded-xl p-4 ${tones[tone]}`}>
-      <Icon className="w-4 h-4 mb-2 opacity-60" />
-      <p className="text-xs opacity-80">{label}</p>
-      <p className="text-lg font-bold">{value}</p>
+  const f=vista?.factura; const vinculadas = new Map((vista?.enriquecimiento?.lineas || []).map((l:any)=>[String(l.NUMERO),l]));
+  return <div className="space-y-4">
+    <div className="sgf-panel"><h2 className="flex items-center gap-2"><Upload size={19}/> Analizar PDF</h2><p className="sgf-subtitle">El servidor lee el PDF y busca las líneas del Excel. Revise el resultado antes de decidir si desea guardarlo.</p>
+      <label className="block rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-7 text-center cursor-pointer" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();elegir(e.dataTransfer.files[0] || null);}}>
+        <input type="file" className="hidden" accept=".pdf" onChange={e=>elegir(e.target.files?.[0] || null)}/><FileText className="mx-auto mb-2 text-blue-600"/><span className="text-sm">{file ? file.name : 'Arrastre un PDF o pulse para elegirlo'}</span>
+      </label>
+      <button onClick={analizar} disabled={!file || loading} className="mt-4 px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl">{loading ? 'Procesando…' : 'Analizar factura'}</button>
+      {error && <p role="alert" className="sgf-error">{error}</p>}
     </div>
-  );
+    {vista && <>
+      <section className="sgf-panel"><div className="sgf-stats-title"><h2>Resultado de la extracción</h2><strong className={guardado ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'}>{guardado ? 'Guardada' : 'Vista previa · sin guardar'}</strong></div>
+        {(vista.requiereRevision || vista.extraccionVacia || vista.duplicadoPropio || vista.duplicadoAjeno || vista.posibleRegistroAntiguo) && <div className="my-4 p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800 text-sm"><div className="flex gap-2"><AlertTriangle size={19}/><div><strong>Revise la lectura antes de guardar</strong>{vista.extraccionVacia && <p>No se detectaron servicios. Compruebe el documento original.</p>}{vista.duplicadoPropio && <p>Ya existe una factura con este número: sustituirla requiere confirmación.</p>}{vista.duplicadoAjeno && <p>Este número pertenece a otra cuenta; no se sustituirá desde aquí.</p>}{vista.posibleRegistroAntiguo && <p>Hay un registro anterior con número incompleto. Revise el historial con un administrador antes de guardar.</p>}</div></div></div>}
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 my-5">{campos.map(([label,key])=><div key={key} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3"><span className="block text-xs text-gray-500 dark:text-gray-400">{label}</span><strong className="block mt-1 text-sm break-words">{String(f?.[key] ?? 'No detectado')}</strong></div>)}</div>
+        <h3 className="font-semibold mt-4">Totales extraídos</h3><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 my-3">{[["Cuota","cuota"],["Consumo","consumo"],["Comisión","comision"],["Impuesto","impuesto"],["Facturado","facturado"],["Estado de cuenta","estadoCuenta"],["Total servicios","totalServicios"],["Descuento","descuento"]].map(([label,key])=><div key={key} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3"><span className="block text-xs text-gray-500 dark:text-gray-400">{label}</span><strong className="block mt-1 text-sm">{String(f?.totales?.[key] ?? 'No detectado')}</strong></div>)}</div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">Servicios detectados: <strong>{vista.totalServicios}</strong> · Vinculados al catálogo: <strong>{vista.enriquecimiento?.encontradas ?? 0}/{vista.enriquecimiento?.total ?? 0}</strong></p>
+        {!guardado && <div className="flex flex-wrap gap-2 mt-5"><button onClick={guardar} disabled={loading || vista.duplicadoAjeno || vista.posibleRegistroAntiguo} className="inline-flex gap-2 items-center px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl"><Save size={18}/> Guardar factura</button><button onClick={()=>{setVista(null);setContenido('');}} disabled={loading} className="sgf-outline"><X size={18}/> Descartar vista previa</button></div>}
+      </section>
+      <section className="sgf-panel"><h2>Servicios extraídos</h2><p className="sgf-subtitle">Revise todas las filas y sus importes. Los datos de titular y unidad proceden del catálogo importado.</p><div className="sgf-table-scroll"><table className="sgf-table"><thead><tr>{['Número','Titular','Unidad','Cuota','Consumo','Comisión','Impuesto','Importe'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{(f?.servicios || []).map((s:any,i:number)=>{const l:any=vinculadas.get(String(s.numero));return <tr key={`${s.numero}-${i}`}><td>{s.numero}</td><td>{l?.NOMBRE_COMPLETO || 'Sin vincular'}</td><td>{l?.UNIDAD || '—'}</td><td>{s.cuota ?? '—'}</td><td>{s.consumo ?? '—'}</td><td>{s.comision ?? '—'}</td><td>{s.impuesto ?? '—'}</td><td>{s.importe ?? '—'}</td></tr>})}</tbody></table>{vista.totalServicios===0 && <p className="sgf-subtitle">No se detectaron servicios en este documento.</p>}</div></section>
+      {!!f?.diagnostics?.length && <details className="sgf-panel"><summary className="cursor-pointer font-semibold">Ver observaciones de lectura</summary><ul className="sgf-guide">{f.diagnostics.map((d:any,i:number)=><li key={i}>{d.message}</li>)}</ul></details>}
+    </>}
+  </div>;
 }

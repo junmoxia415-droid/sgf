@@ -8,6 +8,7 @@ import '../servicios/controlador_servidor.dart';
 import '../widgets/comunes.dart';
 import 'ajustes_pantalla.dart';
 import 'facturas.dart';
+import 'catalogo_lineas.dart';
 import 'importar.dart';
 import 'estadisticas.dart';
 import 'inicio.dart';
@@ -123,6 +124,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               api: api,
               ajustes: widget.ajustes,
               iniciarSesion: _pedirLogin,
+              alCambiarBase: () => widget.alCerrarSesion?.call('Base de datos cambiada. Inicie sesión con una cuenta de la base seleccionada.'),
             ), soloAdmin: true),
         _Area('Facturas', Icons.receipt_long_outlined, Icons.receipt_long, (c) => FacturasPantalla(
               api: api,
@@ -136,6 +138,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               api: api,
               iniciarSesion: _pedirLogin,
             ), permiso: 'importar_excel'),
+        _Area('Datos de líneas', Icons.view_list_outlined, Icons.view_list, (c) => CatalogoLineasPantalla(api: api), permiso: 'importar_excel'),
         _Area('Usuarios', Icons.group_outlined, Icons.group, (c) => UsuariosPantalla(
               api: api,
               iniciarSesion: _pedirLogin,
@@ -197,6 +200,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               child: Row(
                 children: [
                   NavigationRail(
+                    scrollable: true,
                     extended: extendido,
                     minExtendedWidth: 220,
                     selectedIndex: indice,

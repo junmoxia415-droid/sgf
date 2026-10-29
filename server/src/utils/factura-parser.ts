@@ -359,7 +359,7 @@ function parseHeaderTotals(lines: string[]) {
 }
 
 function parseServiceSummaryTotal(sectionLines: string[]) {
-  const totalLine = sectionLines.find((line) => normalizedLine(line).startsWith("total ") || normalizedLine(line) === "total");
+  const totalLine = sectionLines.find((line) => /^(?:total)\s+(?:-?\d[\d,.]*\s+){4,}-?\d[\d,.]*\s*$/i.test(cleanLine(line)));
   if (!totalLine) return null;
   const values = cleanLine(totalLine).match(/[\d.,-]+/g) || [];
   if (values.length < 5 || !values.slice(0, 5).every((v) => moneyLikeToken(v))) return null;
@@ -384,7 +384,7 @@ function parseDiscount(lines: string[]) {
 function chooseTotals(lines: string[], services: ServicioExtraido[], diagnostics: ParserDiagnostic[]) {
   const serviceSum = sumServices(services);
   const header = parseHeaderTotals(lines);
-  const summary = parseServiceSummaryTotal(lines);
+  const summary = parseServiceSummaryTotal(getServiceSection(lines));
   const descuento = parseDiscount(lines);
 
   let chosen: Totales = {
@@ -557,9 +557,9 @@ export function parseFacturaEtcsa(text: string): FacturaExtraida {
     /cuenta\s*:\s*([^\n]+)/i,
   ]) || cliente;
   const direccion = firstMatch(headerSection, [
-    /direccion\s*:\s*([^\n]+)/i,
+    /direcci[oó]n\s*:\s*([^\n]+)/i,
     /(CARRET\s+CTRAL[^\n]*)/i,
-  ]);
+  ]) || firstMatch(normalizePdfText(text), [/direcci[oó]n\s*:\s*([^\n]+)/i]);
   const numeroCliente = firstMatch(normalizedHeader, [
     /numero\s+de\s+cliente\s*:?\s*(\d{5,})/i,
     /no\.?\s*cliente\s*:?\s*(\d{5,})/i,
@@ -569,8 +569,8 @@ export function parseFacturaEtcsa(text: string): FacturaExtraida {
     /no\.?\s*cuenta\s*:?\s*(\d{5,})/i,
   ]);
   const noFactura = firstMatch(normalizedHeader, [
-    /no\.?\s*factura\s*:?\s*(\d{6,})/i,
-    /factura\s*:?\s*(\d{6,})/i,
+    /no\.?\s*factura\s*:?\s*([A-Za-z0-9][A-Za-z0-9-]{5,})/i,
+    /factura\s*:?\s*([A-Za-z0-9][A-Za-z0-9-]{5,})/i,
   ]);
   const fechaEmision = firstMatch(normalizedHeader, [
     /fecha\s+factura\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,

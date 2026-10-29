@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // La aplicacion de escritorio pasa SGF_DATA_DIR para guardar la base de datos en
@@ -35,6 +36,7 @@ function ensureDir() {
  */
 function saveDisk(): boolean {
   if (!db) return false;
+  if (activeTransactions > 0) { scheduleSave(); return false; }
   const tmpPath = `${DB_PATH}.tmp-${process.pid}`;
   try {
     fs.writeFileSync(tmpPath, Buffer.from(db.export()));
@@ -66,7 +68,7 @@ export function flushDisk(): boolean {
 
 /** Evita copiar una base a medio importar o dentro de una transacción. */
 export function flushParaCopia(): boolean {
-  if (batchDepth > 0 || txContext !== null) return false;
+  if (batchDepth > 0 || activeTransactions > 0) return false;
   return flushDisk();
 }
 
@@ -765,7 +767,8 @@ export function isOracleLegacyTablesAvailable(): boolean {
 }
 
 export async function query<T = any>(sql: string, params: Record<string, any> = {}): Promise<T[]> {
-  if (txContext) return (await txContext.all(sql, params)) as T[];
+  const context = transactionContext.getStore();
+  if (context) return (await context.all(sql, params)) as T[];
   if (mode === "oracle" && oraclePool) {
     const oracledb = await import("oracledb");
     const conn = await oraclePool.getConnection();
@@ -779,11 +782,12 @@ export async function query<T = any>(sql: string, params: Record<string, any> = 
   if (mode === "mssql" && mssqlPool) {
     return (await mssqlQuery(sql, params)) as T[];
   }
-  return (await sqliteQuery(sql, params)) as T[];
+  return conTurnoSqlite(async () => (await sqliteQuery(sql, params)) as T[]);
 }
 
 export async function execute(sql: string, params: Record<string, any> = {}): Promise<number> {
-  if (txContext) return txContext.run(sql, params);
+  const context = transactionContext.getStore();
+  if (context) return context.run(sql, params);
   if (mode === "oracle" && oraclePool) {
     const conn = await oraclePool.getConnection();
     try {
@@ -796,7 +800,7 @@ export async function execute(sql: string, params: Record<string, any> = {}): Pr
   if (mode === "mssql" && mssqlPool) {
     return mssqlExecute(sql, params);
   }
-  return sqliteExecute(sql, params);
+  return conTurnoSqlite(() => sqliteExecute(sql, params));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -812,10 +816,19 @@ export async function execute(sql: string, params: Record<string, any> = {}): Pr
 // ella (ver txContext mas arriba).
 // ─────────────────────────────────────────────────────────────────────────────
 
-let txContext: {
-  run: (sql: string, params?: Record<string, any>) => Promise<number>;
-  all: (sql: string, params?: Record<string, any>) => Promise<any[]>;
-} | null = null;
+// El contexto pertenece a cada petición asíncrona; una transacción de otro
+// cliente no debe heredarla. SQLite usa una sola conexión, por lo que también
+// se serializan las operaciones ajenas mientras una transacción esté abierta.
+const transactionContext = new AsyncLocalStorage<DbRunner>();
+let activeTransactions = 0;
+let turnoSqlite: Promise<void> = Promise.resolve();
+async function conTurnoSqlite<T>(fn: () => Promise<T>): Promise<T> {
+  const anterior = turnoSqlite;
+  let liberar!: () => void;
+  turnoSqlite = new Promise<void>(resolve => { liberar = resolve; });
+  await anterior;
+  try { return await fn(); } finally { liberar(); }
+}
 
 export interface DbRunner {
   run: (sql: string, params?: Record<string, any>) => Promise<number>;
@@ -823,10 +836,8 @@ export interface DbRunner {
 }
 
 export async function transaction<T>(fn: (db: DbRunner) => Promise<T>): Promise<T> {
-  if (txContext) {
-    // Anidada: se une a la transaccion en curso.
-    return fn({ run: txContext.run, all: txContext.all });
-  }
+  const actual = transactionContext.getStore();
+  if (actual) return fn(actual);
 
   if (mode === "oracle" && oraclePool) {
     const conn = await oraclePool.getConnection();
@@ -844,16 +855,16 @@ export async function transaction<T>(fn: (db: DbRunner) => Promise<T>): Promise<
         return result.rows || [];
       },
     };
-    txContext = runner;
+    activeTransactions++;
     try {
-      const value = await fn(runner);
+      const value = await transactionContext.run(runner, () => fn(runner));
       await conn.commit();
       return value;
     } catch (error) {
       await conn.rollback();
       throw error;
     } finally {
-      txContext = null;
+      activeTransactions--;
       await conn.close();
     }
   }
@@ -876,28 +887,29 @@ export async function transaction<T>(fn: (db: DbRunner) => Promise<T>): Promise<
         return result.recordset || [];
       },
     };
-    txContext = runner;
+    activeTransactions++;
     try {
-      const value = await fn(runner);
+      const value = await transactionContext.run(runner, () => fn(runner));
       await tx.commit();
       return value;
     } catch (error) {
       await tx.rollback();
       throw error;
     } finally {
-      txContext = null;
+      activeTransactions--;
     }
   }
 
+  return conTurnoSqlite(async () => {
   if (!db) throw new Error("BD no inicializada");
   const runner: DbRunner = {
     run: async (sql, params = {}) => sqliteExecute(sql, params),
     all: async (sql, params = {}) => sqliteQuery(sql, params),
   };
   db.run("BEGIN TRANSACTION");
-  txContext = runner;
+  activeTransactions++;
   try {
-    const value = await fn(runner);
+    const value = await transactionContext.run(runner, () => fn(runner));
     db.run("COMMIT");
     scheduleSave();
     return value;
@@ -909,8 +921,9 @@ export async function transaction<T>(fn: (db: DbRunner) => Promise<T>): Promise<
     }
     throw error;
   } finally {
-    txContext = null;
+    activeTransactions--;
   }
+  });
 }
 
 export async function pingDb() {

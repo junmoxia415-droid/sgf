@@ -38,7 +38,15 @@ try {
   await page.getByRole('button',{name:'Usuarios',exact:true}).click(); await page.getByText('operador_ci',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Importar Excel',exact:true}).click(); await page.locator('#excel-input').setInputFiles(path.join(raiz,'client/test/fixtures/lineas-ficticias.xlsx'));
   await page.getByRole('button',{name:'1. Analizar Excel'}).click(); await page.getByRole('button',{name:/2. Importar a/}).waitFor(); await page.getByRole('button',{name:/2. Importar a/}).click(); await page.getByText('Importación completada').first().waitFor({timeout:30000});
-  await page.getByRole('button',{name:'Facturas',exact:true}).click(); await page.locator('input[type=file]').setInputFiles(path.join(raiz,'client/test/fixtures/factura-ficticia.pdf')); await page.getByRole('button',{name:'Procesar Factura'}).click(); await page.getByText('Servicios detectados',{exact:true}).waitFor({timeout:30000});
+  await page.getByRole('button',{name:'Datos de líneas',exact:true}).click(); await page.getByText('Persona Ficticia').first().waitFor();
+  await page.getByRole('button',{name:'Facturas',exact:true}).click(); await page.locator('input[type=file]').setInputFiles(path.join(raiz,'client/test/fixtures/factura-ficticia.pdf')); await page.getByRole('button',{name:'Analizar factura'}).click(); await page.getByText('Vista previa · sin guardar').waitFor({timeout:30000});
+  let token=await page.evaluate(()=>sessionStorage.getItem('sgf_auth_token'));
+  let facturas=await (await fetch(`${base}/api/facturas`,{headers:{Authorization:`Bearer ${token}`}})).json();
+  assert.equal(facturas.meta.total,0,'Analizar no debe guardar');
+  page.once('dialog', dialog=>dialog.accept());
+  await page.getByRole('button',{name:'Guardar factura'}).click(); await page.getByText('Guardada',{exact:true}).waitFor({timeout:30000});
+  facturas=await (await fetch(`${base}/api/facturas`,{headers:{Authorization:`Bearer ${token}`}})).json();
+  assert.equal(facturas.meta.total,1,'Guardar debe crear una factura');
   await page.getByRole('button',{name:'Estadísticas',exact:true}).click(); await page.getByText('Consumo por mes').waitFor(); await page.getByText('Detalle por línea').waitFor(); await page.getByText('Persona Ficticia').first().waitFor();
   await page.getByRole('button',{name:'Cerrar sesión'}).click(); await page.getByText('Bienvenido a SGF').waitFor(); await login('operador_ci');
   assert.equal(await page.getByRole('button',{name:'Usuarios',exact:true}).count(),0,'Usuario normal no debe ver usuarios');

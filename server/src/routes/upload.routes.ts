@@ -1,8 +1,5 @@
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   execute,
   flushDisk,
@@ -27,36 +24,7 @@ import {
 } from "../utils/factura-parser.js";
 import { enriquecerLineasFactura } from "../utils/enriquecimiento.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_DATA_DIR = path.resolve(__dirname, "../../../server-data");
-
-let pdfParseFn: any = null;
-async function getPdfLib() {
-  if (!pdfParseFn) {
-    const pdf = await import("pdf-parse");
-    pdfParseFn = pdf.default || pdf;
-  }
-  return pdfParseFn;
-}
-
-/**
- * Extrae el texto de un PDF.
- *
- * IMPORTANTE: pdf-parse/pdf.js REUTILIZA Y MODIFICA el buffer que se le pasa.
- * Al pasarle el mismo Buffer de la peticion, dos sintomas aparecian:
- *   - la primera extraccion de cada proceso fallaba ("bad XRef entry"),
- *   - y en algunas secuencias devolvia el texto de la factura ANTERIOR.
- * Lo comprobamos: un PDF sin texto devolvia la factura previa completa. Por eso
- * se entrega siempre una COPIA con su propio ArrayBuffer, que es lo unico que
- * dio resultados correctos y repetibles en todos los casos.
- */
-async function extraerTextoPdf(pdfBuffer: Buffer): Promise<string> {
-  const pdfFn = await getPdfLib();
-  const copia = Uint8Array.from(pdfBuffer);
-  const pdfData = await pdfFn(copia);
-  return String(pdfData?.text || "");
-}
-
+import { extraerTextoPdf } from "../utils/pdf-text.js";
 
 /**
  * Normaliza el periodo de consumo para poder compararlo entre facturas:
@@ -126,10 +94,11 @@ async function detectarDuplicadosFactura(factura: FacturaExtraida, usuarioActual
   const repeatedSamePeriod: Array<Record<string, any>> = [];
   const repeatedOtherPeriod: Array<Record<string, any>> = [];
 
-  if (serviceNumbers.length > 0) {
-    const placeholders = serviceNumbers.map((_, index) => `:s${index}`).join(", ");
-    const params: Record<string, any> = { nf: factura.noFactura || "" };
-    serviceNumbers.forEach((numero, index) => { params[`s${index}`] = numero; });
+  for (let inicio = 0; inicio < serviceNumbers.length; inicio += 200) {
+    const grupo = serviceNumbers.slice(inicio, inicio + 200);
+    const placeholders = grupo.map((_, index) => `:s${index}`).join(", ");
+    const params: Record<string, any> = { nf: factura.noFactura || "", uid: usuarioActual };
+    grupo.forEach((numero, index) => { params[`s${index}`] = numero; });
 
     const rows = await query<any>(
       `SELECT
@@ -143,6 +112,7 @@ async function detectarDuplicadosFactura(factura: FacturaExtraida, usuarioActual
        FROM SGF_SERVICIOS s
        JOIN SGF_FACTURAS f ON f.ID = s.FACTURA_ID
        WHERE s.NUMERO_SERVICIO IN (${placeholders})
+         AND f.USER_ID = :uid
          AND (:nf = '' OR f.NO_FACTURA <> :nf)
        ORDER BY f.CREATED_AT DESC`,
       params,
@@ -206,8 +176,7 @@ export async function limpiarFacturaExistente(noFactura: string, userId: string)
     return;
   }
 
-  try {
-    // Solo se reemplazan las facturas del MISMO usuario: antes se borraban las
+  // Solo se reemplazan las facturas del MISMO usuario: antes se borraban las
     // de cualquier usuario con el mismo numero de factura (reemplazo cruzado).
     const existentes = await query<any>(
       userId
@@ -224,16 +193,9 @@ export async function limpiarFacturaExistente(noFactura: string, userId: string)
     // Solo limpiamos PCELULAR.CARGARARCH si estamos en Oracle, donde
     // esa tabla existe. En SQL Server o SQLite no existe ese esquema
     // y cualquier intento de DELETE fallaria con error de tabla inexistente.
-    if (isOracleLegacyTablesAvailable()) {
-      try {
-        await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA LIKE :t`, { t: `Factura ${noFactura}%` });
-      } catch (error: any) {
-        console.warn(`[SGF] No se pudo limpiar PCELULAR.CARGARARCH: ${error.message}`);
-      }
+    if (existentes.length > 0 && isOracleLegacyTablesAvailable()) {
+      await execute(`DELETE FROM PCELULAR.CARGARARCH WHERE TIRA LIKE :t`, { t: `Factura ${noFactura} - %` });
     }
-  } catch {
-    // ignore cleanup issues
-  }
 }
 
 /**
@@ -353,7 +315,7 @@ async function guardarEnCargararch(factura: FacturaExtraida) {
       );
       guardados.push(servicio.numero);
     } catch (error: any) {
-      console.error(`[SGF] Error guardando servicio ${servicio.numero}:`, error.message);
+      throw new Error(`No se pudo guardar un servicio en CARGARARCH: ${error.message}`);
     }
   }
 
@@ -368,7 +330,18 @@ async function guardarEnCargararch(factura: FacturaExtraida) {
  * era siempre vacio.
  */
 async function enriquecerLineas(factura: FacturaExtraida): Promise<Awaited<ReturnType<typeof enriquecerLineasFactura>>> {
-  return enriquecerLineasFactura(factura.servicios.map((servicio) => servicio.numero));
+  return enriquecerLineasFactura(factura.servicios.map((servicio) => servicio.numero), factura.servicios.length);
+}
+
+// Las decisiones de duplicado y el guardado de PDF se ejecutan en orden:
+// dos cargas simultáneas no pueden comprobar "no existe" y guardarse a la vez.
+let turnoCarga: Promise<void> = Promise.resolve();
+async function conTurnoCarga<T>(fn: () => Promise<T>): Promise<T> {
+  const anterior = turnoCarga;
+  let liberar!: () => void;
+  turnoCarga = new Promise<void>(resolve => { liberar = resolve; });
+  await anterior;
+  try { return await fn(); } finally { liberar(); }
 }
 
 export async function handleUploadFactura(req: AuthenticatedRequest, res: ServerResponse) {
@@ -379,9 +352,12 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     return sendJson(res, 400, { success: false, error: "Cuerpo demasiado grande." });
   }
 
+  return conTurnoCarga(async () => {
   const filename = body.filename || "factura.pdf";
   const base64Data = body.file || body.data || "";
-  const forceDuplicate = Boolean(body.forceDuplicate || body.force);
+  const analizar = body.accion === "analizar";
+  const guardar = body.accion === "guardar";
+  if (!analizar && !guardar) return sendJson(res, 400, { success: false, error: "Primero analice el PDF y confirme expresamente si quiere guardar la factura." });
   if (!base64Data) {
     return sendJson(res, 400, { success: false, error: "No se recibio el archivo PDF. Envie { file: 'base64...' }" });
   }
@@ -397,17 +373,11 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     return sendJson(res, 400, { success: false, error: "PDF demasiado grande (>15MB)." });
   }
 
-  const tmpDir = path.join(SERVER_DATA_DIR, "tmp");
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const tmpFile = path.join(tmpDir, `factura_${Date.now()}.pdf`);
-  fs.writeFileSync(tmpFile, pdfBuffer);
-
   const startedAt = Date.now();
 
   try {
     // Comprobar que es realmente un PDF antes de darselo al parser
     if (!pdfBuffer.subarray(0, 5).toString("latin1").startsWith("%PDF-")) {
-      try { fs.unlinkSync(tmpFile); } catch {}
       return sendJson(res, 400, { success: false, error: "El archivo no es un PDF valido (falta la cabecera %PDF-)." });
     }
 
@@ -415,7 +385,6 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     try {
       texto = await extraerTextoPdf(pdfBuffer);
     } catch (error: any) {
-      try { fs.unlinkSync(tmpFile); } catch {}
       return sendJson(res, 422, {
         success: false,
         error: `No se pudo leer el PDF (${error.message}). Si es un documento escaneado, guardelo como PDF con texto o suba el original.`,
@@ -423,7 +392,6 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     }
 
     if (!texto || texto.length < 50) {
-      try { fs.unlinkSync(tmpFile); } catch {}
       return sendJson(res, 422, {
         success: false,
         error: "No se pudo extraer texto del PDF. Puede que sea una imagen escaneada.",
@@ -452,7 +420,7 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
         factura.diagnostics.push({
           level: "warn",
           code: "factura-ya-cargada",
-          message: `La factura ${factura.noFactura} ya estaba cargada; se va a reemplazar.`,
+          message: `La factura ${factura.noFactura} ya estaba cargada; solo se sustituirá si lo confirma.`,
         });
       }
       const numeroParte = situacion.yaExiste ? situacion.parte : situacion.parte;
@@ -478,54 +446,46 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     }
 
     const duplicateSummary = await detectarDuplicadosFactura(factura, req.currentUser?.id || "");
+    const prefijoAntiguo = factura.noFactura.match(/^(\d{6,})[A-Za-z]/)?.[1];
+    const anteriores = prefijoAntiguo ? await query<any>(
+      `SELECT ID FROM SGF_FACTURAS WHERE NO_FACTURA = :nf`, {nf: prefijoAntiguo},
+    ) : [];
+    const posibleRegistroAntiguo = anteriores.length > 0;
 
-    // Forzar sobre una factura de OTRA persona: solo un administrador, y queda
-    // registrado en el historial. Antes se borraba la factura del otro sin avisar.
-    if (forceDuplicate && duplicateSummary.sameInvoiceOtrosUsuarios.length > 0) {
-      const esAdmin = req.currentUser?.role === "admin";
-      if (!esAdmin) {
-        try { fs.unlinkSync(tmpFile); } catch {}
-        return sendJson(res, 409, {
-          success: false,
-          error:
-            "Ese numero de factura ya lo ha cargado otro usuario. Solo un administrador puede reemplazarlo; " +
-            "si la factura es suya, compruebe el numero o pida ayuda al administrador.",
-          data: {
-            duplicateWarning: true,
-            propietarioDistinto: true,
-            duplicates: {
-              sameInvoiceOtrosUsuarios: duplicateSummary.sameInvoiceOtrosUsuarios.map((d) => ({
-                no_factura: d.no_factura,
-                periodo_consumo: d.periodo_consumo,
-                created_at: d.created_at,
-              })),
-            },
-          },
-        });
-      }
-      await auditLog(
-        req,
-        "reemplazo_factura_de_otro_usuario",
-        "factura",
-        factura.noFactura,
-        "warn",
-        `El administrador reemplaza la factura ${factura.noFactura} de otro usuario (forzado).`,
-      );
-      factura.diagnostics.push({
-        level: "warn",
-        code: "reemplazo-de-otro-usuario",
-        message: "Esta factura reemplaza una cargada por otro usuario; la accion ha quedado registrada.",
+
+    // La vista previa no modifica ninguna tabla. Los detalles de facturas de
+    // otros usuarios no se devuelven a quien no tiene permiso para editarlas.
+    const deOtraPersona = duplicateSummary.sameInvoiceOtrosUsuarios.length > 0;
+    if (analizar) {
+      const enriquecimiento = await enriquecerLineas(factura);
+      const propios = duplicateSummary.sameInvoice.filter(d => d.user_id === req.currentUser?.id);
+      return sendJson(res, 200, { success: true,
+        message: "Análisis terminado. Todavía no se ha guardado la factura.",
+        data: {
+          estado: "vista_previa", factura: { ...factura, processingMs: Date.now() - startedAt },
+          totalServicios: factura.servicios.length, extraccionVacia: factura.servicios.length === 0,
+          requiereRevision: factura.requiresReview, enriquecimiento,
+          duplicadoPropio: propios.length > 0, duplicadoAjeno: deOtraPersona, posibleRegistroAntiguo,
+          periodo: { clave: factura.periodoClave || "", parte: factura.periodoParte ?? null,
+            facturasPorMes: esperadasPorMes, cargadasEsteMes: situacion.facturasDelPeriodo },
+        },
       });
     }
-
+    // No se debe crear otra copia ni borrar una factura de otra persona. El
+    // reemplazo cruzado requiere un flujo explícito que todavía no existe.
+    if (posibleRegistroAntiguo) return sendJson(res, 409, {success:false,
+      error:"Hay una factura antigua con número incompleto que podría corresponder a este PDF. Revise el historial con el administrador; no se ha reemplazado ni duplicado."});
+    if (deOtraPersona) return sendJson(res, 409, { success:false,
+      error:"Esta factura pertenece a otra cuenta. No se ha guardado ni sustituido; consulte al administrador." });
+    if (duplicateSummary.sameInvoice.length > 0 && body.confirmarSustitucion !== true) {
+      return sendJson(res, 409, { success:false, error:"La factura ya existe. Confirme expresamente si quiere sustituirla.", data:{requiereConfirmarSustitucion:true} });
+    }
+    if (factura.servicios.length === 0 && body.confirmarSinServicios !== true) {
+      return sendJson(res, 422, { success:false, error:"No se detectaron servicios. Revise el PDF; no se ha guardado la factura.", data:{requiereConfirmarSinServicios:true} });
+    }
     if (duplicateSummary.sameInvoice.length > 0) {
-      // Reenviar una factura es la forma de CORREGIRLA (si la mandaron mal): se
-      // sustituye la anterior por la nueva, sin pedir nada mas.
-      factura.diagnostics.push({
-        level: "info",
-        code: "factura-sustituida",
-        message: `La factura ${factura.noFactura} ya estaba cargada y se ha SUSTITUIDO por esta version. Los datos anteriores se han descartado.`,
-      });
+      factura.diagnostics.push({ level:"warn", code:"factura-sustituida",
+        message:`La factura ${factura.noFactura} se ha sustituido después de su confirmación.` });
     }
 
     if (duplicateSummary.repeatedSamePeriod.length > 0) {
@@ -566,7 +526,6 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
     flushDisk();
     const enriquecimiento = await enriquecerLineas(factura);
 
-    try { fs.unlinkSync(tmpFile); } catch {}
 
     await auditLog(
       req,
@@ -579,14 +538,14 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
 
     const extraccionVacia = factura.servicios.length === 0;
     const avisoExtraccion = extraccionVacia
-      ? " ATENCION: no se han podido extraer servicios del PDF; la factura se ha guardado solo con la cabecera y queda marcada para revisar."
+      ? " ATENCIÓN: ha confirmado guardar solo la cabecera; no se pudieron extraer servicios y queda marcada para revisión."
       : factura.requiresReview
-        ? ` Aviso: extraccion con confianza ${factura.confidence}/100 (${factura.reviewLabel}); conviene revisarla.`
+        ? " Aviso: la extracción requiere revisión manual."
         : "";
 
     return sendJson(res, 200, {
       success: true,
-      message: `Factura procesada: ${guardados.length} servicios en CARGARARCH (Oracle), ${factura.servicios.length} en SGF_SERVICIOS.${avisoExtraccion}`,
+      message: `Factura guardada: ${factura.servicios.length} servicios en SGF.${avisoExtraccion}`,
       data: {
         sgfFacturaId,
         factura: {
@@ -616,9 +575,9 @@ export async function handleUploadFactura(req: AuthenticatedRequest, res: Server
       },
     });
   } catch (error: any) {
-    try { fs.unlinkSync(tmpFile); } catch {}
     return sendJson(res, 500, { success: false, error: `Error procesando PDF: ${error.message}` });
   }
+  });
 }
 
 async function readJsonBodyLarge(req: AuthenticatedRequest, maxBytes: number): Promise<any> {

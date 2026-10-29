@@ -42,6 +42,8 @@ void main() {
     final servidor = ControladorServidor(ajustes: ajustes, api: api);
     await tester.pumpWidget(AppPrueba(ajustes: ajustes, api: api, servidor: servidor));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Ajustes y guía'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ajustes y guía'));
     await tester.pumpAndSettle();
     expect(Theme.of(tester.element(find.text('Tema oscuro'))).brightness, Brightness.light);
@@ -81,6 +83,8 @@ void main() {
     await tester.pumpWidget(AppPrueba(ajustes: ajustes, api: api, servidor: servidor));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Ajustes y guía'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ajustes y guía'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

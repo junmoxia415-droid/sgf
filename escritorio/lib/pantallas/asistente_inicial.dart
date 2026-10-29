@@ -361,7 +361,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
             children: [
               _campo(_adminNombre, 'Nombre y apellidos'),
               _campo(_adminUsuario, 'Usuario para entrar', ayuda: 'Por ejemplo: admin'),
-              _campo(_adminClave, 'Contraseña', ayuda: 'Al menos 6 caracteres', oculto: true),
+              _campo(_adminClave, 'Contraseña', ayuda: 'Al menos 8 caracteres', oculto: true),
               _campo(_adminClave2, 'Repita la contraseña', oculto: true),
             ],
           ),

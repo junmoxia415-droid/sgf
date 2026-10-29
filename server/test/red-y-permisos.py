@@ -32,12 +32,17 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
                 if call('/api/health')[0] == 200: break
             except OSError: time.sleep(.1)
         else: raise RuntimeError('El servidor no arrancó')
-        setup = {'username':'administrador_ci','name':'Administrador ficticio','password':'para-pruebas-123'}
+        setup = {'username':'administrador_ci','name':'Administrador ficticio','password':' para-pruebas-123 '}
         expect(403, call('/api/setup/admin','POST',setup,host=host_lan))
         expect(403, call('/api/setup/admin','POST',setup))
         expect(403, call('/api/db/config',host=host_lan))
         token = expect(201, call('/api/setup/admin','POST',setup,{'x-sgf-console-token':env['SGF_CONSOLE_TOKEN']}))['token']
         adm={'Authorization':'Bearer '+token}
+        # El asistente guarda los espacios literalmente; el login debe aceptar
+        # el mismo valor y rechazar una variante sin ellos.
+        token = expect(200, call('/api/auth/login','POST',{'username':'administrador_ci','password':' para-pruebas-123 '},host=host_lan))['token']
+        adm={'Authorization':'Bearer '+token}
+        expect(401, call('/api/auth/login','POST',{'username':'administrador_ci','password':'para-pruebas-123'},host=host_lan))
         expect(403, call('/api/panel/estado',headers={'x-sgf-console-token':env['SGF_CONSOLE_TOKEN']},host=host_lan))
         expect(409, call('/api/setup/admin','POST',setup,{'x-sgf-console-token':env['SGF_CONSOLE_TOKEN']}))
         user = expect(201, call('/api/users','POST',{'username':'operador_ci','name':'Operador ficticio','password':'para-pruebas-123','role':'usuario'},adm,host=host_lan))
@@ -52,6 +57,7 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
         expect(403,call('/api/users','GET',headers=usr,host=host_lan))
         expect(403,call('/api/users','POST',setup,usr,host=host_lan))
         expect(403,call('/api/lineas?q=555',headers=usr,host=host_lan))
+        expect(403,call('/api/lineas/catalogo',headers=usr,host=host_lan))
         expect(403,call('/api/facturas/stats',headers=usr,host=host_lan))
         expect(403,call('/api/inicio/resumen',headers=usr,host=host_lan))
         resumen = expect(200,call('/api/inicio/resumen',headers=adm,host=host_lan))
@@ -64,6 +70,7 @@ with tempfile.TemporaryDirectory(prefix='sgf-lan-test-') as data:
         # El servidor consulta permisos actuales en cada petición, sin esperar a otro login.
         expect(200,call('/api/estadisticas/meses',headers=usr,host=host_lan))
         expect(200,call('/api/import/tables',headers=usr,host=host_lan))
+        expect(200,call('/api/lineas/catalogo',headers=usr,host=host_lan))
         actual = expect(200,call('/api/auth/me',headers=usr,host=host_lan))
         assert set(actual['permisos']) == {'ver_estadisticas','importar_excel','editar_facturas'}
         assert call('/api/facturas/123','DELETE',headers=usr,host=host_lan)[0] != 403

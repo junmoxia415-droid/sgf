@@ -58,7 +58,7 @@ class _FacturasPantallaState extends State<FacturasPantalla> with SingleTickerPr
         Cabecera(
           titulo: 'Facturas',
           descripcion: 'Suelte los PDF aquí o búsquelos en el equipo. El sistema lee el texto, guarda la factura y '
-              'cruza las líneas con el Excel importado.',
+              'cruza las líneas con el Excel importado; usted decide si la guarda.',
           acciones: [
             OutlinedButton.icon(
               onPressed: () => _tabs.index = 1,
@@ -121,7 +121,7 @@ class _ProcesarState extends State<_Procesar> {
       final nombre = archivo.path.split(Platform.pathSeparator).last;
       try {
         final bytes = await archivo.readAsBytes();
-        final r = await widget.api.subirFactura(bytes, nombre);
+        final r = await widget.api.subirFactura(bytes, nombre, guardar: false);
         final datos = r['data'] as Map<String, dynamic>? ?? {};
         final factura = datos['factura'] as Map<String, dynamic>? ?? {};
         final enriq = datos['enriquecimiento'] as Map<String, dynamic>? ?? {};
@@ -138,10 +138,10 @@ class _ProcesarState extends State<_Procesar> {
               servicios: (datos['totalServicios'] ?? 0) as int? ?? 0,
               vinculadas: (enriq['encontradas'] ?? 0) as int? ?? 0,
               totalLineas: (enriq['total'] ?? 0) as int? ?? 0,
-              confianza: ((factura['confidence'] ?? 0) as num).toInt(),
               revisar: datos['requiereRevision'] == true || datos['extraccionVacia'] == true,
               parteDelMes: _textoParteDelMes(datos),
-              sustitucion: _avisoDe(datos, 'factura-sustituida'),
+              datos: datos,
+              bytes: bytes,
             ),
           );
         });
@@ -159,7 +159,6 @@ class _ProcesarState extends State<_Procesar> {
               mensaje: e.codigo == 409
                   ? '${e.mensaje}\n\nSi es correcto, use «Cargar de todas formas» para forzar la carga.'
                   : e.mensaje,
-              archivoForzable: e.codigo == 409 ? archivo : null,
             ),
           );
         });
@@ -168,39 +167,84 @@ class _ProcesarState extends State<_Procesar> {
     if (mounted) setState(() => _procesando = false);
   }
 
-  /// Vuelve a subir la factura rechazada por duplicado, esta vez forzando.
-  Future<void> _forzar(File archivo) async {
-    final nombre = archivo.path.split(Platform.pathSeparator).last;
+  Future<void> _guardar(_Resultado resultado) async {
+    final datos = resultado.datos!;
+    if (datos['posibleRegistroAntiguo'] == true) {
+      avisar(context, 'Hay un registro anterior con número incompleto. Revise el historial con un administrador.', tipo: TipoAviso.aviso);
+      return;
+    }
+    if (datos['duplicadoAjeno'] == true) {
+      avisar(context, 'Esta factura pertenece a otra cuenta. No se ha sustituido; consulte al administrador.', tipo: TipoAviso.aviso);
+      return;
+    }
+    final duplicada = datos['duplicadoPropio'] == true;
+    final vacia = datos['extraccionVacia'] == true;
+    final seguro = await confirmar(context,
+      titulo: duplicada ? '¿Sustituir la factura anterior?' : '¿Guardar esta factura?',
+      mensaje: (duplicada ? 'Esta factura ya existe y se sustituirán sus datos anteriores. ' : '') +
+          (vacia ? 'No se detectó ningún servicio: se guardará solamente la cabecera para revisión. ' : '') +
+          'Revise los datos extraídos antes de continuar.',
+      textoConfirmar: duplicada ? 'Sí, sustituir' : 'Guardar factura',
+      destructivo: duplicada,
+    );
+    if (!seguro || !mounted) return;
     setState(() => _procesando = true);
     try {
-      final bytes = await archivo.readAsBytes();
-      final r = await widget.api.subirFactura(bytes, nombre, forzar: true);
-      final datos = r['data'] as Map<String, dynamic>? ?? {};
-      final factura = datos['factura'] as Map<String, dynamic>? ?? {};
+      final r = await widget.api.subirFactura(resultado.bytes!, resultado.archivo,
+        guardar: true, confirmarSustitucion: duplicada, confirmarSinServicios: vacia);
       if (!mounted) return;
-      setState(() {
-        _resultados.removeWhere((x) => !x.exito && x.archivo == nombre);
-        _resultados.insert(
-          0,
-          _Resultado(
-            archivo: nombre,
-            exito: true,
-            mensaje: (r['message'] ?? 'Factura cargada forzando el duplicado.').toString(),
-            noFactura: (datos['noFactura'] ?? factura['noFactura'] ?? '').toString(),
-            cliente: (datos['cliente'] ?? factura['cliente'] ?? '').toString(),
-            servicios: (datos['totalServicios'] ?? 0) as int? ?? 0,
-            confianza: ((factura['confidence'] ?? 0) as num).toInt(),
-            revisar: datos['requiereRevision'] == true || datos['extraccionVacia'] == true,
-          ),
-        );
-      });
+      setState(() { resultado.guardado = true; resultado.mensaje = (r['message'] ?? 'Factura guardada.').toString(); });
+      avisar(context, 'Factura guardada.');
     } on ApiError catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _resultados.insert(0, _Resultado(archivo: nombre, exito: false, mensaje: e.mensaje));
-      });
+      if (mounted) avisar(context, e.mensaje, tipo: TipoAviso.error);
+    } finally {
+      if (mounted) setState(() => _procesando = false);
     }
-    if (mounted) setState(() => _procesando = false);
+  }
+
+  Future<void> _verDatos(_Resultado resultado) async {
+    final factura = (resultado.datos?['factura'] as Map?) ?? {};
+    final servicios = (factura['servicios'] as List?) ?? [];
+    final enriq = (resultado.datos?['enriquecimiento'] as Map?) ?? {};
+    final vinculadas = <String, Map>{};
+    for (final linea in (enriq['lineas'] as List? ?? [])) {
+      if (linea is Map) vinculadas['${linea['NUMERO']}'] = linea;
+    }
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Datos extraídos del PDF'),
+      content: SizedBox(width: 1000, child: SingleChildScrollView(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 28, runSpacing: 12, children: [
+            for (final campo in <(String, String)>[
+              ('Factura', 'noFactura'), ('Cliente', 'cliente'), ('Cuenta', 'cuenta'),
+              ('Número de cliente', 'numeroCliente'), ('Número de cuenta', 'numeroCuenta'),
+              ('Dirección', 'direccion'), ('Emisión', 'fechaEmision'), ('Vencimiento', 'fechaVencimiento'),
+              ('Periodo', 'periodoConsumo'), ('Código de pago', 'codigoPago'),
+              ('Moneda', 'moneda'), ('NIT', 'nit'), ('Total a pagar', 'totalPagar'),
+            ]) Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(campo.$1, style: Theme.of(context).textTheme.labelMedium),
+              SelectableText('${factura[campo.$2] ?? 'No detectado'}'),
+            ]),
+          ]),
+          const SizedBox(height: 20),
+          Text('Totales extraídos', style: Theme.of(context).textTheme.titleMedium),
+          Wrap(spacing: 24, runSpacing: 10, children: [
+            for (final campo in <(String, String)>[('Cuota', 'cuota'), ('Consumo', 'consumo'), ('Comisión', 'comision'), ('Impuesto', 'impuesto'), ('Facturado', 'facturado'), ('Estado de cuenta', 'estadoCuenta'), ('Total servicios', 'totalServicios'), ('Descuento', 'descuento')])
+              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text(campo.$1, style: Theme.of(context).textTheme.labelMedium), SelectableText('${(factura['totales'] as Map?)?[campo.$2] ?? 'No detectado'}')]),
+          ]),
+          const SizedBox(height: 20),
+          Text('Servicios extraídos (${servicios.length})', style: Theme.of(context).textTheme.titleMedium),
+          if (servicios.isEmpty) const Text('No se detectaron servicios en este documento.')
+          else SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+            columns: [for (final titulo in ['Número', 'Titular', 'Unidad', 'Cuota', 'Consumo', 'Comisión', 'Impuesto', 'Importe']) DataColumn(label: Text(titulo))],
+            rows: [for (final valor in servicios) if (valor is Map) DataRow(cells: [
+              for (final dato in [valor['numero'], vinculadas['${valor['numero']}']?['NOMBRE_COMPLETO'], vinculadas['${valor['numero']}']?['UNIDAD'], valor['cuota'], valor['consumo'], valor['comision'], valor['impuesto'], valor['importe']]) DataCell(Text('${dato ?? '—'}')),
+            ])],
+          )),
+        ],
+      ))),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
+    ));
   }
 
   /// "1 de 2 del mes" a partir de lo que devuelve el servidor.
@@ -214,16 +258,6 @@ class _ProcesarState extends State<_Procesar> {
     final clave = (p['clave'] ?? '').toString();
     if (parte == null) return 'Mes $clave: $cargadas de $esperadas facturas';
     return 'Mes $clave: factura $parte de $esperadas';
-  }
-
-  /// Primer diagnóstico con ese código, si existe.
-  static String? _avisoDe(Map<String, dynamic> datos, String codigo) {
-    final factura = datos['factura'] as Map<String, dynamic>? ?? {};
-    final lista = (factura['diagnostics'] as List<dynamic>?) ?? const [];
-    for (final d in lista) {
-      if ((d as Map<String, dynamic>)['code'] == codigo) return (d['message'] ?? '').toString();
-    }
-    return null;
   }
 
   Future<void> _buscarArchivos() async {
@@ -309,9 +343,9 @@ class _ProcesarState extends State<_Procesar> {
               const SizedBox(height: 14),
               const Aviso(
                 titulo: 'Qué ocurre al procesar un PDF',
-                mensaje: '1) Se lee el texto del documento.  2) Se guarda la factura con su número, cliente e importes.  '
-                    '3) Cada número de servicio se busca en el Excel de líneas para mostrar titular, unidad y cargo.  '
-                    'Si un PDF ya estaba registrado, el sistema avisa en lugar de duplicarlo.',
+                mensaje: '1) El servidor lee el documento y cruza los servicios con el Excel. '
+                    '2) Revise los datos extraídos. 3) Decida si desea guardar o descartar la factura. '
+                    'Si ya existe, la sustitución requiere su confirmación.',
                 tipo: TipoAviso.info,
               ),
             ],
@@ -357,7 +391,11 @@ class _ProcesarState extends State<_Procesar> {
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                           itemCount: _resultados.length,
                           separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) => _TarjetaResultado(resultado: _resultados[i], onForzar: _forzar),
+                          itemBuilder: (context, i) => _TarjetaResultado(
+                            resultado: _resultados[i], procesando: _procesando,
+                            onGuardar: _guardar, onVer: _verDatos,
+                            onDescartar: () => setState(() => _resultados.removeAt(i)),
+                          ),
                         ),
                 ),
               ],
@@ -379,36 +417,35 @@ class _Resultado {
     this.servicios = 0,
     this.vinculadas = 0,
     this.totalLineas = 0,
-    this.confianza = 0,
     this.revisar = false,
-    this.archivoForzable,
     this.parteDelMes,
-    this.sustitucion,
+    this.bytes,
+    this.datos,
   });
 
   final String archivo;
   final bool exito;
-  final String mensaje;
+  String mensaje;
+  final List<int>? bytes;
+  final Map<String, dynamic>? datos;
+  bool guardado = false;
   final String noFactura;
   final String cliente;
   final int servicios;
   final int vinculadas;
   final int totalLineas;
-  final int confianza;
-  /// Si la carga se rechazó porque la factura es de otro usuario, el archivo queda
-  /// aquí para poder reintentarlo sin volver a buscarlo.
-  final File? archivoForzable;
   /// "Mes 2026-09: factura 2 de 2", si el servidor lo indica.
   final String? parteDelMes;
-  /// Aviso de que esta carga ha SUSTITUIDO a una factura anterior.
-  final String? sustitucion;
   final bool revisar;
 }
 
 class _TarjetaResultado extends StatelessWidget {
-  const _TarjetaResultado({required this.resultado, required this.onForzar});
+  const _TarjetaResultado({required this.resultado, required this.procesando, required this.onGuardar, required this.onVer, required this.onDescartar});
   final _Resultado resultado;
-  final Future<void> Function(File archivo) onForzar;
+  final bool procesando;
+  final Future<void> Function(_Resultado resultado) onGuardar;
+  final Future<void> Function(_Resultado resultado) onVer;
+  final VoidCallback onDescartar;
 
   @override
   Widget build(BuildContext context) {
@@ -428,29 +465,12 @@ class _TarjetaResultado extends StatelessWidget {
               Icon(r.exito ? Icons.check_circle : Icons.error, color: r.exito ? const Color(0xFF1B7F4B) : const Color(0xFFB3261E), size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text(r.archivo, style: const TextStyle(fontWeight: FontWeight.w700))),
-              if (r.exito && r.confianza > 0)
-                Etiqueta(
-                  texto: 'Lectura ${r.confianza}%',
-                  color: r.confianza >= 85 ? const Color(0xFF1B7F4B) : const Color(0xFFB8730B),
-                ),
+              if (r.exito)
+                Etiqueta(texto: r.guardado ? 'Guardada' : 'Sin guardar', color: r.guardado ? const Color(0xFF1B7F4B) : const Color(0xFF1D6FB8)),
             ],
           ),
           const SizedBox(height: 6),
           Text(r.mensaje, style: const TextStyle(fontSize: 13.5, height: 1.4)),
-          if (r.sustitucion != null) ...[
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.published_with_changes, size: 16, color: Color(0xFF1D6FB8)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(r.sustitucion!,
-                      style: const TextStyle(fontSize: 12.5, height: 1.35, color: Color(0xFF1D6FB8))),
-                ),
-              ],
-            ),
-          ],
           if (r.parteDelMes != null) ...[
             const SizedBox(height: 6),
             Row(
@@ -461,13 +481,19 @@ class _TarjetaResultado extends StatelessWidget {
               ],
             ),
           ],
-          if (r.archivoForzable != null) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => onForzar(r.archivoForzable!),
-              icon: const Icon(Icons.published_with_changes, size: 18),
-              label: const Text('Cargar de todas formas'),
-            ),
+          if (r.exito && r.datos != null) ...[
+            const SizedBox(height: 8),
+            if (r.datos!['duplicadoPropio'] == true && !r.guardado)
+              const Text('Esta factura ya existe. Solo se sustituirá si lo confirma.', style: TextStyle(color: Color(0xFFB8730B))),
+            if (r.datos!['posibleRegistroAntiguo'] == true)
+              const Text('Existe un registro antiguo con número incompleto. Revise el historial antes de guardar.', style: TextStyle(color: Color(0xFFB3261E))),
+            if (r.datos!['duplicadoAjeno'] == true)
+              const Text('Este número pertenece a otra cuenta; consulte al administrador.', style: TextStyle(color: Color(0xFFB3261E))),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              OutlinedButton.icon(onPressed: () => onVer(r), icon: const Icon(Icons.table_chart_outlined), label: const Text('Ver datos')),
+              if (!r.guardado) FilledButton.icon(onPressed: procesando || r.datos!['duplicadoAjeno'] == true || r.datos!['posibleRegistroAntiguo'] == true ? null : () => onGuardar(r), icon: const Icon(Icons.save_outlined), label: const Text('Guardar factura')),
+              if (!r.guardado) TextButton(onPressed: procesando ? null : onDescartar, child: const Text('Descartar')),
+            ]),
           ],
           if (r.exito) ...[
             const SizedBox(height: 8),
@@ -698,7 +724,13 @@ class _HistorialState extends State<_Historial> {
                         if (factura['cuenta'] != null) _campo('Cuenta', '${factura['cuenta']}'),
                         if (factura['periodo_consumo'] != null) _campo('Periodo', '${factura['periodo_consumo']}'),
                         _campo('Total a pagar', '${factura['total_pagar'] ?? factura['totalPagar'] ?? '-'}'),
-                        _campo('Lectura', '${resumen['confidence'] ?? '-'}%'),
+                        if (factura['numero_cliente'] != null) _campo('Número de cliente', '${factura['numero_cliente']}'),
+                        if (factura['numero_cuenta'] != null) _campo('Número de cuenta', '${factura['numero_cuenta']}'),
+                        if (factura['fecha_emision'] != null) _campo('Emisión', '${factura['fecha_emision']}'),
+                        if (factura['fecha_vencimiento'] != null) _campo('Vencimiento', '${factura['fecha_vencimiento']}'),
+                        if (factura['codigo_pago'] != null) _campo('Código de pago', '${factura['codigo_pago']}'),
+                        if (factura['moneda'] != null) _campo('Moneda', '${factura['moneda']}'),
+                        if (factura['nit'] != null) _campo('NIT', '${factura['nit']}'),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -707,16 +739,12 @@ class _HistorialState extends State<_Historial> {
                     if (servicios.isEmpty)
                       const Text('Esta factura no tiene líneas de servicio guardadas.', style: TextStyle(fontSize: 13.5))
                     else
-                      ...servicios.take(60).map((s) {
-                        final m = s as Map<String, dynamic>;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            '${m['numero_servicio'] ?? m['numeroServicio'] ?? ''}   ·   importe ${m['importe'] ?? '-'}',
-                            style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
-                          ),
-                        );
-                      }),
+                      SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+                        columns: [for (final titulo in ['Número', 'Cuota', 'Consumo', 'Comisión', 'Impuesto', 'Importe']) DataColumn(label: Text(titulo))],
+                        rows: [for (final s in servicios) if (s is Map) DataRow(cells: [
+                          for (final valor in [s['numero_servicio'] ?? s['numeroServicio'], s['cuota'], s['consumo'], s['comision'], s['impuesto'], s['importe']]) DataCell(SelectableText('${valor ?? '—'}')),
+                        ])],
+                      )),
                   ],
                 ),
               );

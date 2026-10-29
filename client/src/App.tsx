@@ -13,13 +13,14 @@ import { RevisionQueueTab } from "./components/RevisionQueueTab.tsx";
 import { EstadisticasTab } from "./components/EstadisticasTab.tsx";
 import { UsuariosTab } from "./components/UsuariosTab.tsx";
 import { LogsTab } from "./components/LogsTab.tsx";
+import { CatalogoLineas } from "./components/CatalogoLineas.tsx";
 import { ImportarExcelTab } from "./components/ImportarExcelTab.tsx";
 import { EditUserModal } from "./components/EditUserModal.tsx";
 import { EditInvoiceModal } from "./components/EditInvoiceModal.tsx";
 import * as api from "./api/client.ts";
 import type { HealthData, InvoiceRecord, SessionUser, User } from "./types/api.ts";
 
-type Area = "inicio" | "facturas" | "estadisticas" | "importar" | "usuarios" | "servidor" | "ajustes";
+type Area = "inicio" | "facturas" | "estadisticas" | "importar" | "lineas" | "usuarios" | "servidor" | "ajustes";
 type SubArea = "procesar" | "historial" | "servicios" | "revision" | "logs";
 
 // En HTTP de una red privada randomUUID no está disponible en algunos navegadores.
@@ -59,7 +60,7 @@ function Inicio({ user, info, irA, puede }: { user: SessionUser; info: HealthDat
 function Ayuda({ theme, toggle, admin }: { theme: "light" | "dark"; toggle: () => void; admin: boolean }) {
   return <div className="sgf-home"><div className="sgf-heading"><div><h1>Ajustes y guía</h1><p>Personalice su vista y consulte cómo utilizar SGF.</p></div></div>
     <div className="sgf-home-grid"><section className="sgf-panel"><h2>Apariencia</h2><p className="sgf-subtitle">El tema se guarda en este navegador.</p><button className="sgf-theme-setting" onClick={toggle}>{theme === "dark" ? <Sun size={19}/> : <Moon size={19}/>} Usar tema {theme === "dark" ? "claro" : "oscuro"}</button></section>
-    <section className="sgf-panel"><h2>Guía rápida</h2><ol className="sgf-guide"><li>Inicie sesión con su cuenta.</li>{admin && <li>Cree las cuentas y permisos desde Usuarios.</li>}<li>Importe el Excel si tiene autorización.</li><li>Cargue los PDF desde Facturas y consulte el historial.</li><li>Consulte Estadísticas si tiene permiso.</li></ol><p className="sgf-subtitle">Las opciones de servidor y las copias se gestionan en la aplicación del equipo principal.</p></section></div></div>;
+    <section className="sgf-panel"><h2>Guía rápida</h2><ol className="sgf-guide"><li>Inicie sesión con su cuenta.</li>{admin && <li>Cree las cuentas y permisos desde Usuarios.</li>}<li>Importe el Excel si tiene autorización.</li><li>Analice los PDF, revise la vista previa y decida si desea guardar; consulte el historial.</li><li>Consulte los datos importados en Datos de líneas si tiene permiso.</li><li>Consulte Estadísticas si tiene permiso.</li></ol><p className="sgf-subtitle">Las opciones de servidor y las copias se gestionan en la aplicación del equipo principal.</p></section></div></div>;
 }
 
 export default function App() {
@@ -84,6 +85,7 @@ export default function App() {
     {id:"facturas" as Area,label:"Facturas",icon:ReceiptText},
     ...(puede("ver_estadisticas") ? [{id:"estadisticas" as Area,label:"Estadísticas",icon:BarChart3}] : []),
     ...(puede("importar_excel") ? [{id:"importar" as Area,label:"Importar Excel",icon:FileSpreadsheet}] : []),
+    ...(puede("importar_excel") ? [{id:"lineas" as Area,label:"Datos de líneas",icon:FileText}] : []),
     ...(user.role === "admin" ? [{id:"usuarios" as Area,label:"Usuarios",icon:Users}] : []),
     {id:"ajustes" as Area,label:"Ajustes y guía",icon:BookOpen},
   ];
@@ -105,6 +107,7 @@ export default function App() {
         </>}
         {area === "estadisticas" && puede("ver_estadisticas") && <><div className="sgf-page-head"><h1>Estadísticas</h1><p>Consumo por meses, líneas sin consumo y gasto por oficial.</p></div><EstadisticasTab/></>}
         {area === "importar" && puede("importar_excel") && <><div className="sgf-page-head"><h1>Importar Excel</h1><p>Cargue las líneas para cruzarlas con las facturas.</p></div><ImportarExcelTab showToast={showToast} canEdit={puede("editar_facturas")}/></>}
+        {area === "lineas" && puede("importar_excel") && <><div className="sgf-page-head"><h1>Datos de líneas</h1><p>Consulte el contenido del catálogo importado.</p></div><CatalogoLineas/></>}
         {area === "usuarios" && user.role === "admin" && <><div className="sgf-page-head"><h1>Usuarios</h1><p>Administre las cuentas y sus permisos.</p></div><UsuariosTab currentUser={user} showToast={showToast} onEdited={triggerRefresh} onEdit={setEditingUser} refresh={refresh}/></>}
         {area === "servidor" && user.role === "admin" && <><div className="sgf-page-head"><h1>Servidor</h1><p>Estado de la conexión y auditoría.</p></div><div className="sgf-panel sgf-server-card"><Database size={22}/><div><strong>Servidor conectado · {server.info?.dbMode?.toUpperCase()}</strong><p>Para iniciar o detener el servidor, configurar el puerto o crear copias de seguridad, use la aplicación instalada en el equipo principal.</p></div><button className="sgf-outline" onClick={server.recheck}><RefreshCw size={16}/> Actualizar</button></div><div className="sgf-section-title">Auditoría</div><LogsTab/></>}
         {area === "ajustes" && <Ayuda theme={theme.theme} toggle={theme.toggle} admin={user.role === "admin"}/>}
