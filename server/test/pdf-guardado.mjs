@@ -47,6 +47,15 @@ try {
  const [pa,pvAjena]=await req('/api/facturas/upload',{...body,accion:'analizar'},otro);assert.equal(pa,200);assert.equal(pvAjena.data.duplicadoAjeno,true);assert.equal(pvAjena.data.duplicadoPropio,false);
  const [rechazo]=await req('/api/facturas/upload',{...body,accion:'guardar',confirmarSustitucion:true},otro);assert.equal(rechazo,409);
  const [sigue,det]=await req(`/api/facturas/${encodeURIComponent(id)}`,null,token);assert.equal(sigue,200);assert(det.data.servicios.length>0);
+ // Un PDF sin filas no debe guardarse sin confirmación adicional.
+ const vacio=await PDFDocument.create();const hoja=vacio.addPage([600,800]);
+ ['Cliente: ENTIDAD FICTICIA','No. factura: 9988776655','Numero de Cliente: 1234567','Numero de Cuenta: 7654321','Fecha Factura: 01/01/2025','Resumen por Servicios'].forEach((line,i)=>hoja.drawText(line,{x:30,y:760-i*15,size:10,font:undefined}));
+ const vacioBody={filename:'vacio-ficticio.pdf',file:Buffer.from(await vacio.save()).toString('base64')};
+ const [pvStatus,pvVacio]=await req('/api/facturas/upload',{...vacioBody,accion:'analizar'},token);assert.equal(pvStatus,200);assert.equal(pvVacio.data.extraccionVacia,true);
+ const [noGuardar]=await req('/api/facturas/upload',{...vacioBody,accion:'guardar'},token);assert.equal(noGuardar,422);
+ const [,sinCambios]=await req('/api/facturas',null,token);assert.equal(sinCambios.meta.total,3);
+ const [guardarVacio]=await req('/api/facturas/upload',{...vacioBody,accion:'guardar',confirmarSinServicios:true},token);assert.equal(guardarVacio,200);
+
 
 
  console.log('OK: PDF ficticio: vista previa, concurrencia, sustitución, edición y protección de registros antiguos.');
