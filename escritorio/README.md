@@ -109,6 +109,19 @@ Con el botón **Iniciar sesión** vuelve a entrar sin cerrar la aplicación. Lo 
 ocurre si la sesión supera su tope absoluto (24 h por defecto, ajustable con
 `SESSION_MAX_HOURS` en el `.env` del servidor).
 
+### 4.2 Si una factura choca con otra (error 409)
+
+El servidor solo rechaza una factura cuando **ya existe ese número de factura** o
+cuando **las mismas líneas ya están facturadas en el mismo periodo**. Si es así, la
+tarjeta del resultado muestra el motivo y un botón **«Cargar de todas formas»**:
+
+- úsalo cuando el 409 sea un falso positivo (por ejemplo, una factura reemitida) o
+  cuando estés volviendo a cargar un mes ya cargado;
+- no hace falta volver a buscar el archivo: la aplicación lo conserva.
+
+Que una línea aparezca en facturas de meses anteriores **no** es un error y ya no
+bloquea la carga: se muestra solo como aviso.
+
 ## 5. Seguridad del modelo de escritorio
 
 - El servidor escucha **solo en `127.0.0.1`**: ninguna otra computadora de la red
