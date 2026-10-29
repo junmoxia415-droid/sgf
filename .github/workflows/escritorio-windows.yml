@@ -83,24 +83,24 @@ jobs:
           echo "   facturas=$codigo_fact"
           test "$codigo_fact" = "401"
 
-          echo "2) /api/db/* con un token de instalacion incorrecto debe dar 403"
-          codigo_test=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-            -H 'Content-Type: application/json' -H 'x-install-token: token-incorrecto' \
-            -d '{"type":"oracle","host":"x","port":"1","service":"x","user":"x","password":"x"}' \
-            http://127.0.0.1:3000/api/db/test)
-          echo "   db/test=$codigo_test"
-          # En una instalacion recien creada (sin ninguna cuenta) el asistente
-          # inicial SI puede configurar la BD; por eso aqui no se exige 403 todavia.
-
-          echo "2b) La cuenta inicial se crea por la ruta de configuración (sin sesión)"
+          echo "2) La cuenta inicial se crea por la ruta de configuracion (sin sesion)"
           # La base arranca SIN usuarios: igual que en la app, la cuenta se crea
-          # desde /api/setup/admin.
+          # desde /api/setup/admin. Mientras este vacia, el asistente puede
+          # configurar la BD; en cuanto hay una cuenta, la ventana se cierra.
           TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
             -d '{"username":"admin","name":"Administrador","password":"para-pruebas-123"}' \
             http://127.0.0.1:3000/api/setup/admin | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
           test -n "$TOKEN"
 
-          echo "3) En cuanto hay un segundo usuario, /api/db/config debe exigir credenciales"
+          echo "3) Con la instalacion ya configurada, /api/db/test exige credenciales"
+          codigo_test=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'x-install-token: token-incorrecto' \
+            -d '{"type":"oracle","host":"x","port":"1","service":"x","user":"x","password":"x"}' \
+            http://127.0.0.1:3000/api/db/test)
+          echo "   db/test=$codigo_test"
+          test "$codigo_test" = "403"
+
+          echo "4) Un segundo usuario: /api/db/config sin credenciales sigue cerrado"
           curl -s -o /dev/null -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
             -d '{"username":"operador_ci","password":"Operador-123!","name":"Operador CI","role":"usuario"}' \
             http://127.0.0.1:3000/api/users
@@ -108,7 +108,7 @@ jobs:
           echo "   db/config=$codigo_db"
           test "$codigo_db" = "403"
 
-          echo "4) Y con sesion de administrador si responde"
+          echo "5) Y con la sesion del administrador si responde"
           codigo_admin=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/api/db/config)
           echo "   db/config con admin=$codigo_admin"
           test "$codigo_admin" = "200"

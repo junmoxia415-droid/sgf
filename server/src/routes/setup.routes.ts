@@ -2,7 +2,7 @@ import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { execute, getDbMode, nowExpr, query } from "../models/database.js";
-import { readJsonBody, sendJson } from "../middleware/auth.js";
+import { getRequestIp, readJsonBody, sendJson } from "../middleware/auth.js";
 import { signToken } from "../utils/jwt.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 
@@ -39,6 +39,40 @@ export async function handleSetupEstado(_req: AuthenticatedRequest, res: ServerR
       usuarios,
     },
   });
+}
+
+/**
+ * Registra la sesión recién creada igual que hace /api/auth/login.
+ *
+ * Sin esto el token que devuelve la configuración inicial es válido pero no
+ * existe en SGF_SESIONES, y la siguiente llamada (p. ej. /api/db/config)
+ * respondía 403 como si no hubiera sesión.
+ */
+async function registrarSesion(id: string, userId: string, token: string, maquina: string, ip: string) {
+  if (getDbMode() === "sqlite") {
+    await execute(`UPDATE SGF_SESIONES SET ACTIVO = 0 WHERE USER_ID = :uid AND ACTIVO = 1`, { uid: userId });
+    await execute(
+      `INSERT INTO SGF_SESIONES (ID, USER_ID, TOKEN, MAQUINA, IP, ACTIVO, CREADO, EXPIRA)
+       VALUES (:id, :uid, :tok, :m, :ip, 1, datetime('now'), datetime('now','+8 hours'))`,
+      { id, uid: userId, tok: token, m: maquina, ip },
+    );
+    return;
+  }
+  if (getDbMode() === "oracle") {
+    await execute(`UPDATE SGF_SESIONES SET ACTIVE = 0, ENDED_AT = SYSTIMESTAMP WHERE USER_ID = :uid AND ACTIVE = 1`, { uid: userId });
+    await execute(
+      `INSERT INTO SGF_SESIONES (ID, USER_ID, SESSION_TOKEN, MACHINE_ID, IP_ADDRESS, ACTIVE, CREATED_AT, EXPIRES_AT)
+       VALUES (:id, :uid, :tok, :m, :ip, 1, SYSTIMESTAMP, SYSTIMESTAMP + INTERVAL '8' HOUR)`,
+      { id, uid: userId, tok: token, m: maquina, ip },
+    );
+    return;
+  }
+  await execute(`UPDATE SGF_SESIONES SET ACTIVE = 0, ENDED_AT = SYSUTCDATETIME() WHERE USER_ID = :uid AND ACTIVE = 1`, { uid: userId });
+  await execute(
+    `INSERT INTO SGF_SESIONES (ID, USER_ID, SESSION_TOKEN, MACHINE_ID, IP_ADDRESS, ACTIVE, CREATED_AT, EXPIRES_AT)
+     VALUES (:id, :uid, :tok, :m, :ip, 1, SYSUTCDATETIME(), DATEADD(HOUR, 8, SYSUTCDATETIME()))`,
+    { id, uid: userId, tok: token, m: maquina, ip },
+  );
 }
 
 /** Crea la cuenta de administrador en una instalación nueva. */
@@ -105,6 +139,14 @@ export async function handleSetupAdmin(req: AuthenticatedRequest, res: ServerRes
     // Se devuelve la sesión ya iniciada para que la app entre directamente.
     const createdAt = new Date().toISOString();
     const token = signToken({ id, username, name, role: "admin", active: true, createdAt });
+    // La sesión tiene que quedar registrada: sin ella el token no vale para nada.
+    await registrarSesion(
+      randomUUID(),
+      id,
+      token,
+      String(body.machineId || "sgf-escritorio"),
+      getRequestIp(req),
+    );
     return sendJson(res, 201, {
       success: true,
       message: "Cuenta creada. Ya puede entrar.",
