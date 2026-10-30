@@ -1,7 +1,7 @@
 ; Instalador de SGF Escritorio para Windows (Inno Setup 6).
 ;
-; Requisitos: ninguno. Dentro va TODO: el programa, el servidor, Node.js y las
-; dependencias. El usuario solo ejecuta este archivo y pulsa Siguiente.
+; Requiere Windows 10 u 11 de 64 bits. El paquete incluye el programa, el
+; servidor, Node.js, las bibliotecas de Flutter y el runtime Microsoft x64.
 ;
 ; Genera: SGF-Escritorio-Setup-<version>.exe
 ;
@@ -127,9 +127,9 @@ begin
   PaginaBienvenida := CreateInputOptionPage(wpWelcome,
     'Bienvenido a SGF Escritorio',
     'Sistema de Gestión de Facturación de telefonía',
-    'Se va a instalar SGF en este equipo. Todo lo necesario va dentro del ' +
-    'instalador: no hace falta instalar Node, ni Java, ni nada más. ' +
-    'El programa funciona sin conexión a Internet.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
+    'Se va a instalar SGF en este equipo. El instalador incluye Node y las ' +
+    'bibliotecas de Microsoft necesarias para SGF, sin instalarlas globalmente. ' +
+    'Requiere Windows 10 u 11 de 64 bits. El programa puede funcionar sin Internet.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) +
     'Marque las opciones que quiera y pulse Siguiente.',
     False, False);
   PaginaBienvenida.Add('Crear un acceso directo en el escritorio');

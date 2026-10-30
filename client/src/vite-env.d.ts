@@ -1,4 +1,6 @@
 /// <reference types="vite/client" />
+declare module "sgf-polyfills";
+declare module "sgf-estilos";
 
 declare module "pdfjs-dist/build/pdf.worker.min.mjs?url" {
   const workerUrl: string;

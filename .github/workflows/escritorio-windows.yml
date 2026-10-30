@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.6)'
+        description: 'Versión a compilar (ej. 4.0.7)'
         required: false
-        default: '4.0.6'
+        default: '4.0.7'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.6' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.7' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -326,12 +326,18 @@ jobs:
             $panel = Invoke-RestMethod 'http://127.0.0.1:35119/api/panel/estado' -Headers @{ 'x-sgf-console-token' = $env:SGF_CONSOLE_TOKEN }
             if (-not $panel.success) { throw 'El token de consola del paquete no funciona.' }
             $web = Invoke-WebRequest 'http://127.0.0.1:35119/' -UseBasicParsing
-            if ($web.StatusCode -ne 200 -or $web.Content -notmatch '<div id="root">') { throw 'No se puede abrir la versión web incluida.' }
-            $asset = [regex]::Match($web.Content, 'src="(/assets/[^" ]+\.js)"').Groups[1].Value
-            if (-not $asset) { throw 'Falta el JavaScript de la versión web.' }
+          if ($web.StatusCode -ne 200 -or $web.Content -notmatch '/seleccionar-version.js') { throw 'Falta el selector de versión web.' }
+          $selector = Invoke-WebRequest 'http://127.0.0.1:35119/seleccionar-version.js' -UseBasicParsing
+          if ($selector.StatusCode -ne 200 -or $selector.Content -notmatch 'destino') { throw 'No se puede cargar el selector web.' }
+          foreach ($versionWeb in @('moderna', 'compat')) {
+            $pagina = Invoke-WebRequest "http://127.0.0.1:35119/$versionWeb/index.html" -UseBasicParsing
+            if ($pagina.StatusCode -ne 200 -or $pagina.Content -notmatch '<div id="root">') { throw "Falta la interfaz $versionWeb." }
+            $asset = [regex]::Match($pagina.Content, "src=`"(/$versionWeb/assets/[^`" ]+\.js)`"").Groups[1].Value
+            if (-not $asset) { throw "Falta el JavaScript de la interfaz $versionWeb." }
             $jsWeb = Invoke-WebRequest "http://127.0.0.1:35119$asset" -UseBasicParsing
-            if ($jsWeb.StatusCode -ne 200) { throw 'No se puede abrir el JavaScript incluido.' }
-            Write-Host 'Web, recursos y token de consola del paquete: OK.'
+            if ($jsWeb.StatusCode -ne 200) { throw "No se puede abrir el JavaScript $versionWeb." }
+          }
+          Write-Host 'Selector, ambas interfaces, recursos y token de consola del paquete: OK.'
           } finally {
             if (-not $proceso.HasExited) { Stop-Process -Id $proceso.Id -Force }
           }
@@ -400,30 +406,30 @@ jobs:
 
           Aplicacion instalable para Windows. **No hace falta instalar Node ni nada mas**: el instalador trae todo dentro.
 
-          - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador (recomendado). Se instala, se abre y arranca el servidor solo.
+          - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador recomendado para Windows 10/11 de 64 bits. El servidor se inicia al abrir SGF.
           - ``SGF-Escritorio-Portable-${{ env.VERSION }}.zip`` — para probar sin instalar: descomprimir y ejecutar ``sgf_escritorio.exe``.
 
-          Al abrir por primera vez, un asistente guia los pasos para crear su propia cuenta de administrador. No hay una cuenta de fabrica.
+          Incluye bibliotecas Microsoft de ejecucion junto a los programas. Se ha comprobado en una maquina virtual Windows, pero no en una PC fisica limpia. El asistente permite crear una cuenta de administrador propia; no hay una cuenta de fabrica.
 
-          En Servidor aparece un nombre local automatico, sujeto a que la red y los clientes admitan mDNS; HTTP no cifra ni autentica el equipo. Existe recuperacion del servidor mientras SGF esta abierto. El servidor todavia no arranca antes de iniciar sesion en Windows y se detiene al cerrar la aplicacion.
+          La web selecciona automaticamente una interfaz moderna o una compatible con navegadores mas antiguos. Firefox 80 se probo en Linux con datos ficticios; no se garantiza compatibilidad con todos los navegadores antiguos, que pueden tener vulnerabilidades.
 
-          La comunicacion de la aplicacion de escritorio con su proceso local usa un canal TLS efimero autenticado. La web de la red sigue siendo HTTP sin cifrar.
+          El nombre local depende de mDNS. **La web de red todavia usa HTTP sin cifrar**: no exponer a Internet ni enviar datos sensibles en redes no confiables. HTTPS LAN y certificado compartible siguen en desarrollo, no son una opcion integrada.
 
-          Esta version protege la carpeta de datos frente a dos servidores compatibles simultaneos, incluso con puertos distintos. Cierre las versiones anteriores antes de actualizar y no comparta la carpeta en unidades de red que no garanticen bloqueos SQLite.
+          **El servidor todavia no arranca antes de iniciar sesion en Windows** y se detiene al cerrar la aplicacion. El canal entre SGF Escritorio y su proceso local utiliza TLS efimero autenticado.
+
+          La carpeta de datos se protege frente a dos servidores compatibles simultaneos. Cierre versiones anteriores antes de actualizar y no comparta la carpeta en unidades de red que no garanticen bloqueos SQLite. Si la configuracion de base anterior es ambigua o incorrecta, SGF detiene el arranque en vez de cambiar silenciosamente a SQLite; conserve la configuracion y los datos hasta corregirla.
           "@
           $notas | Set-Content -Path notas-release.md -Encoding utf8
 
-          # Si la etiqueta ya existe se actualizan los archivos; si no, se crea.
+          # Nunca reemplazar una versión ya distribuida.
           gh release view $etiqueta --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "La release $etiqueta ya existe: se actualizan los archivos."
-            gh release upload $etiqueta $instalador $portable --clobber --repo ${{ github.repository }}
-          } else {
-            gh release create $etiqueta $instalador $portable `
-              --repo ${{ github.repository }} `
-              --title "SGF Escritorio v${{ env.VERSION }}" `
-              --notes-file notas-release.md
-          }
+          if ($LASTEXITCODE -eq 0) { throw "La release $etiqueta ya existe; no se sobrescribira." }
+          gh release create $etiqueta $instalador $portable `
+            --repo ${{ github.repository }} `
+            --target '${{ github.sha }}' `
+            --title "SGF Escritorio v${{ env.VERSION }}" `
+            --notes-file notas-release.md
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la release.' }
           Write-Host "Release publicada: $etiqueta"
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -449,9 +455,31 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           npx playwright install --with-deps chromium
-      - name: Probar navegador con datos ficticios
+      - name: Probar selector y ambas versiones con Chromium
         working-directory: client
-        run: node test/navegador.mjs
+        run: |
+          node test/seleccionar-version.mjs
+          node test/navegador.mjs
+          SGF_TEST_COMPAT=1 node test/navegador.mjs
+      - name: Preparar Firefox 80 aislado para pruebas con datos ficticios
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-0 libdbus-glib-1-2
+          mkdir -p "$RUNNER_TEMP/sgf-firefox80"
+          cd "$RUNNER_TEMP/sgf-firefox80"
+          curl -fsSL --retry 3 https://archive.mozilla.org/pub/firefox/releases/80.0/linux-x86_64/en-US/firefox-80.0.tar.bz2 -o firefox.tar.bz2
+          echo '84191f06dd927cd16b8c0900e6c330f68cc8012bc48e9277891282a2d6f7bce7  firefox.tar.bz2' | sha256sum -c -
+          tar xjf firefox.tar.bz2
+          curl -fsSL --retry 3 https://github.com/mozilla/geckodriver/releases/download/v0.29.1/geckodriver-v0.29.1-linux64.tar.gz -o gecko.tar.gz
+          echo 'ec164910a3de7eec71e596bd2a1814ae27ba4c9d112b611680a6470dbe2ce27b  gecko.tar.gz' | sha256sum -c -
+          tar xzf gecko.tar.gz
+      - name: Probar selección y flujos en Firefox 80
+        working-directory: client
+        run: |
+          export SGF_FIREFOX80="$RUNNER_TEMP/sgf-firefox80/firefox/firefox"
+          export SGF_GECKODRIVER="$RUNNER_TEMP/sgf-firefox80/geckodriver"
+          node test/firefox80.mjs
 
   # 3. Pruebas de integracion: la app Flutter habla con el servidor real
   # ───────────────────────────────────────────────────────────────────────────

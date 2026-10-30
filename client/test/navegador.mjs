@@ -30,7 +30,8 @@ try {
   const page=await browser.newPage({viewport:{width:1360,height:800}});
   const errores=[]; page.on('pageerror',e=>errores.push(e.message));
   const login=async user => {await page.getByLabel('Usuario',{exact:true}).fill(user); await page.getByLabel('Contraseña',{exact:true}).fill('para-pruebas-123'); await page.getByRole('button',{name:'Entrar',exact:true}).click(); await page.getByText('Bienvenido,').waitFor();};
-  await page.goto(base); await page.getByText('Bienvenido a SGF').waitFor();
+  await page.goto(process.env.SGF_TEST_COMPAT === '1' ? `${base}/compat/index.html` : base); await page.getByText('Bienvenido a SGF').waitFor();
+  assert.equal(new URL(page.url()).pathname, process.env.SGF_TEST_COMPAT === '1' ? '/compat/index.html' : '/moderna/index.html', 'Debe cargar la variante esperada');
   assert.equal(await page.getByRole('navigation').count(),0,'No se debe mostrar el menú sin sesión');
   await login('admin_ci'); await page.getByText('Facturas registradas').waitFor();
   await page.getByRole('button',{name:'Activar tema oscuro'}).click(); assert(await page.locator('html').evaluate(e=>e.classList.contains('dark')));

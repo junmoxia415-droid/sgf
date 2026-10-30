@@ -44,6 +44,7 @@ try {
   session=info.sessionId; assert.match(info.capabilities.browserVersion,/^80\./);
   await cmd('POST','/window/rect',{width:1360,height:800});
   await cmd('POST','/url',{url:base}); await waitText('Bienvenido a SGF');
+  assert.equal(await execute('return location.pathname'),'/compat/index.html','Firefox 80 debe recibir la interfaz compatible');
   if (process.env.SGF_CAPTURAS) fs.writeFileSync(path.join(process.env.SGF_CAPTURAS,'login.png'), Buffer.from(await cmd('GET','/screenshot'),'base64'));
   const estilos=await execute(`const root=document.querySelector('h1').closest('.min-h-screen'); const box=document.querySelector('h1').parentElement.parentElement; const b=document.querySelector('button[type=submit]'); return {display:getComputedStyle(root).display, gradient:getComputedStyle(root).backgroundImage, box:getComputedStyle(box).backgroundColor, radius:getComputedStyle(box).borderRadius, button:getComputedStyle(b).backgroundColor};`);
   assert.equal(estilos.display,'flex'); assert.match(estilos.gradient,/gradient/); assert.equal(estilos.box,'rgb(255, 255, 255)'); assert.notEqual(estilos.radius,'0px'); assert.notEqual(estilos.button,'rgba(0, 0, 0, 0)');
