@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.1)'
+        description: 'Versión a compilar (ej. 4.0.2)'
         required: false
-        default: '4.0.1'
+        default: '4.0.2'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.1' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.2' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -62,6 +62,7 @@ jobs:
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
           node test/pdf-guardado.mjs
+          node test/pdf-variados-api.mjs
           node test/transacciones.mjs
           node test/dbconfig-sqlite.mjs
           npx tsx src/scripts/prueba-pdf-layout.ts

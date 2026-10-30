@@ -266,11 +266,9 @@ function parseColumnarSection(sectionLines: string[], diagnostics: ParserDiagnos
   }
 
   const result: ServicioExtraido[] = [];
-  const seen = new Set<string>();
   for (let i = 0; i < max; i += 1) {
     const numero = (columns.servicios[i] || "").replace(/\D/g, "");
-    if (!isServiceNumber(numero) || seen.has(numero)) continue;
-    seen.add(numero);
+    if (!isServiceNumber(numero)) continue;
     result.push({
       numero,
       cuota: amountValue(columns.cuotas[i] || "0"),
@@ -286,12 +284,11 @@ function parseColumnarSection(sectionLines: string[], diagnostics: ParserDiagnos
 
 function parseRowSection(sectionLines: string[], diagnostics: ParserDiagnostic[]) {
   const result: ServicioExtraido[] = [];
-  const seen = new Set<string>();
   for (const line of sectionLines) {
     const parsed = parseRowLikeLine(line);
     if (!parsed) continue;
-    if (seen.has(parsed.numero)) continue;
-    seen.add(parsed.numero);
+    // Una línea telefónica puede aparecer en más de una fila del documento.
+    // No eliminarla silenciosamente: se conserva y se avisa para revisión.
     result.push(parsed);
   }
   if (result.length === 0) {
@@ -330,6 +327,13 @@ function chooseBestServices(sectionLines: string[], diagnostics: ParserDiagnosti
     : { services: rowBased, strategy: "rows", extraDiagnostics: rowDiagnostics, altDiagnostics: columnarDiagnostics };
 
   diagnostics.push(...best.extraDiagnostics);
+  const numeros = new Set<string>();
+  let repetidos = 0;
+  for (const servicio of best.services) {
+    if (numeros.has(servicio.numero)) repetidos += 1;
+    else numeros.add(servicio.numero);
+  }
+  if (repetidos) diagnostics.push({ level: "warn", code: "services-duplicate-number", message: `Se conservaron ${repetidos} filas con número de servicio repetido. Revise si corresponden a conceptos distintos o son duplicados.` });
   diagnostics.push({ level: "info", code: "services-strategy", message: `Estrategia de servicios aplicada: ${best.strategy}. Servicios detectados: ${best.services.length}.` });
 
   if (best.services.length === 0) {
@@ -435,7 +439,8 @@ function chooseTotals(lines: string[], services: ServicioExtraido[], diagnostics
   }
 
   const headerVsServices = Math.abs(normalizarNumero(chosen.totalServicios) - serviceSum.importe);
-  if (headerVsServices > 1) {
+  // Comparar al centavo, tolerando únicamente el error de punto flotante.
+  if (headerVsServices > 0.005) {
     diagnostics.push({
       level: "warn",
       code: "totals-mismatch-services",
@@ -446,8 +451,8 @@ function chooseTotals(lines: string[], services: ServicioExtraido[], diagnostics
   const facturadoNumero = normalizarNumero(chosen.facturado);
   const expectedFacturadoFromServices = serviceSum.importe;
   const facturadoVsServicios = Math.abs(facturadoNumero - expectedFacturadoFromServices);
-  const descuentoExplicaDiferencia = descuento > 0 && Math.abs(facturadoVsServicios - descuento) <= 1;
-  if (facturadoVsServicios > 1 && serviceSum.importe > 0 && !descuentoExplicaDiferencia) {
+  const descuentoExplicaDiferencia = descuento > 0 && Math.abs(facturadoVsServicios - descuento) <= 0.005;
+  if (facturadoVsServicios > 0.005 && serviceSum.importe > 0 && !descuentoExplicaDiferencia) {
     diagnostics.push({
       level: "warn",
       code: "facturado-mismatch-services",
@@ -457,7 +462,7 @@ function chooseTotals(lines: string[], services: ServicioExtraido[], diagnostics
 
   const expectedPayableFromServices = Math.max(normalizarNumero(chosen.totalServicios) - descuento, 0);
   const payableDiff = Math.abs(normalizarNumero(chosen.totalPagar) - expectedPayableFromServices);
-  if (payableDiff > 1 && normalizarNumero(chosen.totalPagar) > 0) {
+  if (payableDiff > 0.005 && normalizarNumero(chosen.totalPagar) > 0) {
     diagnostics.push({
       level: "warn",
       code: "total-pagar-mismatch-discount",

@@ -40,6 +40,7 @@ jobs:
         run: |
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
+          node test/pdf-variados-api.mjs
 
       # Falla si aparece una vulnerabilidad conocida (alta o crítica) en las
       # dependencias del servidor o del cliente. Los paquetes con aviso sin

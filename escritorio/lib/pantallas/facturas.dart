@@ -504,9 +504,8 @@ class _TarjetaResultado extends StatelessWidget {
           ],
           if (r.exito && r.revisar) ...[
             const SizedBox(height: 8),
-            const Text(
-              'Esta factura necesita una revisión manual: puede que el PDF tenga una imagen (escaneo) o un formato poco habitual.',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFFB8730B), height: 1.4),
+            ObservacionesExtraccion(
+              diagnosticos: ((r.datos?['factura'] as Map?)?['diagnostics'] as List?) ?? const [],
             ),
           ],
         ],
@@ -522,6 +521,24 @@ class _TarjetaResultado extends StatelessWidget {
         Text(valor, style: const TextStyle(fontSize: 12.5, fontFamily: 'Consolas')),
       ],
     );
+  }
+}
+
+/// Muestra las causas de revisión antes de guardar, no solo un aviso genérico.
+class ObservacionesExtraccion extends StatelessWidget {
+  const ObservacionesExtraccion({super.key, required this.diagnosticos});
+  final List<dynamic> diagnosticos;
+
+  @override
+  Widget build(BuildContext context) {
+    final avisos = diagnosticos.whereType<Map>().where((d) =>
+      (d['level'] == 'warn' || d['level'] == 'error') &&
+      (d['message']?.toString().trim().isNotEmpty ?? false));
+    const estilo = TextStyle(fontSize: 12.5, color: Color(0xFFB8730B), height: 1.4);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Esta factura necesita revisión manual antes de guardarla.', style: estilo),
+      for (final aviso in avisos) Text('• ${aviso['message']}', style: estilo),
+    ]);
   }
 }
 
