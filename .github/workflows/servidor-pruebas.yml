@@ -41,6 +41,7 @@ jobs:
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
           node test/nombre-red.mjs
+          node test/exclusion-datos.mjs
           node test/pdf-variados-api.mjs
 
       # Falla si aparece una vulnerabilidad conocida (alta o crítica) en las

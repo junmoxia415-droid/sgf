@@ -4,7 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
-import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
+import { closeDb, DATA_DIR, getDbMode, initDatabase, pingDb } from "./models/database.js";
+import { BloqueoDatos } from "./utils/bloqueo-datos.js";
 import { iniciarNombreRed, detenerNombreRed } from "./utils/nombre-red.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
@@ -33,6 +34,14 @@ import { handleImportAnalyze, handleImportExcel, handleImportMappingSuggestions,
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST_DIR = path.resolve(__dirname, "../../client/dist");
 const SERVER_INSTANCE_ID = randomUUID();
+// Reservar la carpeta ANTES de leer o modificar SQLite; el puerto no basta
+// para impedir dos servidores trabajando sobre los mismos archivos.
+let bloqueoDatos: BloqueoDatos;
+try { bloqueoDatos = BloqueoDatos.adquirir(DATA_DIR); }
+catch (error:any) {
+  console.error(`[SGF] No se inició el servidor: ${error?.message || 'no se pudo proteger la carpeta de datos.'}`);
+  process.exit(1);
+}
 const dbInfo = await initDatabase();
   try {
     // Columnas para "facturas por mes" en bases ya existentes (Oracle/SQL Server).
@@ -238,10 +247,14 @@ const server = http.createServer(
 function shutdown(signal: string) {
   console.log(`\n[SGF] Senal ${signal}. Cerrando...`);
   server.close(async () => {
-    await closeDb();
-    try { await detenerNombreRed(); } catch (error) { console.warn('[SGF] No se pudo cerrar el anuncio de red:', error); }
+    let estado=0;
+    try {
+      await closeDb();
+      try { await detenerNombreRed(); } catch (error) { console.warn('[SGF] No se pudo cerrar el anuncio de red:', error); }
+    } catch(error) { console.error('[SGF] Error durante el cierre:',error); estado=1; }
+    try { bloqueoDatos.cerrar(); } catch(error) { console.error('[SGF] No se pudo liberar el bloqueo:',error); estado=1; }
     console.log("[SGF] Cerrado.");
-    process.exit(0);
+    process.exit(estado);
   });
   setTimeout(() => process.exit(1), 10000);
 }
@@ -250,6 +263,13 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("unhandledRejection", (reason) => console.error("[SGF] Unhandled rejection:", reason));
 process.on("uncaughtException", (error) => console.error("[SGF] Uncaught exception:", error));
+
+server.on('error', async error => {
+  console.error('[SGF] No se pudo abrir el puerto:',error.message);
+  try { await closeDb(); } catch (e) { console.error('[SGF] Error al cerrar la base:',e); }
+  try { bloqueoDatos.cerrar(); } catch (e) { console.error('[SGF] Error al liberar el bloqueo:',e); }
+  process.exit(1);
+});
 
 server.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
   console.log(`[SGF] http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port} | BD: ${dbInfo.mode.toUpperCase()}`);

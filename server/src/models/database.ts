@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // La aplicacion de escritorio pasa SGF_DATA_DIR para guardar la base de datos en
 // una carpeta de usuario escribible (p. ej. %LOCALAPPDATA%\SGF\datos), en lugar
 // de una subcarpeta de la instalacion (que puede ser de solo lectura).
-const DATA_DIR = process.env.SGF_DATA_DIR
+export const DATA_DIR = process.env.SGF_DATA_DIR
   ? path.resolve(process.env.SGF_DATA_DIR)
   : path.resolve(__dirname, "../../../server-data");
 const DB_PATH = path.join(DATA_DIR, "sgf-data.db");

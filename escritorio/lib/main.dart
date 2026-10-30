@@ -11,6 +11,7 @@ import 'servicios/api.dart';
 import 'servicios/controlador_servidor.dart';
 import 'servicios/supervisor_servidor.dart';
 import 'servicios/reinicio_datos.dart';
+import 'servicios/guardia_datos.dart';
 import 'pantallas/asistente_inicial.dart';
 import 'pantallas/acceso.dart';
 import 'widgets/comunes.dart';
@@ -47,7 +48,17 @@ Future<void> main() async {
   final carpeta = Ajustes.carpeta;
   final marcador = File('${carpeta.parent.path}${Platform.pathSeparator}SGF-solicitud-reinicio.txt');
   final reinicioSolicitado = await marcador.exists();
-  final errorReinicio = await prepararReinicioLocal(carpeta: carpeta, marcador: marcador, puerto: ajustes.puerto);
+  String? errorReinicio;
+  if (reinicioSolicitado) {
+    final rutas = ControladorServidor(ajustes: ajustes, api: Api());
+    try {
+      final script = File('${rutas.carpetaServidor.path}${Platform.pathSeparator}dist${Platform.pathSeparator}utils${Platform.pathSeparator}guardia-bloqueo.js');
+      errorReinicio = await prepararReinicioLocal(
+        carpeta: carpeta, marcador: marcador, puerto: ajustes.puerto,
+        adquirirGuardia: (datos) => adquirirGuardiaDatos(carpeta: datos, node: rutas.ejecutableNode, ejecutable: script),
+      );
+    } finally { rutas.dispose(); }
+  }
   if (errorReinicio != null) {
     runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
       padding: const EdgeInsets.all(32), child: Text(errorReinicio),

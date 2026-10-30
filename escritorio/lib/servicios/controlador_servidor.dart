@@ -76,7 +76,7 @@ class ControladorServidor extends ChangeNotifier {
       Directory('${Ajustes.carpeta.path}${Platform.pathSeparator}datos');
   File get archivoEnv => File('${carpetaDatos.path}${Platform.pathSeparator}.env');
 
-  String get _ejecutableNode {
+  String get ejecutableNode {
     final nombre = Platform.isWindows ? 'node.exe' : 'node';
     final incluido = '${carpetaServidor.path}${Platform.pathSeparator}runtime${Platform.pathSeparator}$nombre';
     if (File(incluido).existsSync()) return incluido;
@@ -240,7 +240,7 @@ LOGIN_RATE_PER_15MIN=40
 
     try {
       _proceso = await Process.start(
-        _ejecutableNode,
+        ejecutableNode,
         [principal],
         workingDirectory: carpetaServidor.path,
         environment: {

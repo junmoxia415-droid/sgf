@@ -13,6 +13,7 @@ server/.env
 *.db
 *.db-wal
 *.db-shm
+.sgf-bloqueo-*.sqlite*
 server-data/
 datos/
 escritorio/cobertura/
