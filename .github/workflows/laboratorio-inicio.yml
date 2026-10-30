@@ -52,16 +52,20 @@ jobs:
             $b64Argumentos = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($argsTarea))
             $b64Cuenta = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cuenta))
             $b64Nombre = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($nombre))
+            $rutaError=Join-Path $carpeta 'registro-error.txt'
+            $b64Error=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($rutaError))
             $registrar = @'
           $ErrorActionPreference='Stop'
           function dec($s) {[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s))}
+          try {
           $accion=New-ScheduledTaskAction -Execute (dec 'PROGRAMA_B64') -Argument (dec 'ARGUMENTOS_B64')
           $principal=New-ScheduledTaskPrincipal -UserId (dec 'CUENTA_B64') -LogonType S4U -RunLevel Limited
           $gatillo=New-ScheduledTaskTrigger -AtStartup
           $config=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
           Register-ScheduledTask -TaskName (dec 'NOMBRE_B64') -Action $accion -Principal $principal -Trigger $gatillo -Settings $config | Out-Null
+          } catch { $_ | Out-String | Set-Content -LiteralPath (dec 'ERROR_B64'); exit 1 }
           '@
-            $registrar=$registrar.Replace('PROGRAMA_B64',$b64Programa).Replace('ARGUMENTOS_B64',$b64Argumentos).Replace('CUENTA_B64',$b64Cuenta).Replace('NOMBRE_B64',$b64Nombre)
+            $registrar=$registrar.Replace('PROGRAMA_B64',$b64Programa).Replace('ARGUMENTOS_B64',$b64Argumentos).Replace('CUENTA_B64',$b64Cuenta).Replace('NOMBRE_B64',$b64Nombre).Replace('ERROR_B64',$b64Error)
             $codigo=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($registrar))
             $powershell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
             $accionAyudante=New-ScheduledTaskAction -Execute $powershell -Argument "-NoProfile -NonInteractive -EncodedCommand $codigo"
@@ -75,7 +79,10 @@ jobs:
               $info=Get-ScheduledTaskInfo -TaskName $ayudante
               $tarea=Get-ScheduledTask -TaskName $ayudante
             } while (($info.LastRunTime -lt $comienzo -or $tarea.State -eq 'Running') -and (Get-Date) -lt $limiteRegistro)
-            if ($info.LastRunTime -lt $comienzo -or $info.LastTaskResult -ne 0) {throw "Falló el registro aislado de SYSTEM: $($info.LastTaskResult)"}
+            if ($info.LastRunTime -lt $comienzo -or $info.LastTaskResult -ne 0) {
+              if (Test-Path -LiteralPath $rutaError) {Get-Content -LiteralPath $rutaError | Write-Host}
+              throw "Falló el registro aislado de SYSTEM: $($info.LastTaskResult)"
+            }
             Start-ScheduledTask -TaskName $nombre
             $limite = (Get-Date).AddSeconds(45)
             while (-not (Test-Path -LiteralPath $estado) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 500}
