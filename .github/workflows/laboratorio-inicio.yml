@@ -70,7 +70,7 @@ jobs:
             $grupoAdmin=(Get-LocalGroup -SID 'S-1-5-32-544').Name
             Add-LocalGroupMember -Group $grupoAdmin -Member $cuenta
             $credencial = [System.Management.Automation.PSCredential]::new($cuenta, $clave)
-            $registro = Start-Process -FilePath $powershell -Credential $credencial -ArgumentList "-NoProfile -NonInteractive -EncodedCommand $codigo" -LoadUserProfile -Wait -PassThru
+            $registro = Start-Process -FilePath $powershell -Credential $credencial -ArgumentList "-NoProfile -NonInteractive -EncodedCommand $codigo" -WorkingDirectory $carpeta -Wait -PassThru
             Remove-LocalGroupMember -Group $grupoAdmin -Member $cuenta
             if ($registro.ExitCode -ne 0) {
               if (Test-Path -LiteralPath $rutaError) {Get-Content -LiteralPath $rutaError | Write-Host}
