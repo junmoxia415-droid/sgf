@@ -1,0 +1,65 @@
+name: Laboratorio de servicio virtual en Windows
+on:
+  push:
+    branches: ['laboratorio/servicio-virtual']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  experimento:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probar servicio de mínima identidad con datos ficticios
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $nombre='SGFLabVirtual'
+          $raiz=Join-Path $env:ProgramData "SGFLab-virtual-$env:GITHUB_RUN_ID"
+          $datos=Join-Path $raiz 'datos'
+          $cuenta='NT SERVICE\'+$nombre
+          $csc=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          New-Item -ItemType Directory -Force -Path $datos | Out-Null
+          try {
+            Copy-Item (Get-Command node).Source (Join-Path $raiz 'node.exe')
+            Copy-Item 'laboratorio-servicio/lab.mjs' $raiz
+            & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$raiz\servicio.exe" 'laboratorio-servicio/Programa.cs'
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo compilar el servicio de laboratorio.'}
+            # Solo la VM efímera de CI. No se instala ningún servicio en la PC del usuario.
+            & sc.exe create $nombre binPath= "$raiz\servicio.exe" start= auto obj= $cuenta
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo registrar la cuenta virtual.'}
+            & icacls $raiz /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo proteger la carpeta del ejecutable.'}
+            & icacls $raiz /grant "${cuenta}:(OI)(CI)RX"
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo otorgar lectura al servicio.'}
+            & icacls $datos /grant "${cuenta}:(OI)(CI)M"
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo otorgar acceso a los datos ficticios.'}
+            for ($vez=1; $vez -le 2; $vez++) {
+              Remove-Item (Join-Path $datos 'listo.json') -Force -ErrorAction SilentlyContinue
+              Start-Service $nombre
+              $limite=(Get-Date).AddSeconds(30)
+              while(-not (Test-Path (Join-Path $datos 'listo.json')) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 400}
+              if (-not (Test-Path (Join-Path $datos 'listo.json'))) {
+                if(Test-Path (Join-Path $datos 'error.txt')) {Get-Content (Join-Path $datos 'error.txt') | Write-Host}
+                throw 'El proceso del servicio no inició.'
+              }
+              $r=Get-Content (Join-Path $datos 'listo.json') -Raw | ConvertFrom-Json
+              if ($r.identidad -ine $cuenta) {throw "Identidad inesperada: $($r.identidad)"}
+              if ($r.carpetaEjecutableEscribible) {throw 'El servicio puede escribir en su carpeta de ejecutables.'}
+              if ($r.cantidad -ne $vez) {throw 'La base SQLite ficticia no conservó el registro anterior.'}
+              $http=Invoke-RestMethod "http://127.0.0.1:$($r.puerto)/"
+              if ($http.cantidad -ne $vez) {throw 'El proceso no respondió por loopback.'}
+              Stop-Service $nombre
+              (Get-Service $nombre).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(20))
+            }
+            Write-Host 'OK: cuenta virtual, carpeta ejecutable de solo lectura, SQLite y loopback tras dos inicios manuales.'
+            Write-Host 'No se probó un reinicio físico ni arranque previo a la sesión de usuario.'
+          } finally {
+            Stop-Service $nombre -ErrorAction SilentlyContinue
+            & sc.exe delete $nombre 2>$null | Out-Null
+            Remove-Item $raiz -Recurse -Force -ErrorAction SilentlyContinue
+          }
