@@ -64,3 +64,73 @@ jobs:
             & sc.exe delete $nombre 2>$null | Out-Null
             Remove-Item $raiz -Recurse -Force -ErrorAction SilentlyContinue
           }
+  sgf-real:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias y tipos para el experimento, sin instalador
+        working-directory: server
+        shell: pwsh
+        run: |
+          npm ci --no-audit --no-fund
+          if($LASTEXITCODE -ne 0){throw 'Fallaron las dependencias.'}
+          npm run build
+          if($LASTEXITCODE -ne 0){throw 'Falló el servidor de prueba.'}
+          npm prune --omit=dev --no-audit --no-fund
+          if($LASTEXITCODE -ne 0){throw 'Falló la preparación del laboratorio.'}
+      - name: Servidor SGF ficticio bajo una cuenta virtual
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $nombre='SGFLabSgf'
+          $raiz=Join-Path $env:ProgramData "SGFLab-real-$env:GITHUB_RUN_ID"
+          $datos=Join-Path $raiz 'datos'
+          $cuenta='NT SERVICE\'+$nombre
+          $csc=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          New-Item -ItemType Directory -Force -Path $datos,(Join-Path $raiz 'servidor') | Out-Null
+          try {
+            Copy-Item (Get-Command node).Source (Join-Path $raiz 'node.exe')
+            Copy-Item 'laboratorio-servicio/lab-sgf.mjs' $raiz
+            Copy-Item -Recurse 'server/dist' (Join-Path $raiz 'servidor/dist')
+            Copy-Item -Recurse 'server/node_modules' (Join-Path $raiz 'servidor/node_modules')
+            Copy-Item 'server/package.json' (Join-Path $raiz 'servidor/package.json')
+            $fuente=(Resolve-Path 'laboratorio-servicio\ProgramaSgf.cs').Path
+            & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$raiz\servicio.exe" $fuente
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo compilar el servicio experimental.'}
+            & sc.exe create $nombre binPath= "$raiz\servicio.exe" start= auto obj= $cuenta
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo registrar la cuenta virtual.'}
+            & icacls $raiz /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo proteger el ejecutable.'}
+            & icacls $raiz /grant "${cuenta}:(OI)(CI)RX"
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo otorgar lectura al servicio.'}
+            & icacls $datos /grant "${cuenta}:(OI)(CI)M"
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo otorgar acceso a datos ficticios.'}
+            for ($vez=1; $vez -le 2; $vez++) {
+              Remove-Item (Join-Path $datos 'listo.json'),(Join-Path $datos 'cierre-ok.txt'),(Join-Path $datos 'error.txt') -Force -ErrorAction SilentlyContinue
+              Start-Service $nombre
+              $limite=(Get-Date).AddSeconds(60)
+              while(-not (Test-Path (Join-Path $datos 'listo.json')) -and -not (Test-Path (Join-Path $datos 'error.txt')) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 400}
+              if (-not (Test-Path (Join-Path $datos 'listo.json'))) {
+                if(Test-Path (Join-Path $datos 'error.txt')) {Get-Content (Join-Path $datos 'error.txt') | Write-Host}
+                throw 'El servidor SGF de prueba no inició.'
+              }
+              $r=Get-Content (Join-Path $datos 'listo.json') -Raw | ConvertFrom-Json
+              if ($r.cuenta -ine $cuenta -or $r.ejecutablesEscribibles) {throw 'La identidad o la protección del ejecutable es incorrecta.'}
+              if (($vez -eq 1 -and -not $r.primerInicio) -or ($vez -eq 2 -and $r.primerInicio)) {throw 'La cuenta ficticia no persistió correctamente.'}
+              $http=Invoke-RestMethod "http://127.0.0.1:$($r.puerto)/api/health"
+              if (-not $http.success) {throw 'El servidor SGF de prueba no respondió.'}
+              Stop-Service $nombre
+              (Get-Service $nombre).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+              if (-not (Test-Path (Join-Path $datos 'cierre-ok.txt'))) {throw 'No se confirmó el cierre ordenado del servidor de prueba.'}
+            }
+            Write-Host 'OK: SGF en cuenta virtual, acceso autenticado local, datos ficticios persistentes y cierre ordenado.'
+            Write-Host 'No se instaló nada en la PC del usuario ni se probó un reinicio físico.'
+          } finally {
+            Stop-Service $nombre -ErrorAction SilentlyContinue
+            & sc.exe delete $nombre 2>$null | Out-Null
+            Remove-Item $raiz -Recurse -Force -ErrorAction SilentlyContinue
+          }
