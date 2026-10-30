@@ -194,10 +194,19 @@ LOGIN_RATE_PER_15MIN=40
   Future<bool> arrancar({bool esperar = true}) async {
     if (estado == EstadoServidor.arrancando || estado == EstadoServidor.enMarcha) return enMarcha;
 
-    await _asegurarEnv();
+    // Reservar el arranque antes de cualquier espera para impedir dos inicios
+    // simultáneos sobre la misma base de datos.
     estado = EstadoServidor.arrancando;
     ultimoError = null;
     notifyListeners();
+    try {
+      await _asegurarEnv();
+    } catch (e) {
+      estado = EstadoServidor.fallo;
+      ultimoError = 'No se pudo preparar la configuración local: $e';
+      anotar(ultimoError!);
+      return false;
+    }
     anotar('Iniciando el servidor en el puerto ${ajustes.puerto}…');
 
     final principal = '${carpetaServidor.path}${Platform.pathSeparator}dist${Platform.pathSeparator}index.js';
@@ -345,6 +354,10 @@ LOGIN_RATE_PER_15MIN=40
   }
 
   Future<void> reiniciar() async {
+    if (estado == EstadoServidor.arrancando || estado == EstadoServidor.deteniendo) {
+      anotar('Espere a que termine el inicio o cierre antes de reiniciar.');
+      return;
+    }
     await detener();
     await Future.delayed(const Duration(milliseconds: 600));
     await arrancar();

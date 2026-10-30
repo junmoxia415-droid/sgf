@@ -294,6 +294,10 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                             'El administrador puede probar y cambiar entre SQLite, Oracle y SQL Server desde «Servidor». Cada base conserva sus propios usuarios y datos; no se migran automáticamente.'),
                         _paso('7', 'Haga una copia al terminar el día',
                             'En «Servidor», pulse «Crear copia ahora». Se guardan las 10 últimas copias.'),
+                        _paso('8', 'Abra SGF en otra PC de la red',
+                            'En «Servidor», copie el nombre local automático. Puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS; si no, pruebe el enlace por IP. HTTP no cifra la conexión: use solo una red privada de confianza.'),
+                        _paso('9', 'Configure el arranque y la recuperación',
+                            'En «Servidor» active la apertura al iniciar sesión, el encendido al abrir y la recuperación ante fallos. El servidor aún no arranca antes de iniciar sesión y se detiene al cerrar SGF.'),
                         const SizedBox(height: 6),
                         const Aviso(
                           titulo: 'Si algo va mal',
@@ -319,7 +323,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                       children: [
                         Text('Sobre esta aplicación', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 10),
-                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.3')}'),
+                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.4')}'),
                         _fila('Motor', 'Incluido (no hace falta instalar nada más)'),
                         _fila('Datos', Ajustes.carpeta.path),
                         _fila('Escucha en', a.urlBaseLocal),

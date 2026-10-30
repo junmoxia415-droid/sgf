@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'servicios/ajustes.dart';
 import 'servicios/api.dart';
 import 'servicios/controlador_servidor.dart';
+import 'servicios/supervisor_servidor.dart';
 import 'servicios/reinicio_datos.dart';
 import 'pantallas/asistente_inicial.dart';
 import 'pantallas/acceso.dart';
@@ -126,8 +127,11 @@ class SgfApp extends StatefulWidget {
 
 class _SgfAppState extends State<SgfApp> with WindowListener {
   late final ControladorServidor servidor;
+  late final SupervisorServidor supervisor;
   late final Api api;
   bool _arrancado = false;
+  bool _cerrando = false;
+  Future<void>? _inicioAplicacion;
   late Future<bool> _primeraVez;
 
   @override
@@ -137,29 +141,46 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
     unawaited(windowManager.setPreventClose(true));
     api = Api();
     servidor = ControladorServidor(ajustes: widget.ajustes, api: api);
+    supervisor = SupervisorServidor(servidor: servidor)..iniciar();
     // Al abrir la aplicacion se arranca el servidor automaticamente
     // (a menos que el usuario lo haya desactivado en Ajustes).
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (widget.ajustes.arrancarAlAbrir) {
-        await servidor.arrancar();
-      } else {
-        await servidor.comprobarSiYaEstaArriba();
-      }
-      _primeraVez = servidor.esPrimeraVez();
-      if (mounted) setState(() => _arrancado = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_cerrando || !mounted) return;
+      _inicioAplicacion = _iniciarAplicacion();
     });
+  }
+
+  Future<void> _iniciarAplicacion() async {
+    if (widget.ajustes.arrancarAlAbrir) {
+      await servidor.arrancar();
+    } else {
+      await servidor.comprobarSiYaEstaArriba();
+    }
+    if (_cerrando) return;
+    _primeraVez = servidor.esPrimeraVez();
+    if (mounted) setState(() => _arrancado = true);
   }
 
   @override
   void onWindowClose() async {
+    if (_cerrando) return;
+    _cerrando = true;
+    await supervisor.detener();
+    try { await _inicioAplicacion; } catch (_) { /* cerrar igualmente */ }
     await servidor.detener();
     await windowManager.destroy();
   }
 
   @override
   void dispose() {
+    _cerrando = true;
     windowManager.removeListener(this);
-    servidor.dispose();
+    unawaited(() async {
+      await supervisor.detener();
+      try { await _inicioAplicacion; } catch (_) { /* cerrar igualmente */ }
+      if (servidor.estado != EstadoServidor.detenido) await servidor.detener();
+      servidor.dispose();
+    }());
     super.dispose();
   }
 

@@ -10,6 +10,7 @@ class Ajustes {
     this.puerto = 3000,
     this.urlPublica = 'http://127.0.0.1:3000',
     this.arrancarAlAbrir = true,
+    this.reiniciarEnFallo = true,
     this.temaOscuro = false,
     this.recordarSesion = true,
     this.asistenteCompletado = false,
@@ -20,6 +21,7 @@ class Ajustes {
   int puerto;
   String urlPublica;
   bool arrancarAlAbrir;
+  bool reiniciarEnFallo;
   bool temaOscuro;
   bool recordarSesion;
   bool asistenteCompletado;
@@ -50,6 +52,7 @@ class Ajustes {
         puerto: (mapa['puerto'] as num?)?.toInt() ?? 3000,
         urlPublica: (mapa['urlPublica'] as String?) ?? 'http://127.0.0.1:3000',
         arrancarAlAbrir: (mapa['arrancarAlAbrir'] as bool?) ?? true,
+        reiniciarEnFallo: (mapa['reiniciarEnFallo'] as bool?) ?? true,
         temaOscuro: (mapa['temaOscuro'] as bool?) ?? false,
         recordarSesion: (mapa['recordarSesion'] as bool?) ?? true,
         asistenteCompletado: (mapa['asistenteCompletado'] as bool?) ?? false,
@@ -68,6 +71,7 @@ class Ajustes {
         'puerto': puerto,
         'urlPublica': urlPublica,
         'arrancarAlAbrir': arrancarAlAbrir,
+        'reiniciarEnFallo': reiniciarEnFallo,
         'temaOscuro': temaOscuro,
         'recordarSesion': recordarSesion,
         'asistenteCompletado': asistenteCompletado,

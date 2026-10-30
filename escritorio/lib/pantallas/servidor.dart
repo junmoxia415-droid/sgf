@@ -186,7 +186,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           runSpacing: 10,
                           children: [
                             FilledButton.icon(
-                              onPressed: _trabajando || enMarcha
+                              onPressed: _trabajando || enMarcha || servidor.estado == EstadoServidor.arrancando || servidor.estado == EstadoServidor.deteniendo
                                   ? null
                                   : () => _accion(() async {
                                         final ok = await servidor.arrancar();
@@ -280,7 +280,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       ],
                       const Text('Si aparecen varios enlaces, pruebe el de la red que comparten los equipos; algunos pueden pertenecer a VPN. El cortafuegos debe permitir conexiones privadas al puerto de SGF.', style: TextStyle(fontSize: 12.5, height: 1.4)),
                       const SizedBox(height: 8),
-                      const Text('Mantenga SGF abierto en este equipo: al cerrar la aplicación se detiene el servidor. La dirección IP puede cambiar después de reiniciar. Para conservar el mismo enlace, reserve esta IP en el router o configure una IP fija con el administrador de red.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                      const Text('Mantenga SGF abierto en este equipo: al cerrar la aplicación se detiene el servidor. El nombre local intenta seguir funcionando si cambia la IP; si su red no admite mDNS, use una IP reservada en el router como alternativa.', style: TextStyle(fontSize: 12.5, height: 1.4)),
                     ]),
                   ),
                   const SizedBox(height: 16),
@@ -309,6 +309,16 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           widget.ajustes.arrancarAlAbrir = v;
                           await widget.ajustes.guardar();
                           if (mounted) setState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Recuperar el servidor si falla'),
+                        subtitle: const Text('Hasta tres intentos mientras SGF está abierto; no se reinicia si lo detiene usted.'),
+                        value: widget.ajustes.reiniciarEnFallo,
+                        onChanged: (v) async {
+                          setState(() => widget.ajustes.reiniciarEnFallo = v);
+                          await widget.ajustes.guardar();
                         },
                       ),
                       const Text('El inicio del servidor antes de iniciar sesión en Windows todavía no está disponible en esta versión.', style: TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
