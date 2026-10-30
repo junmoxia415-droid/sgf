@@ -27,7 +27,8 @@ jobs:
           try {
             Copy-Item (Get-Command node).Source (Join-Path $raiz 'node.exe')
             Copy-Item 'laboratorio-servicio/lab.mjs' $raiz
-            & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$raiz\servicio.exe" 'laboratorio-servicio/Programa.cs'
+            $fuente=(Resolve-Path 'laboratorio-servicio\Programa.cs').Path
+            & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$raiz\servicio.exe" $fuente
             if ($LASTEXITCODE -ne 0) {throw 'No se pudo compilar el servicio de laboratorio.'}
             # Solo la VM efímera de CI. No se instala ningún servicio en la PC del usuario.
             & sc.exe create $nombre binPath= "$raiz\servicio.exe" start= auto obj= $cuenta
