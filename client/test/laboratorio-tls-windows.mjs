@@ -1,5 +1,5 @@
-// Solo en una VM de CI efímera: importa y elimina una CA ficticia del usuario
-// de prueba. No instala certificados en el equipo de ninguna persona.
+// Solo en una VM de CI efímera: importa y elimina una CA ficticia en el
+// almacén de la máquina de prueba. No instala certificados en ninguna PC real.
 import {chromium} from 'playwright';
 import selfsigned from '../../server/node_modules/selfsigned/index.js';
 import {X509Certificate} from 'node:crypto';
@@ -19,25 +19,25 @@ const huella=new X509Certificate(ca.cert).fingerprint.replaceAll(':','');
 const archivo=join(dir,'publico.cer');writeFileSync(archivo,ca.cert);
 const servidor=https.createServer({key:cert.private,cert:cert.cert},(req,res)=>{res.end('laboratorio seguro');});
 servidor.listen(0,'127.0.0.1');await once(servidor,'listening');const puerto=servidor.address().port;
-async function probar(host,confiar) {
+async function probar(host,confiar,errorEsperado) {
  const browser=await chromium.launch({headless:true,args:['--no-proxy-server','--host-resolver-rules=MAP *.local 127.0.0.1']});
  try {
   const page=await browser.newPage({ignoreHTTPSErrors:false});
   if(confiar) {const r=await page.goto(`https://${host}:${puerto}/`);assert.equal(r.status(),200);assert.equal(await page.textContent('body'),'laboratorio seguro');}
-  else await assert.rejects(page.goto(`https://${host}:${puerto}/`));
+  else await assert.rejects(page.goto(`https://${host}:${puerto}/`),e=>String(e).includes(errorEsperado));
  } finally {await browser.close();}
 }
 let intentoImportacion=false;
 try {
- await probar(nombre,false);
+ await probar(nombre,false,'ERR_CERT_AUTHORITY_INVALID');
  intentoImportacion=true;
- execFileSync('certutil.exe',['-user','-addstore','-f','Root',archivo],{stdio:'pipe',timeout:30000});
+ execFileSync('certutil.exe',['-addstore','-f','Root',archivo],{stdio:'pipe',timeout:30000});
  await probar(nombre,true);
- await probar('nombre-incorrecto.local',false);
+ await probar('nombre-incorrecto.local',false,'ERR_CERT_COMMON_NAME_INVALID');
  console.log('OK: Chromium Windows exige CA y nombre correcto en VM efímera.');
 } finally {
  if(intentoImportacion) {
-  try {execFileSync('certutil.exe',['-user','-delstore','Root',huella],{stdio:'pipe',timeout:30000});}
+  try {execFileSync('certutil.exe',['-delstore','Root',huella],{stdio:'pipe',timeout:30000});}
   catch {console.warn('La CA temporal no estaba instalada o no se pudo retirar de la VM efímera.');}
  }
  servidor.close();await once(servidor,'close');rmSync(dir,{recursive:true,force:true});
