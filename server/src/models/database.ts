@@ -975,7 +975,9 @@ export async function closeDb() {
   }
 
   if (db) {
-    flushDisk();
+    // Si falla la escritura, no cerrar silenciosamente la base en memoria:
+    // quien llama debe recibir el error y puede intentar guardarla de nuevo.
+    if (!flushDisk()) throw new Error('No se pudieron guardar los últimos cambios de SQLite. Compruebe el espacio y los permisos antes de continuar.');
     db.close();
     db = null;
   }

@@ -244,7 +244,10 @@ const server = http.createServer(
   },
 );
 
+let cerrando = false;
 function shutdown(signal: string) {
+  if (cerrando) return;
+  cerrando = true;
   console.log(`\n[SGF] Senal ${signal}. Cerrando...`);
   server.close(async () => {
     let estado=0;

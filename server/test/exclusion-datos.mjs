@@ -6,10 +6,12 @@ import {once} from 'node:events';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import net from 'node:net';
+import {randomBytes} from 'node:crypto';
 const base=await mkdtemp(join(tmpdir(),'sgf-bloqueo-test-'));
 const datos=join(base,'SGF','datos');
-const token='token-consola-para-pruebas-abc123';
-const clave='Clave-ficticia-para-prueba-4321';
+const token=randomBytes(24).toString('hex');
+const clave=`Prueba-${randomBytes(12).toString('hex')}`;
+const jwt=randomBytes(24).toString('hex');
 const principal=resolve('dist/index.js');const guardia=resolve('dist/utils/guardia-bloqueo.js');
 const procesos=[];
 function iniciar(args,env={}) {
@@ -25,7 +27,7 @@ async function cerrar(p) {
 async function puertoLibre(){const s=net.createServer();s.listen(0,'127.0.0.1');await once(s,'listening');const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 const esperar=ms=>new Promise(r=>setTimeout(r,ms));
 async function servidor(port) {
-  const p=iniciar([principal],{DB_TYPE:'sqlite',HOST:'127.0.0.1',PORT:String(port),SGF_DATA_DIR:datos,SGF_ENV_FILE:join(base,'no-existe.env'),SGF_CONSOLE_TOKEN:token,JWT_SECRET:'clave-de-prueba-jwt-123456789'});
+  const p=iniciar([principal],{DB_TYPE:'sqlite',HOST:'127.0.0.1',PORT:String(port),SGF_DATA_DIR:datos,SGF_ENV_FILE:join(base,'no-existe.env'),SGF_CONSOLE_TOKEN:token,JWT_SECRET:jwt});
   return p;
 }
 async function esperarSalud(p,port) {

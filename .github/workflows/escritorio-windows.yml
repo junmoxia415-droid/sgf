@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.4)'
+        description: 'Versión a compilar (ej. 4.0.5)'
         required: false
-        default: '4.0.4'
+        default: '4.0.5'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.4' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.5' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -63,6 +63,7 @@ jobs:
           node test/migracion-permisos.mjs
           node test/nombre-red.mjs
           node test/exclusion-datos.mjs
+          node test/guardado-fallido.mjs
           node test/pdf-guardado.mjs
           node test/pdf-variados-api.mjs
           node test/transacciones.mjs
@@ -174,6 +175,7 @@ jobs:
           npm ci --no-audit --no-fund
           npx tsc
           node --no-warnings test/exclusion-datos.mjs
+          node --no-warnings test/guardado-fallido.mjs
 
       - name: Dependencias
         working-directory: escritorio
@@ -273,6 +275,7 @@ jobs:
             'distribucion\sgf_escritorio.exe',
             'distribucion\servidor\runtime\node.exe',
             'distribucion\servidor\dist\index.js',
+            'distribucion\servidor\dist\utils\guardia-bloqueo.js',
             'distribucion\client\dist\index.html',
             'distribucion\LEEME-PRIMERO.txt'
           )
@@ -383,6 +386,8 @@ jobs:
           Al abrir por primera vez, un asistente guia los pasos para crear su propia cuenta de administrador. No hay una cuenta de fabrica.
 
           En Servidor aparece un nombre local automatico, sujeto a que la red y los clientes admitan mDNS; HTTP no cifra ni autentica el equipo. Existe recuperacion del servidor mientras SGF esta abierto. El servidor todavia no arranca antes de iniciar sesion en Windows y se detiene al cerrar la aplicacion.
+
+          Esta version protege la carpeta de datos frente a dos servidores compatibles simultaneos, incluso con puertos distintos. Cierre las versiones anteriores antes de actualizar y no comparta la carpeta en unidades de red que no garanticen bloqueos SQLite.
           "@
           $notas | Set-Content -Path notas-release.md -Encoding utf8
 

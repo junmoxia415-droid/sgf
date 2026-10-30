@@ -29,6 +29,7 @@ class ControladorServidor extends ChangeNotifier {
   Process? _proceso;
   EstadoServidor estado = EstadoServidor.detenido;
   String? ultimoError;
+  bool avisoCierre = false;
   String? tokenConsola;
   VoidCallback? abrirGuia;
   VoidCallback? iniciarSesion;
@@ -323,6 +324,7 @@ LOGIN_RATE_PER_15MIN=40
       notifyListeners();
       return;
     }
+    avisoCierre = false;
     estado = EstadoServidor.deteniendo;
     notifyListeners();
     anotar('Deteniendo el servidor…');
@@ -333,7 +335,14 @@ LOGIN_RATE_PER_15MIN=40
       await api.apagarServidor();
       final salida = await proceso.exitCode.timeout(const Duration(seconds: 12), onTimeout: () => -999);
       if (salida == -999) throw TimeoutException('El servidor no terminó el cierre ordenado.');
+      if (salida != 0) {
+        avisoCierre = true;
+        ultimoError = 'El servidor informó un error al cerrar (código $salida). Es posible que los últimos cambios no se hayan guardado; revise el registro, el espacio y los permisos antes de continuar.';
+        anotar(ultimoError!);
+      }
     } catch (e) {
+      avisoCierre = true;
+      ultimoError = 'No se confirmó el guardado al cerrar. Los últimos cambios podrían no haberse guardado; revise el registro y las copias de seguridad.';
       anotar('No se pudo cerrar con orden: $e. Se intentará detener el proceso.');
       try {
         if (Platform.isWindows) {

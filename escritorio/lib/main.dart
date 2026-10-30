@@ -140,6 +140,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
   late final ControladorServidor servidor;
   late final SupervisorServidor supervisor;
   late final Api api;
+  final _navegador = GlobalKey<NavigatorState>();
   bool _arrancado = false;
   bool _cerrando = false;
   Future<void>? _inicioAplicacion;
@@ -179,6 +180,14 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
     await supervisor.detener();
     try { await _inicioAplicacion; } catch (_) { /* cerrar igualmente */ }
     await servidor.detener();
+    final contexto = _navegador.currentContext;
+    if (servidor.avisoCierre && mounted && contexto != null) {
+      await showDialog<void>(context: contexto, barrierDismissible: false, builder: (dialogo) => AlertDialog(
+        title: const Text('No se confirmó el guardado'),
+        content: Text(servidor.ultimoError ?? 'Los últimos cambios podrían no haberse guardado. Revise el registro y las copias de seguridad.'),
+        actions: [TextButton(onPressed: () => Navigator.of(dialogo).pop(), child: const Text('Entendido'))],
+      ));
+    }
     await windowManager.destroy();
   }
 
@@ -198,6 +207,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navegador,
       title: 'SGF · Sistema de Gestión de Facturas',
       debugShowCheckedModeBanner: false,
       theme: temaSgf(Brightness.light),

@@ -298,6 +298,8 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                             'En «Servidor», copie el nombre local automático. Puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS; si no, pruebe el enlace por IP. HTTP no cifra la conexión: use solo una red privada de confianza.'),
                         _paso('9', 'Configure el arranque y la recuperación',
                             'En «Servidor» active la apertura al iniciar sesión, el encendido al abrir y la recuperación ante fallos. El servidor aún no arranca antes de iniciar sesión y se detiene al cerrar SGF.'),
+                        _paso('10', 'Evite abrir instalaciones antiguas a la vez',
+                            'Las versiones recientes protegen la carpeta contra dos servidores compatibles. Cierre versiones antiguas y no comparta la carpeta de datos en una unidad de red: no pueden garantizar esa protección.'),
                         const SizedBox(height: 6),
                         const Aviso(
                           titulo: 'Si algo va mal',
@@ -323,7 +325,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                       children: [
                         Text('Sobre esta aplicación', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 10),
-                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.4')}'),
+                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.5')}'),
                         _fila('Motor', 'Incluido (no hace falta instalar nada más)'),
                         _fila('Datos', Ajustes.carpeta.path),
                         _fila('Escucha en', a.urlBaseLocal),
