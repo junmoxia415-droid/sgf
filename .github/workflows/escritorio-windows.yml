@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.0)'
+        description: 'Versión a compilar (ej. 4.0.1)'
         required: false
-        default: '4.0.0'
+        default: '4.0.1'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.0' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.1' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
