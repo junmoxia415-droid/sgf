@@ -273,6 +273,12 @@ LOGIN_RATE_PER_15MIN=40
         // La tubería puede entregar las últimas líneas después del evento de
         // salida. No aceptar mensajes de un proceso anterior si ya hay otro.
         if (generacion != _generacionProceso || (_proceso != iniciado && !(_proceso == null && estado == EstadoServidor.fallo))) return;
+        if (t == '[SGF_PUERTO_OCUPADO]') {
+          ultimoError = 'El puerto ${ajustes.puerto} ya está ocupado por otra aplicación. SGF no la ha detenido ni ha cambiado el cortafuegos. Revise el conflicto antes de volver a iniciar.';
+          anotar(ultimoError!);
+          notifyListeners();
+          return;
+        }
         if (t.startsWith('[SGF_DB_ERROR] ')) {
           final detalle = t.substring('[SGF_DB_ERROR] '.length);
           final motor = detalle.endsWith(':oracle') ? 'Oracle' : detalle.endsWith(':mssql') ? 'SQL Server' : null;

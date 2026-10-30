@@ -49,5 +49,13 @@ try {
  const invalido=arrancar({SGF_LAN_TLS_KEY:join(tmp,'no-existe.key')});
  const [fallo]=await invalido.fin;assert.notEqual(fallo,0);assert.match(invalido.err,/identidad HTTPS/);
  assert.notEqual(await httpPlano(),200);assert.deepEqual(await readFile(join(datos,'sgf-data.db')),antes);
- console.log('OK: SGF real sobre HTTPS, validación de nombre y CA, login ficticio y fallo cerrado sin HTTP.');
+ // Un servicio ajeno que ocupa el puerto debe permanecer intacto.
+ const ocupado=net.createServer(s=>s.end('servicio-ajeno'));ocupado.listen(port,'127.0.0.1');await once(ocupado,'listening');
+ try {
+  const conflicto=arrancar({});const [codConflicto]=await conflicto.fin;
+  assert.notEqual(codConflicto,0);assert.match(conflicto.out,/\[SGF_PUERTO_OCUPADO\]/);
+  const respuesta=await new Promise((resolve,reject)=>{const s=net.connect(port,'127.0.0.1');let t='';s.on('data',b=>t+=b);s.on('end',()=>resolve(t));s.on('error',reject);});
+  assert.equal(respuesta,'servicio-ajeno');
+ } finally {ocupado.close();await once(ocupado,'close');}
+ console.log('OK: SGF real sobre HTTPS, validación de nombre y CA, login ficticio, fallo cerrado sin HTTP y puerto ocupado respetado.');
 } finally {if(proceso&&proceso.p.exitCode===null){proceso.p.kill('SIGKILL');await proceso.fin;}await rm(tmp,{recursive:true,force:true,maxRetries:5,retryDelay:200});}

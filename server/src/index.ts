@@ -310,9 +310,11 @@ process.on("unhandledRejection", (reason) => console.error("[SGF] Unhandled reje
 process.on("uncaughtException", (error) => console.error("[SGF] Uncaught exception:", error));
 
 receptorRed.on('error', async error => {
+  if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') console.log('[SGF_PUERTO_OCUPADO]');
   console.error('[SGF] No se pudo abrir el puerto:',error.message);
   try { await closeDb(); } catch (e) { console.error('[SGF] Error al cerrar la base:',e); }
   try { bloqueoDatos.cerrar(); } catch (e) { console.error('[SGF] Error al liberar el bloqueo:',e); }
+  await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
   process.exit(1);
 });
 
