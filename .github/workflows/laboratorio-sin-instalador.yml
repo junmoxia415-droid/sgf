@@ -1,0 +1,47 @@
+name: Laboratorio Windows sin instalador
+on:
+  push:
+    branches: ['laboratorio/pruebas-sin-instalador']
+permissions:
+  contents: read
+jobs:
+  pruebas:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.8'
+          channel: stable
+          cache: true
+      - name: Preparar servidor solo para pruebas
+        working-directory: server
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Pruebas aisladas de selección, TLS y exclusión
+        working-directory: server
+        run: |
+          node --no-warnings test/seleccion-base.mjs
+          node --no-warnings test/laboratorio-tls-red.mjs
+          node --no-warnings test/control-tls.mjs
+          node --no-warnings test/exclusion-datos.mjs
+          node --no-warnings test/dbconfig-sqlite.mjs
+      - name: Dependencias Flutter
+        working-directory: escritorio
+        run: flutter pub get
+      - name: Analizar y probar sin construir aplicación ni instalador
+        working-directory: escritorio
+        env:
+          SGF_SERVER_TEST_DIR: ${{ github.workspace }}\server
+          SGF_NODE_TEST: node
+          SGF_GUARD_TEST_SCRIPT: ${{ github.workspace }}\server\dist\utils\guardia-bloqueo.js
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded

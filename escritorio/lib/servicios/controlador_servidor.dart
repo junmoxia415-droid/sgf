@@ -33,6 +33,7 @@ class ControladorServidor extends ChangeNotifier {
   final bool usarCanalSeguro;
 
   Process? _proceso;
+  int _generacionProceso = 0;
   EstadoServidor estado = EstadoServidor.detenido;
   String? ultimoError;
   bool avisoCierre = false;
@@ -248,6 +249,7 @@ LOGIN_RATE_PER_15MIN=40
     if (!usarCanalSeguro) api.tokenConsola = tokenConsola;
 
     try {
+      final generacion = ++_generacionProceso;
       _proceso = await Process.start(
         ejecutableNode,
         [principal],
@@ -267,8 +269,20 @@ LOGIN_RATE_PER_15MIN=40
       final iniciado = _proceso!;
       final tokenDelProceso = tokenConsola!;
       iniciado.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((linea) {
-        if (_proceso != iniciado) return;
         final t = linea.trim();
+        // La tubería puede entregar las últimas líneas después del evento de
+        // salida. No aceptar mensajes de un proceso anterior si ya hay otro.
+        if (generacion != _generacionProceso || (_proceso != iniciado && !(_proceso == null && estado == EstadoServidor.fallo))) return;
+        if (t.startsWith('[SGF_DB_ERROR] ')) {
+          final detalle = t.substring('[SGF_DB_ERROR] '.length);
+          final motor = detalle.endsWith(':oracle') ? 'Oracle' : detalle.endsWith(':mssql') ? 'SQL Server' : null;
+          ultimoError = motor == null
+              ? 'La configuración de base de datos es ambigua o inválida. Seleccione DB_TYPE en la configuración local y vuelva a iniciar. No se ha cambiado ni borrado ninguna base.'
+              : 'No se pudo conectar a $motor. SGF no cambió a SQLite ni abrió otra base. Revise la conexión y vuelva a iniciar; no se han borrado los datos.';
+          anotar(ultimoError!);
+          notifyListeners();
+          return;
+        }
         if (usarCanalSeguro && t.startsWith('[SGF_TLS] ')) {
           final canal = CanalLocalSeguro.desdeAnuncio(t, tokenDelProceso);
           if (canal == null) {
@@ -294,7 +308,7 @@ LOGIN_RATE_PER_15MIN=40
         tokenConsola = null;
         if (estado != EstadoServidor.deteniendo) {
           estado = EstadoServidor.fallo;
-          ultimoError = 'El servidor se ha detenido inesperadamente (código $codigo).';
+          ultimoError ??= 'El servidor se ha detenido inesperadamente (código $codigo).';
           anotar(ultimoError!);
         } else {
           estado = EstadoServidor.detenido;

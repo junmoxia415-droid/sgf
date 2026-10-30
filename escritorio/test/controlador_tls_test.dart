@@ -25,8 +25,9 @@ void main() {
       expect(await servidor.arrancar(),isTrue,reason:servidor.registro.join('\n'));
       expect(api.base,startsWith('https://127.0.0.1:'));
       expect((await api.panelPing())['servicio'],'sgf-consola');
-      await api.configurarPrimeraCuenta(usuario:'administrador_ficticio',nombre:'Prueba',clave:'para-pruebas-seguro-987654321');
-      await api.iniciarSesion('administrador_ficticio','para-pruebas-seguro-987654321');
+      await api.configurarPrimeraCuenta(usuario:'administrador_ficticio',nombre:'Prueba',clave:'  para-pruebas-seguro-987654321  ');
+      await expectLater(api.iniciarSesion('administrador_ficticio','para-pruebas-incorrecta'),throwsA(isA<ApiError>().having((e)=>e.codigo,'estado',401)));
+      await api.iniciarSesion('administrador_ficticio','  para-pruebas-seguro-987654321  ');
       expect(api.esAdmin,isTrue);
       await api.post('/api/users', {'username':'operador_ficticio','name':'Operador','password':'para-pruebas-usuario-123','role':'usuario'});
       await api.iniciarSesion('operador_ficticio','para-pruebas-usuario-123');
@@ -43,6 +44,22 @@ void main() {
     } finally {
       await servidor.detener();servidor.dispose();await tmp.delete(recursive:true);
     }
+  }, skip:serverDir == null ? 'Requiere SGF_SERVER_TEST_DIR y servidor compilado.' : false,
+     timeout:const Timeout(Duration(minutes:1)));
+
+  test('Configuración ambigua no abre otra base y se comunica en pantalla', () async {
+    final tmp=await Directory.systemTemp.createTemp('sgf-base-invalida-');
+    final datos=Directory('${tmp.path}${Platform.pathSeparator}SGF${Platform.pathSeparator}datos');await datos.create(recursive:true);
+    final fichero=File('${datos.path}${Platform.pathSeparator}sgf-data.db');await fichero.writeAsString('datos ficticios');
+    await File('${datos.path}${Platform.pathSeparator}.env').writeAsString('DB_TYPE=invalido\n');
+    final socket=await ServerSocket.bind(InternetAddress.loopbackIPv4,0);final puerto=socket.port;await socket.close();
+    final servidor=ServidorSeguroTemporal(ajustes:Ajustes(puerto:puerto),api:Api(),server:Directory(serverDir!),datos:datos);
+    try {
+      expect(await servidor.arrancar(),isFalse);
+      for (var i=0;i<30 && !(servidor.ultimoError ?? '').contains('configuración de base');i++) { await Future<void>.delayed(const Duration(milliseconds:100)); }
+      expect(servidor.ultimoError,contains('configuración de base'));
+      expect(await fichero.readAsString(),'datos ficticios');
+    } finally { await servidor.detener();servidor.dispose();await tmp.delete(recursive:true); }
   }, skip:serverDir == null ? 'Requiere SGF_SERVER_TEST_DIR y servidor compilado.' : false,
      timeout:const Timeout(Duration(minutes:1)));
 }

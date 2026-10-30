@@ -7,6 +7,7 @@ import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, DATA_DIR, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { BloqueoDatos } from "./utils/bloqueo-datos.js";
 import { iniciarControlTls } from "./utils/control-tls.js";
+import { ErrorSeleccionBase } from "./utils/seleccion-base.js";
 import type { Server as ServidorTls } from 'node:https';
 import { iniciarNombreRed, detenerNombreRed } from "./utils/nombre-red.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
@@ -44,7 +45,23 @@ catch (error:any) {
   console.error(`[SGF] No se inició el servidor: ${error?.message || 'no se pudo proteger la carpeta de datos.'}`);
   process.exit(1);
 }
-const dbInfo = await initDatabase();
+let dbInfo: Awaited<ReturnType<typeof initDatabase>>;
+try { dbInfo = await initDatabase(); }
+catch (error) {
+  if (error instanceof ErrorSeleccionBase) {
+    // Mensaje acotado, sin credenciales ni detalles devueltos por el driver.
+    console.log(`[SGF_DB_ERROR] ${error.motivo}:${error.motor || 'ninguno'}`);
+    console.error(`[SGF] ${error.message}`);
+  } else {
+    console.error('[SGF] No se pudo inicializar la base de datos. Revise el registro local y la configuración.');
+  }
+  bloqueoDatos.cerrar();
+  process.exitCode = 1;
+  // Vaciar el diagnóstico para la interfaz antes de terminar. Los drivers
+  // pueden mantener temporizadores internos; nunca continuar sin la base.
+  await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
+  process.exit(1);
+}
   try {
     // Columnas para "facturas por mes" en bases ya existentes (Oracle/SQL Server).
     const { asegurarColumnasPeriodo } = await import("./utils/facturas-periodo.js");
