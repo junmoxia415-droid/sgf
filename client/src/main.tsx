@@ -1,3 +1,5 @@
+// Polyfills de API, además del target de sintaxis de Vite. No sustituyen a TLS.
+import "core-js/stable";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";

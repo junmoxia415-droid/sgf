@@ -31,9 +31,11 @@ function toNum(value: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Solo identifica filas temporales en esta página; no se usa como secreto ni se envía al servidor.
+let nextDraftService = 0;
 function makeService(service?: Partial<ServiceRow>): ServiceForm {
   return {
-    id: service?.id || crypto.randomUUID(),
+    id: `draft-service-${++nextDraftService}`,
     numero_servicio: String(service?.numero_servicio || ""),
     cuota: toTextNumber(service?.cuota),
     consumo: toTextNumber(service?.consumo),

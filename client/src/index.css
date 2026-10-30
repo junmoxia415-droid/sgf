@@ -1,6 +1,6 @@
-@import "tailwindcss";
-
-@variant dark (&:where(.dark, .dark *));
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --app-bg: #f3f4f6;
