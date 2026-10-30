@@ -1,0 +1,59 @@
+name: Laboratorio de protección local en Windows
+on:
+  push:
+    branches: ['laboratorio/dpapi']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  laboratorio:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probar DPAPI con tarea S4U del mismo usuario
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nombre = "SGF-dpapi-lab-${env:GITHUB_RUN_ID}"
+          $ruta = Join-Path $env:RUNNER_TEMP "sgf-dpapi-${env:GITHUB_RUN_ID}.bin"
+          $salida = Join-Path $env:RUNNER_TEMP "sgf-dpapi-${env:GITHUB_RUN_ID}.txt"
+          $cuenta = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $bytes = New-Object byte[] 32
+          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $entropia = [Text.Encoding]::UTF8.GetBytes('SGF-laboratorio')
+          $protegido = [Security.Cryptography.ProtectedData]::Protect($bytes,$entropia,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+          [IO.File]::WriteAllBytes($ruta,$protegido)
+          $esperado = [Convert]::ToBase64String([Security.Cryptography.SHA256]::HashData($bytes))
+          $br=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ruta))
+          $bs=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($salida))
+          $script = @'
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName System.Security
+          function dec($s) {[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s))}
+          $bytes=[IO.File]::ReadAllBytes((dec 'RUTA_B64'))
+          $entropia=[Text.Encoding]::UTF8.GetBytes('SGF-laboratorio')
+          $claro=[Security.Cryptography.ProtectedData]::Unprotect($bytes,$entropia,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+          $sha=[Security.Cryptography.SHA256]::Create()
+          $resultado=[Convert]::ToBase64String($sha.ComputeHash($claro))
+          [IO.File]::WriteAllText((dec 'SALIDA_B64'),$resultado)
+          '@
+          $script=$script.Replace('RUTA_B64',$br).Replace('SALIDA_B64',$bs)
+          $codigo=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+          $powershell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $accion=New-ScheduledTaskAction -Execute $powershell -Argument "-NoProfile -NonInteractive -EncodedCommand $codigo"
+          $principal=New-ScheduledTaskPrincipal -UserId $cuenta -LogonType S4U -RunLevel Limited
+          $gatillo=New-ScheduledTaskTrigger -AtStartup
+          try {
+            Register-ScheduledTask -TaskName $nombre -Action $accion -Principal $principal -Trigger $gatillo | Out-Null
+            Start-ScheduledTask -TaskName $nombre
+            $limite=(Get-Date).AddSeconds(45)
+            while (-not (Test-Path -LiteralPath $salida) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 500}
+            if (-not (Test-Path -LiteralPath $salida)) {Get-ScheduledTaskInfo -TaskName $nombre | Format-List | Out-String | Write-Host;throw 'La tarea no pudo descifrar el valor temporal.'}
+            $obtenido=[IO.File]::ReadAllText($salida)
+            if($obtenido -ne $esperado) {throw 'El resultado descifrado no coincide.'}
+            Write-Host 'OK: DPAPI descifró un dato ficticio bajo S4U del mismo usuario. No se ha probado un reinicio físico ni un perfil sin cargar.'
+          } finally {
+            Stop-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $ruta,$salida -Force -ErrorAction SilentlyContinue
+          }
