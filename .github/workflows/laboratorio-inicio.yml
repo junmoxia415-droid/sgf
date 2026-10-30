@@ -33,8 +33,13 @@ jobs:
           $bytes = New-Object byte[] 24
           [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
           $clave = (ConvertTo-SecureString ([Convert]::ToBase64String($bytes)+'aA1#') -AsPlainText -Force)
+          $permisoAnadido = $false
           try {
-            New-LocalUser -Name $id -Password $clave -PasswordNeverExpires | Out-Null
+            $usuarioTemporal = New-LocalUser -Name $id -Password $clave -PasswordNeverExpires
+            $sid = $usuarioTemporal.SID.Value
+            Add-Type -Path (Join-Path $env:GITHUB_WORKSPACE 'server/test/laboratorio/permiso-lote.cs')
+            [PermisoLoteLaboratorio]::Modificar($sid, $true)
+            $permisoAnadido = $true
             New-Item -ItemType Directory -Path $carpeta -Force | Out-Null
             Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'server/test/laboratorio/tarea-s4u.cjs') $script
             & icacls $carpeta /grant "${cuenta}:(OI)(CI)(M)" | Out-Null
@@ -58,6 +63,7 @@ jobs:
           } finally {
             Stop-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue
             Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
+            if ($permisoAnadido) { try {[PermisoLoteLaboratorio]::Modificar($sid, $false)} catch {Write-Warning 'No se pudo retirar el derecho temporal.'} }
             Remove-LocalUser -Name $id -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $carpeta -Recurse -Force -ErrorAction SilentlyContinue
           }
