@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {seleccionarMotorInicial,iniciarMotorSeleccionado,ErrorSeleccionBase} from '../dist/utils/seleccion-base.js';
+import {seleccionarMotorInicial,iniciarMotorSeleccionado,ErrorSeleccionBase,activarYGuardarBase,ErrorBaseActivaSinGuardar} from '../dist/utils/seleccion-base.js';
 
 assert.equal(seleccionarMotorInicial({}),'sqlite');
 for(const motor of ['sqlite','oracle','mssql']) assert.equal(seleccionarMotorInicial({DB_TYPE:motor}),motor);
@@ -19,6 +19,13 @@ for(const tipo of ['oracle','mssql']) {
   assert.deepEqual(llamadas,[tipo], 'No debe intentar SQLite ni otro motor al fallar.');
 }
 assert.equal(await iniciarMotorSeleccionado('sqlite',{sqlite:async()=>17,oracle:async()=>{throw Error('No debe llamarse')},mssql:async()=>{throw Error('No debe llamarse')}}),17);
+
+// Distinguir un fallo al conectar de uno al guardar tras cambiar el motor.
+let guardado=0;
+await assert.rejects(activarYGuardarBase(async()=>{throw Error('conexión ficticia')},()=>guardado++),e=>!(e instanceof ErrorBaseActivaSinGuardar));
+assert.equal(guardado,0);
+await assert.rejects(activarYGuardarBase(async()=>{},()=>{throw Error('fallo ficticio de escritura')}),e=>e instanceof ErrorBaseActivaSinGuardar);
+await activarYGuardarBase(async()=>{},()=>guardado++);assert.equal(guardado,1);
 
 // Proceso real sin conectar con ningún servidor externo y con datos testigo.
 const dir=await mkdtemp(join(tmpdir(),'sgf-seleccion-'));const testigo=join(dir,'sgf-data.db');

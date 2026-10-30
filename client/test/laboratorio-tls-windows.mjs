@@ -27,14 +27,18 @@ async function probar(host,confiar) {
   else await assert.rejects(page.goto(`https://${host}:${puerto}/`));
  } finally {await browser.close();}
 }
-let importada=false;
+let intentoImportacion=false;
 try {
  await probar(nombre,false);
- execFileSync('certutil.exe',['-user','-addstore','Root',archivo],{stdio:'pipe',timeout:30000});importada=true;
+ intentoImportacion=true;
+ execFileSync('certutil.exe',['-user','-addstore','-f','Root',archivo],{stdio:'pipe',timeout:30000});
  await probar(nombre,true);
  await probar('nombre-incorrecto.local',false);
  console.log('OK: Chromium Windows exige CA y nombre correcto en VM efímera.');
 } finally {
- if(importada) execFileSync('certutil.exe',['-user','-delstore','Root',huella],{stdio:'pipe',timeout:30000});
+ if(intentoImportacion) {
+  try {execFileSync('certutil.exe',['-user','-delstore','Root',huella],{stdio:'pipe',timeout:30000});}
+  catch {console.warn('La CA temporal no estaba instalada o no se pudo retirar de la VM efímera.');}
+ }
  servidor.close();await once(servidor,'close');rmSync(dir,{recursive:true,force:true});
 }

@@ -21,6 +21,19 @@ export function seleccionarMotorInicial(env: NodeJS.ProcessEnv): MotorInicial {
   return 'sqlite';
 }
 
+export class ErrorBaseActivaSinGuardar extends Error {
+  constructor() {
+    super('La conexión cambió temporalmente, pero no pudo guardarse la configuración.');
+    this.name = 'ErrorBaseActivaSinGuardar';
+  }
+}
+
+/** Distingue un fallo de conexión de un fallo después de activar la conexión. */
+export async function activarYGuardarBase(activar: () => Promise<unknown>, guardar: () => void): Promise<void> {
+  await activar();
+  try { guardar(); } catch { throw new ErrorBaseActivaSinGuardar(); }
+}
+
 export async function iniciarMotorSeleccionado<T>(motor: MotorInicial, iniciar: Record<MotorInicial, () => Promise<T>>): Promise<T> {
   try { return await iniciar[motor](); }
   catch (error) {
