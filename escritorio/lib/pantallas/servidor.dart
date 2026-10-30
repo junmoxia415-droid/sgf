@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../servicios/api.dart';
+import '../servicios/inicio_windows.dart';
 import '../servicios/controlador_servidor.dart';
 import '../widgets/comunes.dart';
 import 'configurar_base.dart';
@@ -32,12 +34,20 @@ class ServidorPantalla extends StatefulWidget {
 class _ServidorPantallaState extends State<ServidorPantalla> {
   Map<String, dynamic>? _estado;
   bool _trabajando = false;
+  final _inicioWindows = InicioWindows();
+  bool? _inicioSesionWindows;
+  bool _actualizandoInicio = false;
+  List<String> _enlaces = const [];
+  String? _errorRed;
+  bool _consultandoRed = false;
 
   @override
   void initState() {
     super.initState();
     widget.servidor.addListener(_redibujar);
     _cargar();
+    _consultarRed();
+    _consultarInicio();
   }
 
   @override
@@ -48,6 +58,42 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
 
   void _redibujar() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _consultarRed() async {
+    if (mounted) setState(() { _consultandoRed = true; _errorRed = null; });
+    try {
+      final enlaces = await widget.servidor.enlacesRed();
+      if (mounted) setState(() => _enlaces = enlaces);
+    } catch (_) {
+      if (mounted) setState(() { _enlaces = []; _errorRed = 'No se pudieron consultar las direcciones de red.'; });
+    } finally {
+      if (mounted) setState(() => _consultandoRed = false);
+    }
+  }
+
+  Future<void> _consultarInicio() async {
+    if (!_inicioWindows.disponible) return;
+    try {
+      final activo = await _inicioWindows.activo();
+      if (mounted) setState(() => _inicioSesionWindows = activo);
+    } catch (_) {
+      if (mounted) setState(() => _inicioSesionWindows = null);
+    }
+  }
+
+  Future<void> _cambiarInicio(bool activar) async {
+    setState(() => _actualizandoInicio = true);
+    try {
+      await _inicioWindows.establecer(activar);
+      await _consultarInicio();
+      if (mounted) avisar(context, activar ? 'SGF se abrirá al iniciar sesión en Windows.' : 'Inicio automático de SGF desactivado.');
+    } catch (e) {
+      await _consultarInicio();
+      if (mounted) avisar(context, 'No se pudo cambiar el inicio: $e', tipo: TipoAviso.error);
+    } finally {
+      if (mounted) setState(() => _actualizandoInicio = false);
+    }
   }
 
   Future<void> _cargar() async {
@@ -76,15 +122,17 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final enMarcha = servidor.enMarcha;
     final contadores = (_estado?['contadores'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final disco = (_estado?['disco'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final nombreEquipo = Platform.localHostname;
+    final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
+        && nombreEquipo.toLowerCase() != 'localhost';
+    final enlaceNombre = 'http://$nombreEquipo:${widget.ajustes.puerto}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Cabecera(
           titulo: 'Servidor',
-          descripcion: 'Aquí se enciende y se apaga el motor que guarda los datos. '
-              'Mientras la aplicación está abierta, el servidor se inicia solo; estos botones son para cuando '
-              'algo va mal o para hacer copias de seguridad.',
+          descripcion: 'Encienda y apague el motor, comparta el enlace con su red y configure el inicio de SGF.',
         ),
         EnColumnas(
           izquierda: Column(
@@ -173,6 +221,74 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  Tarjeta(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Enlace para otras computadoras', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      const Text('En la otra PC, abra el navegador y pegue uno de estos enlaces. Debe estar en la misma red y el servidor debe estar en marcha.', style: TextStyle(fontSize: 13.5)),
+                      if (!enMarcha) const Padding(padding: EdgeInsets.only(top: 8), child: Text('El servidor está detenido: el enlace no funcionará hasta iniciarlo.', style: TextStyle(color: Color(0xFFB8730B)))),
+                      const SizedBox(height: 10),
+                      if (_consultandoRed) const Text('Buscando direcciones de red…')
+                      else if (_errorRed != null) Text(_errorRed!)
+                      else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')
+                      else for (final enlace in _enlaces)
+                        Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
+                          Expanded(child: SelectableText(enlace, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+                          OutlinedButton.icon(onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: enlace));
+                            if (context.mounted) avisar(context, 'Enlace copiado. Péguelo en el navegador de la otra computadora.');
+                          }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar')),
+                        ])),
+                      TextButton.icon(onPressed: _consultandoRed ? null : _consultarRed, icon: const Icon(Icons.refresh, size: 18), label: const Text('Actualizar enlaces')),
+                      if (nombreUtilizable && _enlaces.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Text('Enlace opcional por nombre del equipo', style: TextStyle(fontWeight: FontWeight.w600)),
+                        Row(children: [
+                          Expanded(child: SelectableText(enlaceNombre)),
+                          OutlinedButton.icon(onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: enlaceNombre));
+                            if (context.mounted) avisar(context, 'Enlace por nombre copiado.');
+                          }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar nombre')),
+                        ]),
+                        const Text('Puede mantenerse aunque cambie la IP, pero solo funciona si la otra computadora puede resolver el nombre en su red.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                      ],
+                      const Text('Si aparecen varios enlaces, pruebe el de la red que comparten los equipos; algunos pueden pertenecer a VPN. El cortafuegos debe permitir conexiones privadas al puerto de SGF.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                      const SizedBox(height: 8),
+                      const Text('Mantenga SGF abierto en este equipo: al cerrar la aplicación se detiene el servidor. La dirección IP puede cambiar después de reiniciar. Para conservar el mismo enlace, reserve esta IP en el router o configure una IP fija con el administrador de red.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                  Tarjeta(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Inicio automático', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      const Text('Estas opciones no necesitan Internet y no cambian los datos guardados.', style: TextStyle(fontSize: 13)),
+                      if (_inicioWindows.disponible)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Abrir SGF al iniciar sesión en Windows'),
+                          subtitle: const Text('Para el usuario actual; Windows debe iniciar sesión primero.'),
+                          value: _inicioSesionWindows ?? false,
+                          onChanged: _actualizandoInicio || _inicioSesionWindows == null ? null : _cambiarInicio,
+                        )
+                      else const Text('La apertura automática al iniciar sesión está disponible en Windows.'),
+                      if (_inicioWindows.disponible && _inicioSesionWindows == null)
+                        TextButton(onPressed: _consultarInicio, child: const Text('No se pudo consultar el inicio; reintentar')),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Encender el servidor al abrir SGF'),
+                        subtitle: const Text('Cuando se abre esta aplicación, intenta iniciar el servidor.'),
+                        value: widget.ajustes.arrancarAlAbrir == true,
+                        onChanged: (v) async {
+                          widget.ajustes.arrancarAlAbrir = v;
+                          await widget.ajustes.guardar();
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      const Text('El inicio del servidor antes de iniciar sesión en Windows todavía no está disponible en esta versión.', style: TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                    ]),
                   ),
                   const SizedBox(height: 16),
                   Tarjeta(

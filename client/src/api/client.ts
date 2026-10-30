@@ -141,7 +141,7 @@ function normalizeInvoice(row: any): InvoiceRecord {
 function normalizeHealth(row: any): HealthData {
   return {
     service: String(row?.service ?? "SGF"),
-    version: String(row?.version ?? "4.0.2"),
+    version: String(row?.version ?? "4.0.3"),
     status: String(row?.status ?? "online"),
     dbMode: row?.dbMode,
     db: row?.db,

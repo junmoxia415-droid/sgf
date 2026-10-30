@@ -62,7 +62,7 @@ Name: "espanol"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "escritorio"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: checkedonce
-Name: "inicio"; Description: "Iniciar SGF automáticamente al encender el equipo"; GroupDescription: "Opciones:"; Flags: unchecked
+Name: "inicio"; Description: "Abrir SGF automáticamente al iniciar sesión en Windows"; GroupDescription: "Opciones:"; Flags: unchecked
 
 [Files]
 ; Todo el contenido de la carpeta de distribución: la app, el servidor, Node y
@@ -74,11 +74,23 @@ Name: "{group}\SGF Escritorio"; Filename: "{app}\sgf_escritorio.exe"; IconFilena
 Name: "{group}\Guía de primeros pasos"; Filename: "{app}\LEEME-PRIMERO.txt"
 Name: "{group}\Desinstalar SGF"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\SGF Escritorio"; Filename: "{app}\sgf_escritorio.exe"; Tasks: escritorio
-Name: "{userstartup}\SGF Escritorio"; Filename: "{app}\sgf_escritorio.exe"; Tasks: inicio
+
+[Registry]
+; Misma entrada que gestiona el interruptor dentro de SGF, solo para este usuario.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "SGF Escritorio"; ValueData: """{app}\sgf_escritorio.exe"""; Tasks: inicio; Flags: uninsdeletevalue
+
+[InstallDelete]
+; Si se selecciona inicio, sustituir el acceso antiguo por la entrada anterior.
+Type: files; Name: "{userstartup}\SGF Escritorio.lnk"; Tasks: inicio
 
 [Run]
 ; Se ofrece abrir la app al terminar, marcado por defecto.
 Filename: "{app}\sgf_escritorio.exe"; Description: "Abrir SGF Escritorio ahora"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; La opción de inicio puede haberse activado desde la aplicación después de instalar.
+; Se elimina solo esta entrada del usuario actual, sin tocar los datos.
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""SGF Escritorio"" /f"; Flags: runhidden; RunOnceId: "QuitarInicioSGF"
 
 [UninstallDelete]
 ; Nada de la carpeta de datos: los datos del usuario se quedan.
@@ -121,7 +133,7 @@ begin
     'Marque las opciones que quiera y pulse Siguiente.',
     False, False);
   PaginaBienvenida.Add('Crear un acceso directo en el escritorio');
-  PaginaBienvenida.Add('Iniciar SGF automáticamente al encender el equipo');
+  PaginaBienvenida.Add('Abrir SGF automáticamente al iniciar sesión en Windows');
   PaginaBienvenida.Values[0] := True;
   PaginaBienvenida.Values[1] := False;
   PaginaDatos := CreateInputOptionPage(PaginaBienvenida.ID,
@@ -148,13 +160,19 @@ end;
 
 // Traslada lo elegido en la página de bienvenida a las tareas de instalación.
 procedure CurPageChanged(CurPageID: Integer);
+var
+  Tareas: String;
 begin
   if CurPageID = wpSelectTasks then
   begin
-    if PaginaBienvenida.Values[0] then
-      WizardSelectComponents('escritorio');
+    Tareas := '';
+    if PaginaBienvenida.Values[0] then Tareas := 'escritorio';
     if PaginaBienvenida.Values[1] then
-      WizardSelectComponents('inicio');
+    begin
+      if Tareas <> '' then Tareas := Tareas + ',';
+      Tareas := Tareas + 'inicio';
+    end;
+    WizardSelectTasks(Tareas);
   end;
 end;
 
