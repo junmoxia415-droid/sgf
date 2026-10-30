@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   List<String> _enlaces = const [];
   String? _errorRed;
   bool _consultandoRed = false;
+  Timer? _actualizarEstado;
 
   @override
   void initState() {
@@ -51,10 +53,12 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     _cargar();
     _consultarRed();
     _consultarInicio();
+    _actualizarEstado = Timer.periodic(const Duration(seconds: 5), (_) { if (widget.servidor.enMarcha) _cargar(); });
   }
 
   @override
   void dispose() {
+    _actualizarEstado?.cancel();
     widget.servidor.removeListener(_redibujar);
     super.dispose();
   }
@@ -125,6 +129,8 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final enMarcha = servidor.enMarcha;
     final contadores = (_estado?['contadores'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final disco = (_estado?['disco'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final accesoRed = (_estado?['accesoRed'] as Map?) ?? {};
+    final enlaceEstable = accesoRed['estado'] == 'activo' ? accesoRed['enlace']?.toString() : null;
     final nombreEquipo = Platform.localHostname;
     final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
         && nombreEquipo.toLowerCase() != 'localhost';
@@ -233,6 +239,21 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       const Text('En la otra PC, abra el navegador y pegue uno de estos enlaces. Debe estar en la misma red y el servidor debe estar en marcha.', style: TextStyle(fontSize: 13.5)),
                       if (!enMarcha) const Padding(padding: EdgeInsets.only(top: 8), child: Text('El servidor está detenido: el enlace no funcionará hasta iniciarlo.', style: TextStyle(color: Color(0xFFB8730B)))),
                       const SizedBox(height: 10),
+                      if (enMarcha && enlaceEstable != null) ...[
+                        const Text('Nombre local automático', style: TextStyle(fontWeight: FontWeight.w700)),
+                        Row(children: [
+                          Expanded(child: SelectableText(enlaceEstable, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                          OutlinedButton.icon(onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: enlaceEstable));
+                            if (context.mounted) avisar(context, 'Nombre local copiado.');
+                          }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar nombre local')),
+                        ]),
+                        const Text('Este nombre puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS en la misma red. El nombre no cifra ni verifica la conexión.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                        const SizedBox(height: 12),
+                      ] else if (enMarcha && accesoRed.isNotEmpty) ...[
+                        Text('${accesoRed['mensaje'] ?? 'Nombre local no disponible; utilice el enlace por IP.'}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                        const SizedBox(height: 8),
+                      ],
                       if (_consultandoRed) const Text('Buscando direcciones de red…')
                       else if (_errorRed != null) Text(_errorRed!)
                       else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')

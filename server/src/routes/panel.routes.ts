@@ -7,6 +7,7 @@ import { safeVerifyToken } from "../utils/jwt.js";
 import { esConsolaLocal, esPeticionLocal, tokenConsolaConfigurado } from "../middleware/local.js";
 import { esInstalacionNueva } from "../middleware/auth.js";
 import { getDbMode, pingDb, query, flushParaCopia } from "../models/database.js";
+import { estadoNombreRed } from "../utils/nombre-red.js";
 
 /**
  * Panel de control de la consola de escritorio (app Flutter).
@@ -124,6 +125,7 @@ export async function handlePanelEstado(req: IncomingMessage, res: ServerRespons
       modoBd: getDbMode(),
       bd: ping,
       consolaHabilitada: tokenConsolaConfigurado(),
+      accesoRed: estadoNombreRed(),
       contadores: { usuarios, facturas, servicios, lineasExcel },
       disco: { carpetaDatos: datos, archivoEnv: env, bytes: disco.bytes, archivos: disco.archivos },
       ultimaCopia,

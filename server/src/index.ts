@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, getDbMode, initDatabase, pingDb } from "./models/database.js";
+import { iniciarNombreRed, detenerNombreRed } from "./utils/nombre-red.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
@@ -238,6 +239,7 @@ function shutdown(signal: string) {
   console.log(`\n[SGF] Senal ${signal}. Cerrando...`);
   server.close(async () => {
     await closeDb();
+    try { await detenerNombreRed(); } catch (error) { console.warn('[SGF] No se pudo cerrar el anuncio de red:', error); }
     console.log("[SGF] Cerrado.");
     process.exit(0);
   });
@@ -251,4 +253,5 @@ process.on("uncaughtException", (error) => console.error("[SGF] Uncaught excepti
 
 server.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
   console.log(`[SGF] http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port} | BD: ${dbInfo.mode.toUpperCase()}`);
+  iniciarNombreRed(process.env.SGF_DATA_DIR || '', SERVER_CONFIG.port, SERVER_CONFIG.host);
 });
