@@ -24,15 +24,28 @@ jobs:
         working-directory: server
         run: |
           npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación de dependencias.' }
           npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Falló el análisis de tipos del servidor.' }
       - name: Pruebas aisladas de selección, TLS y exclusión
         working-directory: server
         run: |
-          node --no-warnings test/seleccion-base.mjs
-          node --no-warnings test/laboratorio-tls-red.mjs
-          node --no-warnings test/control-tls.mjs
-          node --no-warnings test/exclusion-datos.mjs
-          node --no-warnings test/dbconfig-sqlite.mjs
+          foreach ($test in @('seleccion-base','laboratorio-tls-red','control-tls','exclusion-datos','dbconfig-sqlite')) {
+            node --no-warnings "test/$test.mjs"
+            if ($LASTEXITCODE -ne 0) { throw "Falló la prueba $test." }
+          }
+      - name: Dependencias para navegador de prueba
+        working-directory: client
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación de dependencias del navegador.' }
+          npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo preparar Chromium.' }
+      - name: HTTPS con Chromium y CA temporal solo en VM de CI
+        working-directory: client
+        env:
+          SGF_TEST_WINDOWS_CA: '1'
+        run: node --no-warnings test/laboratorio-tls-windows.mjs
       - name: Dependencias Flutter
         working-directory: escritorio
         run: flutter pub get
@@ -44,4 +57,6 @@ jobs:
           SGF_GUARD_TEST_SCRIPT: ${{ github.workspace }}\server\dist\utils\guardia-bloqueo.js
         run: |
           flutter analyze --no-fatal-infos --no-fatal-warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Falló el análisis de Flutter.' }
           flutter test --reporter expanded
+          if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de Flutter.' }
