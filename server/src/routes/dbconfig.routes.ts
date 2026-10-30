@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { activarYGuardarBase, ErrorBaseActivaSinGuardar } from "../utils/seleccion-base.js";
 import type { ServerResponse } from "node:http";
 import {
   closeDb,
@@ -286,7 +287,7 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
         MSSQL_ENCRYPT: String(payload.encrypt ?? false),
         MSSQL_TRUST_CERT: String(payload.trustServerCertificate ?? true),
       });
-      try { await connectMssqlRuntime(payload); configPendiente.commit(); process.env.DB_TYPE = "mssql"; }
+      try { await activarYGuardarBase(() => connectMssqlRuntime(payload), () => configPendiente.commit()); process.env.DB_TYPE = "mssql"; }
       finally { configPendiente.limpiar(); }
       return sendJson(res, 200, {
         success: true,
@@ -316,7 +317,7 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
       ORACLE_USER: payload.user,
       ORACLE_PASSWORD: payload.password,
     });
-    try { await connectOracleRuntime(payload); configPendiente.commit(); process.env.DB_TYPE = "oracle"; }
+    try { await activarYGuardarBase(() => connectOracleRuntime(payload), () => configPendiente.commit()); process.env.DB_TYPE = "oracle"; }
     finally { configPendiente.limpiar(); }
     return sendJson(res, 200, {
       success: true,
@@ -328,6 +329,13 @@ export async function handleDbConnect(req: AuthenticatedRequest, res: ServerResp
       },
     });
   } catch (error: any) {
+    if (error instanceof ErrorBaseActivaSinGuardar) {
+      return sendJson(res, 500, {
+        success: false,
+        error: 'La conexión cambió temporalmente, pero no se pudo guardar la configuración. Deje de trabajar y reinicie el servidor para volver a la configuración anterior; revise permisos y espacio. No se migraron ni borraron los datos.',
+        data: { modoActual: getDbMode(), configuracionGuardada: false, requiereReinicio: true },
+      });
+    }
     return sendJson(res, 500, {
       success: false,
       error: `No se pudo conectar (${type}): ${error.message}`,
@@ -349,6 +357,7 @@ export async function handleDbDisconnect(req: AuthenticatedRequest, res: ServerR
   if (await hayUsuariosRegistrados() && body.confirmarCambio !== true) {
     return sendJson(res, 409, {success:false, error:"Confirme el cambio de base: las cuentas y los datos son independientes y no se migrarán automáticamente."});
   }
+  let faseCierre: 'no_iniciado' | 'en_curso' | 'completado' = 'no_iniciado';
   try {
     const configPendiente = prepararEnvConfig({ DB_TYPE: "sqlite" });
     const anterior = process.env.DB_TYPE;
@@ -356,7 +365,9 @@ export async function handleDbDisconnect(req: AuthenticatedRequest, res: ServerR
     try {
       process.env.DB_TYPE = "sqlite";
       // Se conservan los archivos de cada base. No se migran ni se borran.
+      faseCierre = 'en_curso';
       await closeDb();
+      faseCierre = 'completado';
       result = await initDatabase();
       configPendiente.commit();
     } catch (error) {
@@ -369,6 +380,16 @@ export async function handleDbDisconnect(req: AuthenticatedRequest, res: ServerR
       data: { mode: result.mode, config: currentConfig() },
     });
   } catch (error: any) {
+    if (faseCierre === 'en_curso') return sendJson(res, 500, {
+      success: false,
+      error: 'No se confirmó el guardado antes del cambio. Podría haber cambios solo en memoria: no cierre ni reinicie el servidor. Revise espacio y permisos y vuelva a intentar el guardado.',
+      data: { guardadoNoConfirmado: true },
+    });
+    if (faseCierre === 'completado') return sendJson(res, 500, {
+      success: false,
+      error: 'El cambio a SQLite no se completó y la conexión anterior se cerró. Deje de trabajar y reinicie el servidor; no se han migrado ni borrado las bases.',
+      data: { requiereReinicio: true },
+    });
     return sendJson(res, 500, { success: false, error: `No se pudo desconectar: ${error.message}` });
   }
 }

@@ -122,8 +122,7 @@ jobs:
               $r=Get-Content (Join-Path $datos 'listo.json') -Raw | ConvertFrom-Json
               if ($r.cuenta -ine $cuenta -or $r.ejecutablesEscribibles) {throw 'La identidad o la protección del ejecutable es incorrecta.'}
               if (($vez -eq 1 -and -not $r.primerInicio) -or ($vez -eq 2 -and $r.primerInicio)) {throw 'La cuenta ficticia no persistió correctamente.'}
-              $http=Invoke-RestMethod "http://127.0.0.1:$($r.puerto)/api/health"
-              if (-not $http.success) {throw 'El servidor SGF de prueba no respondió.'}
+              if ($r.puerto -ne 443 -or -not $r.httpsSeguro) {throw 'SGF no respondió con HTTPS autenticado en el puerto estándar.'}
               Stop-Service $nombre
               (Get-Service $nombre).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
               if (-not (Test-Path (Join-Path $datos 'cierre-ok.txt'))) {throw 'No se confirmó el cierre ordenado del servidor de prueba.'}

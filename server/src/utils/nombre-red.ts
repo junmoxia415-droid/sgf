@@ -23,6 +23,14 @@ export function esIpv4Privada(ip:string):boolean {
   const [a,b]=p.map(Number);
   return a===10 || (a===192 && b===168) || (a===172 && b>=16 && b<=31) || (a===169 && b===254);
 }
+/** Omite el puerto únicamente cuando el protocolo usa su puerto estándar. */
+export function crearEnlaceRed(nombre:string,puerto:number,protocolo:'http'|'https'):string {
+  if(!Number.isInteger(puerto) || puerto<1 || puerto>65535) throw new Error('Puerto de red inválido.');
+  if(!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(nombre)) throw new Error('Nombre de red inválido.');
+  const estandar=(protocolo==='https' && puerto===443) || (protocolo==='http' && puerto===80);
+  return `${protocolo}://${nombre}${estandar?'':`:${puerto}`}`;
+}
+
 export function direccionesPrivadas():string[] {
   const ips=new Set<string>();
   for(const interfaces of Object.values(os.networkInterfaces())) {
@@ -33,7 +41,7 @@ export function direccionesPrivadas():string[] {
   return [...ips].sort();
 }
 
-function nombrePersistido(carpeta:string):string {
+export function nombrePersistido(carpeta:string):string {
   const archivo=path.join(carpeta,'nombre-red.json');
   try {
     const v=JSON.parse(fs.readFileSync(archivo,'utf8'));
@@ -56,6 +64,7 @@ export class AnunciadorRed {
   private detenido = false;
   private direccionesAnteriores = '';
   private puerto = 0;
+  private protocolo:'http'|'https' = 'http';
   private carpeta = '';
   private readonly direcciones:()=>string[];
   private readonly crearRespondedor:()=>RespondedorRed;
@@ -91,7 +100,7 @@ export class AnunciadorRed {
       const nombre=nombrePersistido(this.carpeta);
       this.estado={estado:'publicando',nombre:null,enlace:null,mensaje:'Preparando el nombre local en la red.'};
       const responder=this.crearRespondedor(); this.responder=responder;
-      const servicio=responder.createService({name:nombre,hostname:nombre,type:'http',port:this.puerto,
+      const servicio=responder.createService({name:nombre,hostname:nombre,type:this.protocolo,port:this.puerto,
         disabledIpv6:true,restrictedAddresses:direcciones});
       // Si un clon usa el mismo nombre, nunca continuar mostrando el nombre
       // anterior: podría resolver al otro equipo. También puede detectarse un
@@ -115,7 +124,7 @@ export class AnunciadorRed {
       }
       const host=servicio.getHostname().replace(/\.$/,'').toLowerCase();
       if(host!==`${nombre}.local`) throw new Error('El nombre local publicado no coincide con el esperado.');
-      this.estado={estado:'activo',nombre:host,enlace:`http://${host}:${this.puerto}`,mensaje:'Nombre publicado en esta red; depende de que los clientes acepten mDNS.'};
+      this.estado={estado:'activo',nombre:host,enlace:crearEnlaceRed(host,this.puerto,this.protocolo),mensaje:'Nombre publicado en esta red; depende de que los clientes acepten mDNS.'};
       console.log(`[SGF] Nombre de red local: ${this.estado.enlace}`);
     } catch(error:any) {
       try { await this.cerrarAnuncio(); } catch { /* No impedir el cierre del servidor. */ }
@@ -127,12 +136,12 @@ export class AnunciadorRed {
   }
 
   /** Se llama solo después de que HTTP escucha en interfaces de red. */
-  iniciar(carpeta:string,puerto:number,host:string) {
+  iniciar(carpeta:string,puerto:number,host:string,protocolo:'http'|'https'='http') {
     if(!carpeta || !['0.0.0.0','::'].includes(host) || process.env.SGF_MDNS==='0') {
       this.estado={estado:'desactivado',nombre:null,enlace:null,mensaje:'El anuncio local está desactivado o el servidor solo escucha en este equipo.'};
       return;
     }
-    this.carpeta=carpeta; this.puerto=puerto; this.detenido=false; this.direccionesAnteriores='';
+    this.carpeta=carpeta; this.puerto=puerto; this.protocolo=protocolo; this.detenido=false; this.direccionesAnteriores='';
     void this.actualizar();
     this.temporizador=setInterval(()=>void this.actualizar(),this.intervaloMs);
     this.temporizador.unref();
@@ -146,5 +155,5 @@ export class AnunciadorRed {
 }
 const anunciador=new AnunciadorRed();
 export function estadoNombreRed():EstadoNombreRed {return anunciador.obtenerEstado();}
-export function iniciarNombreRed(carpeta:string,puerto:number,host:string) {anunciador.iniciar(carpeta,puerto,host);}
+export function iniciarNombreRed(carpeta:string,puerto:number,host:string,protocolo:'http'|'https'='http') {anunciador.iniciar(carpeta,puerto,host,protocolo);}
 export async function detenerNombreRed() {await anunciador.detener();}

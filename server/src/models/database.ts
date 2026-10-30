@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { iniciarMotorSeleccionado, seleccionarMotorInicial } from "../utils/seleccion-base.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // La aplicacion de escritorio pasa SGF_DATA_DIR para guardar la base de datos en
@@ -701,54 +702,12 @@ export async function connectMssqlRuntime(config?: Partial<MssqlRuntimeConfig>) 
 
 export async function initDatabase() {
   ensureDir();
-
-  // Respetar DB_TYPE del .env si esta presente.
-  const dbType = String(process.env.DB_TYPE || '').trim().toLowerCase();
-
-  if (dbType === 'mssql') {
-    try {
-      await connectMssqlRuntime();
-      console.log(`[SGF] SQL Server conectado: ${process.env.MSSQL_SERVER}/${process.env.MSSQL_DATABASE}`);
-      return { mode: "mssql" as const, ok: true };
-    } catch (error: any) {
-      console.log("[SGF] SQL Server no disponible:", error?.message || "sin detalle");
-      mssqlPool = null;
-    }
-  } else if (dbType === 'oracle') {
-    try {
-      await connectOracleRuntime();
-      console.log(`[SGF] Oracle PCELULAR conectado`);
-      return { mode: "oracle" as const, ok: true };
-    } catch (error: any) {
-      console.log("[SGF] Oracle no disponible:", error?.message || "sin detalle");
-      oraclePool = null;
-    }
-  } else if (dbType === 'sqlite') {
-    return initSqlite();
-  } else {
-    // Sin DB_TYPE definido: intentar Oracle primero (compatibilidad con
-    // despliegues anteriores), despues SQL Server, y por ultimo SQLite
-    // como fallback de emergencia.
-    try {
-      await connectOracleRuntime();
-      console.log("[SGF] Oracle PCELULAR conectado");
-      return { mode: "oracle" as const, ok: true };
-    } catch (error: any) {
-      console.log("[SGF] Oracle no disponible:", error?.message || "sin detalle");
-      oraclePool = null;
-    }
-
-    try {
-      await connectMssqlRuntime();
-      console.log(`[SGF] SQL Server conectado: ${process.env.MSSQL_SERVER}/${process.env.MSSQL_DATABASE}`);
-      return { mode: "mssql" as const, ok: true };
-    } catch (error: any) {
-      console.log("[SGF] SQL Server no disponible:", error?.message || "sin detalle");
-      mssqlPool = null;
-    }
-  }
-
-  return initSqlite();
+  const seleccionado = seleccionarMotorInicial(process.env);
+  return iniciarMotorSeleccionado<{ mode: DbMode; ok: boolean }>(seleccionado, {
+    sqlite: () => initSqlite(),
+    oracle: async () => { await connectOracleRuntime(); return { mode: "oracle" as const, ok: true }; },
+    mssql: async () => { await connectMssqlRuntime(); return { mode: "mssql" as const, ok: true }; },
+  });
 }
 
 export function getDbMode(): DbMode {
