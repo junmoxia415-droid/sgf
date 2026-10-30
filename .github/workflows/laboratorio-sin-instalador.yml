@@ -30,7 +30,7 @@ jobs:
       - name: Pruebas aisladas de selección, TLS y exclusión
         working-directory: server
         run: |
-          foreach ($test in @('seleccion-base','laboratorio-tls-red','control-tls','exclusion-datos','dbconfig-sqlite')) {
+          foreach ($test in @('seleccion-base','laboratorio-tls-red','control-tls','exclusion-datos','dbconfig-sqlite','nombre-red')) {
             node --no-warnings "test/$test.mjs"
             if ($LASTEXITCODE -ne 0) { throw "Falló la prueba $test." }
           }

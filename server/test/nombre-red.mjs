@@ -4,8 +4,12 @@ import {EventEmitter} from 'node:events';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {AnunciadorRed,esIpv4Privada} from '../dist/utils/nombre-red.js';
+import {AnunciadorRed,esIpv4Privada,crearEnlaceRed} from '../dist/utils/nombre-red.js';
 
+assert.equal(crearEnlaceRed('sgf-aabbccddeeff.local',443,'https'),'https://sgf-aabbccddeeff.local');
+assert.equal(crearEnlaceRed('sgf-aabbccddeeff.local',8443,'https'),'https://sgf-aabbccddeeff.local:8443');
+assert.equal(crearEnlaceRed('sgf-aabbccddeeff.local',80,'http'),'http://sgf-aabbccddeeff.local');
+assert.throws(()=>crearEnlaceRed('sgf.local',0,'https'));
 for(const ip of ['192.168.1.8','10.3.1.4','172.16.0.1','172.31.255.254','169.254.1.3']) assert(esIpv4Privada(ip));
 for(const ip of ['8.8.8.8','127.0.0.1','172.32.1.1','172.15.1.1','192.168.256.3','::1','1.2.3']) assert(!esIpv4Privada(ip));
 const tmp=mkdtempSync(join(tmpdir(),'sgf-nombre-red-'));
@@ -38,5 +42,9 @@ try {
  c.iniciar(tmp,3000,'0.0.0.0');await esperar(c,'error');assert.equal(c.obtenerEstado().enlace,null,'No se muestra un nombre en conflicto');
  await c.detener();
  const d=new AnunciadorRed({direcciones:()=>ips,crearRespondedor:crear});a=d;d.iniciar(tmp,3000,'127.0.0.1');assert.equal(d.obtenerEstado().estado,'desactivado');
+ conflicto=false;const e=new AnunciadorRed({direcciones:()=>ips,crearRespondedor:crear,intervaloMs:60000});a=e;
+ e.iniciar(tmp,443,'0.0.0.0','https');await esperar(e,'activo');
+ assert.match(e.obtenerEstado().enlace,/^https:\/\/sgf-[a-f0-9]{12}\.local$/);
+ assert.equal(opciones.at(-1).type,'https');await e.detener();
  console.log('OK: nombre local persistente, cambio de IP, red caída, conflicto y filtro de direcciones.');
 } finally {if(a)await a.detener();rmSync(tmp,{recursive:true,force:true});}
