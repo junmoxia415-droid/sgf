@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import 'ajustes.dart';
 import 'api.dart';
+import 'canal_local_seguro.dart';
 
 /// Estado del servidor embebido.
 enum EstadoServidor { detenido, arrancando, enMarcha, deteniendo, fallo }
@@ -21,10 +22,15 @@ enum EstadoServidor { detenido, arrancando, enMarcha, deteniendo, fallo }
 ///  - Si el proceso se cae, se avisa con el mensaje de error y se puede reiniciar
 ///    sin cerrar la aplicacion.
 class ControladorServidor extends ChangeNotifier {
-  ControladorServidor({required this.ajustes, required this.api});
+  ControladorServidor({required this.ajustes, required this.api, this.usarCanalSeguro = true}) {
+    api.invalidarCanalLocal();
+    api.exigirCanalSeguro = usarCanalSeguro;
+  }
 
   final Ajustes ajustes;
   final Api api;
+  /// La opción no segura existe solo para dobles aislados de prueba.
+  final bool usarCanalSeguro;
 
   Process? _proceso;
   EstadoServidor estado = EstadoServidor.detenido;
@@ -235,9 +241,11 @@ LOGIN_RATE_PER_15MIN=40
     }
 
     tokenConsola = _generarToken();
-    api
-      ..base = ajustes.urlBaseLocal
-      ..tokenConsola = tokenConsola;
+    api.invalidarCanalLocal();
+    api.base = ajustes.urlBaseLocal;
+    // En modo seguro no se envía el token hasta verificar la huella recibida
+    // por la tubería de este proceso. Nunca se confía solo en un ping público.
+    if (!usarCanalSeguro) api.tokenConsola = tokenConsola;
 
     try {
       _proceso = await Process.start(
@@ -249,22 +257,41 @@ LOGIN_RATE_PER_15MIN=40
           'SGF_DATA_DIR': carpetaDatos.path,
           'SGF_ENV_FILE': archivoEnv.path,
           'SGF_CONSOLE_TOKEN': tokenConsola!,
+          if (usarCanalSeguro) 'SGF_CONTROL_TLS': '1',
           'PORT': '${ajustes.puerto}',
           'HOST': '0.0.0.0',
         },
         runInShell: false,
       );
 
-      _proceso!.stdout.transform(utf8.decoder).listen((linea) {
+      final iniciado = _proceso!;
+      final tokenDelProceso = tokenConsola!;
+      iniciado.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((linea) {
+        if (_proceso != iniciado) return;
         final t = linea.trim();
+        if (usarCanalSeguro && t.startsWith('[SGF_TLS] ')) {
+          final canal = CanalLocalSeguro.desdeAnuncio(t, tokenDelProceso);
+          if (canal == null) {
+            anotar('Se rechazó un anuncio local no autenticado.');
+          } else if (estado == EstadoServidor.arrancando) {
+            api.configurarCanalLocal(canal);
+            api.tokenConsola = tokenDelProceso;
+            anotar('Canal local cifrado y autenticado preparado.');
+          }
+          return;
+        }
         if (t.isNotEmpty) anotar(t);
       });
-      _proceso!.stderr.transform(utf8.decoder).listen((linea) {
+      iniciado.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen((linea) {
+        if (_proceso != iniciado) return;
         final t = linea.trim();
         if (t.isNotEmpty) anotar('⚠ $t');
       });
 
-      unawaited(_proceso!.exitCode.then((codigo) {
+      unawaited(iniciado.exitCode.then((codigo) {
+        if (_proceso != iniciado) return;
+        api.invalidarCanalLocal();
+        tokenConsola = null;
         if (estado != EstadoServidor.deteniendo) {
           estado = EstadoServidor.fallo;
           ultimoError = 'El servidor se ha detenido inesperadamente (código $codigo).';
@@ -276,7 +303,8 @@ LOGIN_RATE_PER_15MIN=40
         notifyListeners();
       }));
 
-      if (esperar) {
+      // En modo seguro nunca declarar éxito antes de autenticar el canal.
+      if (esperar || usarCanalSeguro) {
         final arriba = await _esperarRespuesta();
         if (!arriba) {
           await detener();
@@ -307,7 +335,7 @@ LOGIN_RATE_PER_15MIN=40
         final r = await api.panelPing();
         if (r['servicio'] == 'sgf-consola' && r['pid'] == _proceso?.pid) {
           // Ping es público: comprobar también el token en una ruta protegida.
-          await api.panelEstado();
+          await api.panelEstadoConsola();
           if (_proceso != null && r['pid'] == _proceso!.pid) return true;
         }
       } catch (_) {
@@ -320,6 +348,8 @@ LOGIN_RATE_PER_15MIN=40
   /// Detiene el servidor con orden (SIGTERM), para que guarde la base de datos.
   Future<void> detener() async {
     if (_proceso == null) {
+      api.invalidarCanalLocal();
+      tokenConsola = null;
       estado = EstadoServidor.detenido;
       notifyListeners();
       return;
@@ -357,6 +387,8 @@ LOGIN_RATE_PER_15MIN=40
       } catch (error) { anotar('Aviso al detener: $error'); }
     }
     _proceso = null;
+    api.invalidarCanalLocal();
+    tokenConsola = null;
     estado = EstadoServidor.detenido;
     anotar('Servidor detenido.');
     notifyListeners();
@@ -375,6 +407,7 @@ LOGIN_RATE_PER_15MIN=40
   /// No se adopta un servidor anterior sin su token: evita confundir un ping
   /// público con el control real de otro proceso.
   Future<void> comprobarSiYaEstaArriba() async {
+    api.invalidarCanalLocal();
     api.base = ajustes.urlBaseLocal;
     estado = EstadoServidor.detenido;
     notifyListeners();

@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, DATA_DIR, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { BloqueoDatos } from "./utils/bloqueo-datos.js";
+import { iniciarControlTls } from "./utils/control-tls.js";
+import type { Server as ServidorTls } from 'node:https';
 import { iniciarNombreRed, detenerNombreRed } from "./utils/nombre-red.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
@@ -103,6 +105,7 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
 const server = http.createServer(
   { requestTimeout: SERVER_CONFIG.requestTimeoutMs },
   async (req: AuthenticatedRequest, res: http.ServerResponse) => {
+    if (cerrando) return sendJson(res, 503, {success:false,error:'El servidor se está cerrando.'});
     if (!esRedPrivada(req)) return sendJson(res, 403, { success: false, error: "Acceso permitido solo desde redes privadas." });
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
@@ -245,20 +248,25 @@ const server = http.createServer(
 );
 
 let cerrando = false;
-function shutdown(signal: string) {
+let controlTls:ServidorTls|null=null;
+function shutdown(signal: string, estadoInicial=0) {
   if (cerrando) return;
   cerrando = true;
   console.log(`\n[SGF] Senal ${signal}. Cerrando...`);
-  server.close(async () => {
-    let estado=0;
+  // Dejar de aceptar peticiones en ambos canales antes de guardar y liberar
+  // la carpeta: la consola TLS no debe seguir escribiendo al cerrar HTTP.
+  const cerrar=(s:ServidorTls|typeof server)=>new Promise<void>((resolve)=>s.close(()=>resolve()));
+  void (async()=>{
+    let estado=estadoInicial;
     try {
+      await Promise.all([cerrar(server),...(controlTls?[cerrar(controlTls)]:[])]);
       await closeDb();
       try { await detenerNombreRed(); } catch (error) { console.warn('[SGF] No se pudo cerrar el anuncio de red:', error); }
     } catch(error) { console.error('[SGF] Error durante el cierre:',error); estado=1; }
     try { bloqueoDatos.cerrar(); } catch(error) { console.error('[SGF] No se pudo liberar el bloqueo:',error); estado=1; }
     console.log("[SGF] Cerrado.");
     process.exit(estado);
-  });
+  })();
   setTimeout(() => process.exit(1), 10000);
 }
 
@@ -274,7 +282,18 @@ server.on('error', async error => {
   process.exit(1);
 });
 
-server.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
+server.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, async () => {
+  if(process.env.SGF_CONTROL_TLS==='1') {
+    try {
+      const nuevo=await iniciarControlTls(server,String(process.env.SGF_CONSOLE_TOKEN || ''));
+      if(cerrando) {nuevo.close();return;}
+      controlTls=nuevo;
+      nuevo.on('error',(error)=>{console.error('[SGF] Falló el canal local seguro:',error.message);shutdown('fallo del canal local',1);});
+    } catch(error:any) {
+      console.error('[SGF] No se pudo iniciar el canal local seguro:',error?.message || 'error desconocido');
+      shutdown('fallo del canal local',1);return;
+    }
+  }
   console.log(`[SGF] http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port} | BD: ${dbInfo.mode.toUpperCase()}`);
   iniciarNombreRed(process.env.SGF_DATA_DIR || '', SERVER_CONFIG.port, SERVER_CONFIG.host);
 });

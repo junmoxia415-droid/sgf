@@ -2,17 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'canal_local_seguro.dart';
 
 /// Cliente HTTP del servidor SGF.
 ///
-/// Todas las llamadas van a 127.0.0.1 (el servidor que arranca esta misma
-/// aplicacion) e incluyen el token de consola, que solo existe mientras el
-/// servidor se ha arrancado desde aqui.
+/// En el escritorio, las llamadas al proceso propio usan un canal TLS local
+/// con huella verificada y un token de consola efímero. El navegador de la LAN
+/// sigue usando su propio canal HTTP y sus credenciales de sesión.
 class Api {
   Api();
 
   String base = 'http://127.0.0.1:3000';
   String? tokenConsola;
+  bool exigirCanalSeguro = false;
+  CanalLocalSeguro? _canalLocal;
+
+  void configurarCanalLocal(CanalLocalSeguro canal) { _canalLocal=canal; base=canal.base; }
+  void invalidarCanalLocal() { _canalLocal=null; tokenConsola=null; }
   String? _tokenSesion;
   String? usuario;
   String? rol;
@@ -45,21 +51,29 @@ class Api {
     bool sinSesion = false,
   }) async {
     final uri = Uri.parse('$base$ruta');
+    final canal = _canalLocal;
+    if (exigirCanalSeguro && canal == null) {
+      throw ApiError('El servidor local todavía no está autenticado. Compruebe que SGF esté en marcha.', 0);
+    }
+    if (canal != null && (uri.scheme != 'https' || uri.host != '127.0.0.1' || uri.port != canal.puerto)) {
+      throw ApiError('Se rechazó un destino distinto del servidor local autenticado.', 0);
+    }
     late http.Response respuesta;
+    final cliente = canal?.crearCliente() ?? http.Client();
     try {
-      final cliente = http.Client();
-      final solicitud = http.Request(metodo, uri)..headers.addAll(_cabeceras);
+      final solicitud = http.Request(metodo, uri)..headers.addAll(_cabeceras)..followRedirects = false;
       if (sinSesion) solicitud.headers.remove('Authorization');
       if (cuerpo != null) solicitud.body = jsonEncode(cuerpo);
       final streamed = await cliente.send(solicitud).timeout(espera);
       respuesta = await http.Response.fromStream(streamed);
-      cliente.close();
     } on SocketException {
       throw ApiError('No se puede conectar con el servidor. Compruebe que está iniciado.', 0);
     } on HttpException catch (e) {
       throw ApiError('Error de red: ${e.message}', 0);
     } catch (e) {
       throw ApiError('No se pudo completar la operación: $e', 0);
+    } finally {
+      cliente.close();
     }
 
     Map<String, dynamic> json;
@@ -169,6 +183,10 @@ class Api {
 
   // ── Panel (solo este equipo) ──────────────────────────────────────────────
   Future<Map<String, dynamic>> panelEstado() async => (await get('/api/panel/estado'))['data'] as Map<String, dynamic>;
+  /// Verificación del proceso hijo: el token local no debe mezclarse con una
+  /// sesión de usuario, que puede ser normal o haber caducado.
+  Future<Map<String, dynamic>> panelEstadoConsola() async =>
+      (await _pedir('GET', '/api/panel/estado', sinSesion: true))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> panelBienvenida() async =>
       (await get('/api/panel/bienvenida'))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> panelPing() async => (await get('/api/panel/ping'))['data'] as Map<String, dynamic>;

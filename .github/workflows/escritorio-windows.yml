@@ -64,6 +64,7 @@ jobs:
           node test/nombre-red.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
+          node test/control-tls.mjs
           node test/pdf-guardado.mjs
           node test/pdf-variados-api.mjs
           node test/transacciones.mjs
@@ -176,6 +177,7 @@ jobs:
           npx tsc
           node --no-warnings test/exclusion-datos.mjs
           node --no-warnings test/guardado-fallido.mjs
+          node --no-warnings test/control-tls.mjs
 
       - name: Dependencias
         working-directory: escritorio
@@ -189,6 +191,7 @@ jobs:
         working-directory: escritorio
         env:
           SGF_GUARD_TEST_SCRIPT: ${{ github.workspace }}\server\dist\utils\guardia-bloqueo.js
+          SGF_SERVER_TEST_DIR: ${{ github.workspace }}\server
           SGF_NODE_TEST: node
         run: flutter test --reporter expanded
 
@@ -276,6 +279,7 @@ jobs:
             'distribucion\servidor\runtime\node.exe',
             'distribucion\servidor\dist\index.js',
             'distribucion\servidor\dist\utils\guardia-bloqueo.js',
+            'distribucion\servidor\dist\utils\control-tls.js',
             'distribucion\client\dist\index.html',
             'distribucion\LEEME-PRIMERO.txt'
           )

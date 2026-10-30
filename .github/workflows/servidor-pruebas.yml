@@ -43,6 +43,7 @@ jobs:
           node test/nombre-red.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
+          node test/control-tls.mjs
           node test/pdf-variados-api.mjs
 
       # Falla si aparece una vulnerabilidad conocida (alta o crítica) en las

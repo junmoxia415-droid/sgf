@@ -6,7 +6,7 @@ import 'package:sgf_escritorio/servicios/controlador_servidor.dart';
 import 'package:sgf_escritorio/servicios/supervisor_servidor.dart';
 
 class ServidorTemporal extends ControladorServidor {
-  ServidorTemporal({required super.ajustes, required super.api, required this.raiz});
+  ServidorTemporal({required super.ajustes, required super.api, required this.raiz}) : super(usarCanalSeguro: false);
   final Directory raiz;
   @override Directory get carpetaServidor => Directory('${raiz.path}${Platform.pathSeparator}servidor');
   @override Directory get carpetaDatos => Directory('${raiz.path}${Platform.pathSeparator}datos');
