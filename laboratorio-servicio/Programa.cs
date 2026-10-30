@@ -11,6 +11,7 @@ sealed class PruebaServicio : ServiceBase {
         string dir=AppDomain.CurrentDomain.BaseDirectory;
         var p=new ProcessStartInfo(Path.Combine(dir,"node.exe"),"--no-warnings lab.mjs");
         p.WorkingDirectory=dir; p.UseShellExecute=false; p.CreateNoWindow=true;
+        p.EnvironmentVariables["SGF_LAB_PUERTO"]="443";
         hijo=Process.Start(p);
         if (hijo==null) throw new Exception("No se pudo arrancar el proceso de laboratorio");
     }

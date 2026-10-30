@@ -14,7 +14,8 @@ try {
   db.exec('CREATE TABLE IF NOT EXISTS ensayos (numero INTEGER NOT NULL); INSERT INTO ensayos VALUES (1);');
   const cantidad=db.prepare('SELECT count(*) AS n FROM ensayos').get().n;
   const srv=http.createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({identidad,cantidad,carpetaEjecutableEscribible}));});
-  srv.listen(0,'127.0.0.1',()=>{
+  srv.on('error',e=>{try {writeFileSync(join(datos,'error.txt'),String(e.stack||e));} catch {} process.exit(1);});
+  srv.listen(Number(process.env.SGF_LAB_PUERTO)||0,'127.0.0.1',()=>{
     const texto=JSON.stringify({puerto:srv.address().port,identidad,cantidad,carpetaEjecutableEscribible});
     writeFileSync(join(datos,'listo.tmp'),texto);renameSync(join(datos,'listo.tmp'),join(datos,'listo.json'));
   });

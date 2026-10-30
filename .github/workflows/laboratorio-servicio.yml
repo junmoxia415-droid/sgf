@@ -51,6 +51,7 @@ jobs:
               $r=Get-Content (Join-Path $datos 'listo.json') -Raw | ConvertFrom-Json
               if ($r.identidad -ine $cuenta) {throw "Identidad inesperada: $($r.identidad)"}
               if ($r.carpetaEjecutableEscribible) {throw 'El servicio puede escribir en su carpeta de ejecutables.'}
+              if ($r.puerto -ne 443) {throw 'No se pudo usar el puerto HTTPS estándar en el experimento.'}
               if ($r.cantidad -ne $vez) {throw 'La base SQLite ficticia no conservó el registro anterior.'}
               $http=Invoke-RestMethod "http://127.0.0.1:$($r.puerto)/"
               if ($http.cantidad -ne $vez) {throw 'El proceso no respondió por loopback.'}
