@@ -258,6 +258,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $runtime | Out-Null
           Copy-Item (Join-Path $env:RUNNER_TEMP 'node-portatil/node.exe') $runtime
 
+          # Runtime Microsoft x64 oficial, junto a ambos ejecutables: funciona
+          # también sin VC++ instalado globalmente y no altera el sistema.
+          & './escritorio/windows/copiar_runtime.ps1' -Destino $destino -DestinoNode $runtime
+
           # La ruta esperada por servidor/dist/index.js es ../../client/dist.
           New-Item -ItemType Directory -Force -Path (Join-Path $destino 'client') | Out-Null
           Copy-Item -Recurse 'client/dist' (Join-Path $destino 'client/dist')
@@ -283,7 +287,12 @@ jobs:
           # aqui que en el equipo del usuario.
           $obligatorios = @(
             'distribucion\sgf_escritorio.exe',
+            'distribucion\msvcp140.dll',
+            'distribucion\vcruntime140.dll',
+            'distribucion\vcruntime140_1.dll',
             'distribucion\servidor\runtime\node.exe',
+            'distribucion\servidor\runtime\vcruntime140.dll',
+            'distribucion\servidor\runtime\vcruntime140_1.dll',
             'distribucion\servidor\dist\index.js',
             'distribucion\servidor\dist\utils\guardia-bloqueo.js',
             'distribucion\servidor\dist\utils\control-tls.js',

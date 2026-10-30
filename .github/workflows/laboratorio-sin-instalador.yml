@@ -34,6 +34,11 @@ jobs:
             node --no-warnings "test/$test.mjs"
             if ($LASTEXITCODE -ne 0) { throw "Falló la prueba $test." }
           }
+      - name: Comprobar DLL redistribuibles sin construir instalador
+        shell: pwsh
+        run: |
+          & './escritorio/windows/prueba_runtime.ps1'
+          if ($LASTEXITCODE -ne 0) { throw 'Falló la comprobación del runtime local.' }
       - name: Dependencias para navegador de prueba
         working-directory: client
         run: |
