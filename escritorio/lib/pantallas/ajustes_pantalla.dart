@@ -325,7 +325,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                       children: [
                         Text('Sobre esta aplicación', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 10),
-                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.5')}'),
+                        _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.6')}'),
                         _fila('Motor', 'Incluido (no hace falta instalar nada más)'),
                         _fila('Datos', Ajustes.carpeta.path),
                         _fila('Escucha en', a.urlBaseLocal),

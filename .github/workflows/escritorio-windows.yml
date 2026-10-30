@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.5)'
+        description: 'Versión a compilar (ej. 4.0.6)'
         required: false
-        default: '4.0.5'
+        default: '4.0.6'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.5' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.6' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -390,6 +390,8 @@ jobs:
           Al abrir por primera vez, un asistente guia los pasos para crear su propia cuenta de administrador. No hay una cuenta de fabrica.
 
           En Servidor aparece un nombre local automatico, sujeto a que la red y los clientes admitan mDNS; HTTP no cifra ni autentica el equipo. Existe recuperacion del servidor mientras SGF esta abierto. El servidor todavia no arranca antes de iniciar sesion en Windows y se detiene al cerrar la aplicacion.
+
+          La comunicacion de la aplicacion de escritorio con su proceso local usa un canal TLS efimero autenticado. La web de la red sigue siendo HTTP sin cifrar.
 
           Esta version protege la carpeta de datos frente a dos servidores compatibles simultaneos, incluso con puertos distintos. Cierre las versiones anteriores antes de actualizar y no comparta la carpeta en unidades de red que no garanticen bloqueos SQLite.
           "@

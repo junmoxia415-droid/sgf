@@ -8,7 +8,7 @@ dotenv.config({ path: process.env.SGF_ENV_FILE || path.resolve(__dirname, "../..
 
 export const APP_CONFIG = {
   name: "SGF", fullName: "Sistema de Gestion de Facturas",
-  version: "4.0.5", description: "Facturas ETECSA - Cliente/Servidor Centralizado",
+  version: "4.0.6", description: "Facturas ETECSA - Cliente/Servidor Centralizado",
 };
 
 export const SERVER_CONFIG = {
