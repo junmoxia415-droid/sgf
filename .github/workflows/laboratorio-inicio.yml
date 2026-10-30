@@ -1,0 +1,52 @@
+name: Laboratorio aislado de arranque (Windows)
+on:
+  push:
+    branches: ['laboratorio/inicio-seguro']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  laboratorio:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exclusión entre procesos y terminación forzada
+        working-directory: server
+        run: node --no-warnings test/laboratorio/exclusion.mjs
+      - name: Tarea S4U con red local, sin contraseña ni datos de usuario
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nombre = "SGF-laboratorio-${env:GITHUB_RUN_ID}-${env:GITHUB_RUN_ATTEMPT}"
+          $estado = Join-Path $env:RUNNER_TEMP "sgf-estado-${env:GITHUB_RUN_ID}.json"
+          $programa = (Get-Command node).Source
+          $script = Join-Path $env:GITHUB_WORKSPACE 'server/test/laboratorio/tarea-s4u.cjs'
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0)
+          $listener.Start(); $puerto = $listener.LocalEndpoint.Port; $listener.Stop()
+          $usuario = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $argsTarea = '"{0}" "{1}" {2}' -f $script,$estado,$puerto
+          $accion = New-ScheduledTaskAction -Execute $programa -Argument $argsTarea
+          $principal = New-ScheduledTaskPrincipal -UserId $usuario -LogonType S4U -RunLevel Limited
+          $gatillo = New-ScheduledTaskTrigger -AtStartup
+          $config = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+          try {
+            Register-ScheduledTask -TaskName $nombre -Action $accion -Principal $principal -Trigger $gatillo -Settings $config | Out-Null
+            Start-ScheduledTask -TaskName $nombre
+            $limite = (Get-Date).AddSeconds(45)
+            while (-not (Test-Path -LiteralPath $estado) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 500}
+            if (-not (Test-Path -LiteralPath $estado)) {
+              Get-ScheduledTaskInfo -TaskName $nombre | Format-List | Out-String | Write-Host
+              throw 'La tarea S4U no creó el indicador de inicio.'
+            }
+            $respuesta = Invoke-RestMethod -Uri "http://127.0.0.1:$puerto/prueba" -TimeoutSec 10
+            if ($respuesta.servicio -ne 'sgf-laboratorio') {throw 'El servicio ficticio no respondió correctamente.'}
+            Write-Host "OK: la tarea S4U se ejecutó manualmente como usuario limitado y respondió por loopback. Esto no prueba un reinicio físico."
+          } finally {
+            Stop-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $estado -Force -ErrorAction SilentlyContinue
+          }
