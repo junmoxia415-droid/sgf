@@ -19,6 +19,7 @@ class ServidorPantalla extends StatefulWidget {
     required this.ajustes,
     required this.iniciarSesion,
     this.alCambiarBase,
+    this.inicioWindows,
   });
 
   final ControladorServidor servidor;
@@ -26,6 +27,7 @@ class ServidorPantalla extends StatefulWidget {
   final dynamic ajustes;
   final Future<bool> Function() iniciarSesion;
   final VoidCallback? alCambiarBase;
+  final InicioWindows? inicioWindows;
 
   @override
   State<ServidorPantalla> createState() => _ServidorPantallaState();
@@ -34,7 +36,7 @@ class ServidorPantalla extends StatefulWidget {
 class _ServidorPantallaState extends State<ServidorPantalla> {
   Map<String, dynamic>? _estado;
   bool _trabajando = false;
-  final _inicioWindows = InicioWindows();
+  late final InicioWindows _inicioWindows;
   bool? _inicioSesionWindows;
   bool _actualizandoInicio = false;
   List<String> _enlaces = const [];
@@ -44,6 +46,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   @override
   void initState() {
     super.initState();
+    _inicioWindows = widget.inicioWindows ?? InicioWindows();
     widget.servidor.addListener(_redibujar);
     _cargar();
     _consultarRed();

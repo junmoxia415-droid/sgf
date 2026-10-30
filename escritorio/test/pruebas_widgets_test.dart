@@ -14,6 +14,7 @@ import 'package:sgf_escritorio/pantallas/usuarios.dart';
 import 'package:sgf_escritorio/servicios/ajustes.dart';
 import 'package:sgf_escritorio/servicios/api.dart';
 import 'package:sgf_escritorio/servicios/controlador_servidor.dart';
+import 'package:sgf_escritorio/servicios/inicio_windows.dart';
 import 'package:sgf_escritorio/main.dart' show temaSgf;
 import 'package:sgf_escritorio/widgets/comunes.dart';
 
@@ -70,6 +71,7 @@ void main() {
       api: api,
       ajustes: ajustes,
       iniciarSesion: () async => true,
+      inicioWindows: InicioWindows(windows: false),
     )));
     await tester.pump();
     expect(find.text('Iniciar'), findsOneWidget);

@@ -5,6 +5,7 @@ import 'package:sgf_escritorio/pantallas/servidor.dart';
 import 'package:sgf_escritorio/servicios/ajustes.dart';
 import 'package:sgf_escritorio/servicios/api.dart';
 import 'package:sgf_escritorio/servicios/controlador_servidor.dart';
+import 'package:sgf_escritorio/servicios/inicio_windows.dart';
 
 class ControlRedPrueba extends ControladorServidor {
   ControlRedPrueba({required super.ajustes, required super.api});
@@ -27,6 +28,7 @@ void main() {
     final servidor = ControlRedPrueba(ajustes: ajustes, api: api);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ServidorPantalla(
       servidor: servidor, api: api, ajustes: ajustes, iniciarSesion: () async => true,
+      inicioWindows: InicioWindows(windows: false),
     )))));
     await tester.pumpAndSettle();
     expect(find.text('http://192.168.50.22:3000'), findsOneWidget);
