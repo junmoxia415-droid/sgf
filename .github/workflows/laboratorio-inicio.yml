@@ -17,36 +17,47 @@ jobs:
       - name: Exclusión entre procesos y terminación forzada
         working-directory: server
         run: node --no-warnings test/laboratorio/exclusion.mjs
-      - name: Tarea S4U con red local, sin contraseña ni datos de usuario
+      - name: S4U con usuario temporal sin sesión iniciada
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $nombre = "SGF-laboratorio-${env:GITHUB_RUN_ID}-${env:GITHUB_RUN_ATTEMPT}"
-          $estado = Join-Path $env:RUNNER_TEMP "sgf-estado-${env:GITHUB_RUN_ID}.json"
+          $id = "sgflab" + $env:GITHUB_RUN_ID.Substring([Math]::Max(0,$env:GITHUB_RUN_ID.Length-8))
+          $cuenta = "$env:COMPUTERNAME\$id"
+          $carpeta = "C:\sgf-lab-${env:GITHUB_RUN_ID}"
+          $estado = Join-Path $carpeta 'estado.json'
           $programa = (Get-Command node).Source
-          $script = Join-Path $env:GITHUB_WORKSPACE 'server/test/laboratorio/tarea-s4u.cjs'
+          $script = Join-Path $carpeta 'tarea-s4u.cjs'
           $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0)
           $listener.Start(); $puerto = $listener.LocalEndpoint.Port; $listener.Stop()
-          $usuario = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-          $argsTarea = '"{0}" "{1}" {2}' -f $script,$estado,$puerto
-          $accion = New-ScheduledTaskAction -Execute $programa -Argument $argsTarea
-          $principal = New-ScheduledTaskPrincipal -UserId $usuario -LogonType S4U -RunLevel Limited
-          $gatillo = New-ScheduledTaskTrigger -AtStartup
-          $config = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+          $bytes = New-Object byte[] 24
+          [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $clave = (ConvertTo-SecureString ([Convert]::ToBase64String($bytes)+'aA1#') -AsPlainText -Force)
           try {
+            New-LocalUser -Name $id -Password $clave -PasswordNeverExpires | Out-Null
+            New-Item -ItemType Directory -Path $carpeta -Force | Out-Null
+            Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'server/test/laboratorio/tarea-s4u.cjs') $script
+            & icacls $carpeta /grant "${cuenta}:(OI)(CI)(M)" | Out-Null
+            if ($LASTEXITCODE -ne 0) {throw 'No se pudo dar acceso temporal a la carpeta de laboratorio.'}
+            $argsTarea = '"{0}" "{1}" {2}' -f $script,$estado,$puerto
+            $accion = New-ScheduledTaskAction -Execute $programa -Argument $argsTarea
+            $principal = New-ScheduledTaskPrincipal -UserId $cuenta -LogonType S4U -RunLevel Limited
+            $gatillo = New-ScheduledTaskTrigger -AtStartup
+            $config = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
             Register-ScheduledTask -TaskName $nombre -Action $accion -Principal $principal -Trigger $gatillo -Settings $config | Out-Null
             Start-ScheduledTask -TaskName $nombre
             $limite = (Get-Date).AddSeconds(45)
             while (-not (Test-Path -LiteralPath $estado) -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 500}
             if (-not (Test-Path -LiteralPath $estado)) {
               Get-ScheduledTaskInfo -TaskName $nombre | Format-List | Out-String | Write-Host
-              throw 'La tarea S4U no creó el indicador de inicio.'
+              throw 'La tarea S4U del usuario temporal no creó el indicador de inicio.'
             }
             $respuesta = Invoke-RestMethod -Uri "http://127.0.0.1:$puerto/prueba" -TimeoutSec 10
-            if ($respuesta.servicio -ne 'sgf-laboratorio') {throw 'El servicio ficticio no respondió correctamente.'}
-            Write-Host "OK: la tarea S4U se ejecutó manualmente como usuario limitado y respondió por loopback. Esto no prueba un reinicio físico."
+            if ($respuesta.servicio -ne 'sgf-laboratorio' -or $respuesta.usuario -ne $id) {throw 'La tarea no respondió con la identidad esperada.'}
+            Write-Host 'OK: un usuario temporal sin sesión interactiva ejecutó la tarea S4U y respondió por loopback. Sin reinicio físico.'
           } finally {
             Stop-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue
             Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $estado -Force -ErrorAction SilentlyContinue
+            Remove-LocalUser -Name $id -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $carpeta -Recurse -Force -ErrorAction SilentlyContinue
           }
