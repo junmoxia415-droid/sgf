@@ -41,7 +41,7 @@ export function direccionesPrivadas():string[] {
   return [...ips].sort();
 }
 
-function nombrePersistido(carpeta:string):string {
+export function nombrePersistido(carpeta:string):string {
   const archivo=path.join(carpeta,'nombre-red.json');
   try {
     const v=JSON.parse(fs.readFileSync(archivo,'utf8'));
