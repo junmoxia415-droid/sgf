@@ -38,7 +38,7 @@ try {
   const e=path.join(data,'.env');fs.writeFileSync(e,'DB_TYPE=sqlite\nJWT_SECRET=solo-prueba-ficticia-servicio-123456\n');fs.writeFileSync(tokenFile,token,{mode:0o600});
   const sk=net.createServer();await new Promise(r=>sk.listen(0,'127.0.0.1',r));const port=sk.address().port;await new Promise(r=>sk.close(r));
   fs.writeFileSync(config,JSON.stringify({tipo:'sgf-servicio-v1',datos:data,archivoEnv:e,token:tokenFile,anuncio:descriptor,puerto:port}));
-  const clave='contrasena-ficticia-123';
+  const clave='contrasena-para-pruebas-123';
   for(let vez=0;vez<2;vez++) {
     supervisor=spawn(process.execPath,['dist/scripts/supervisor-servicio.js'],{env:{...process.env,SGF_SERVICIO_CONFIG:config},stdio:['pipe','pipe','pipe']});
     const fin=esperaSalida(supervisor);let log='';supervisor.stdout.on('data',x=>log+=x);supervisor.stderr.on('data',x=>log+=x);

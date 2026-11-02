@@ -7,7 +7,7 @@ import 'package:sgf_escritorio/servicios/servicio_existente.dart';
 void main() {
   late Directory temp;
   late ServicioExistente servicio;
-  const token = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  final token = 'a' * 64;
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('sgf-anuncio-');
     servicio = ServicioExistente(temp.path);

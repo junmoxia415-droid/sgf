@@ -40,7 +40,7 @@ try {
  assert.equal((await solicitar('/api/health')).json.data.dbMode,'sqlite');
  const headers={'x-sgf-console-token':token};
  assert.equal((await solicitar('/api/setup/admin',{body:{username:'admin_prueba',name:'Cuenta ficticia',password:pass},headers})).status,201);
- assert.equal((await solicitar('/api/auth/login',{body:{username:'admin_prueba',password:'incorrecta-ficticia'}})).status,401);
+ assert.equal((await solicitar('/api/auth/login',{body:{username:'admin_prueba',password:'incorrecta-para-pruebas'}})).status,401);
  assert.equal((await solicitar('/api/auth/login',{body:{username:'admin_prueba',password:pass}})).status,200);
  assert.equal((await solicitar('/api/panel/apagar',{body:{},headers})).status,200);
  const [codigo]=await proceso.fin;assert.equal(codigo,0);proceso=null;

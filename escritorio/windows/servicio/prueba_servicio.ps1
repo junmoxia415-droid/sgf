@@ -15,7 +15,9 @@ try {
   Copy-Item -Recurse 'client/dist' "$origen/client/dist"
   Copy-Item 'escritorio/windows/servicio/gestionar.ps1' "$origen/servicio/gestionar.ps1"
   $csc=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-  & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$origen/servicio/sgf_servicio.exe" 'escritorio/windows/servicio/ServicioSgf.cs'
+  $salida=Join-Path $origen 'servicio\sgf_servicio.exe'
+  $codigo=(Resolve-Path 'escritorio/windows/servicio/ServicioSgf.cs').Path
+  & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$salida" $codigo
   if($LASTEXITCODE -ne 0) {throw 'Falló la compilación del servicio.'}
   [IO.File]::WriteAllText((Join-Path $datos '.env'),"DB_TYPE=sqlite`nJWT_SECRET=prueba-ficticia-solo-servicio-123456`n",[Text.Encoding]::ASCII)
   & node 'server/dist/scripts/red-protegida.js' preparar $datos | Out-Null

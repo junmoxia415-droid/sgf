@@ -271,7 +271,9 @@ jobs:
           $servicio = Join-Path $destino 'servicio'
           New-Item -ItemType Directory -Force -Path $servicio | Out-Null
           $csc = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-          & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$servicio/sgf_servicio.exe" 'escritorio/windows/servicio/ServicioSgf.cs'
+          $salidaServicio = Join-Path $servicio 'sgf_servicio.exe'
+          $codigoServicio = (Resolve-Path 'escritorio/windows/servicio/ServicioSgf.cs').Path
+          & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$salidaServicio" $codigoServicio
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el servicio de SGF.' }
           Copy-Item 'escritorio/windows/servicio/gestionar.ps1' $servicio
           Get-ChildItem $destino | Select-Object Name, Length

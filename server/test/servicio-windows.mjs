@@ -16,8 +16,8 @@ const raw=s.getPeerCertificate().raw;assert.equal(createHash('sha256').update(ra
 const pem=`-----BEGIN CERTIFICATE-----\n${raw.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----\n`;
 function api(ruta,body) {return new Promise((resolve,reject)=>{const txt=body===undefined?null:JSON.stringify(body);const q=https.request({host:'127.0.0.1',port:a.puerto,path:ruta,method:txt?'POST':'GET',ca:pem,headers:{'x-sgf-console-token':token,...(txt?{'content-type':'application/json'}:{})}},res=>{let b='';res.on('data',x=>b+=x);res.on('end',()=>resolve({status:res.statusCode,json:JSON.parse(b)}));});q.on('error',reject);q.end(txt);});}
 const ping=await api('/api/panel/ping');assert.equal(ping.json.data.pid,d.pid);
-if(vez==='1') assert.equal((await api('/api/setup/admin',{username:'ficticio_servicio',name:'Prueba ficticia',password:'prueba-temporal-123'})).status,201);
-assert.equal((await api('/api/auth/login',{username:'ficticio_servicio',password:'prueba-temporal-123',machineId:'prueba'})).status,200);
+if(vez==='1') assert.equal((await api('/api/setup/admin',{username:'ficticio_servicio',name:'Prueba ficticia',password:'clave-para-pruebas-123'})).status,201);
+assert.equal((await api('/api/auth/login',{username:'ficticio_servicio',password:'clave-para-pruebas-123',machineId:'prueba'})).status,200);
 const identidad=JSON.parse(fs.readFileSync(`${datos}\\red-protegida\\identidad.json`,'utf8'));
 const raiz=fs.readFileSync(`${datos}\\red-protegida\\autoridad-publica.crt`);
 const respuesta=await new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:443,path:'/api/health',servername:identidad.nombre,ca:raiz},r=>{r.resume();resolve(r.statusCode);}).on('error',reject);});assert.equal(respuesta,200);
