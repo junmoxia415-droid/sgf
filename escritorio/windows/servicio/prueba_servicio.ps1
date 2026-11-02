@@ -24,27 +24,28 @@ try {
   if($LASTEXITCODE -ne 0) {throw 'No se creó la identidad de prueba.'}
   $env:SGF_SERVICE_DATA=$datos; $env:SGF_SERVICE_SOURCE=$origen
   $env:SGF_SERVICE_USER_SID=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  $env:SGF_SERVICE_PORT='8443'
   $env:SGF_SERVICE_ACTION='instalar'
   & "$origen/servicio/gestionar.ps1"
   $svc=Get-CimInstance Win32_Service -Filter "Name='SGFServidor'"
   if($svc.StartName -ine 'NT SERVICE\SGFServidor' -or $svc.StartMode -ne 'Auto') {throw 'La cuenta o el inicio del servicio no son los esperados.'}
   $limite=(Get-Date).AddSeconds(35)
   while(-not (Test-Path "$datos/control-servicio/anuncio.json") -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 300}
-  & node 'server/test/servicio-windows.mjs' $datos 1
+  & node 'server/test/servicio-windows.mjs' $datos 1 $env:SGF_SERVICE_PORT
   if($LASTEXITCODE -ne 0) {throw 'Falló el primer inicio del servicio.'}
   $env:SGF_SERVICE_ACTION='detener'; & "$origen/servicio/gestionar.ps1"
   if(Test-Path "$datos/control-servicio/anuncio.json") {throw 'El anuncio siguió disponible después del cierre.'}
   $env:SGF_SERVICE_ACTION='iniciar'; & "$origen/servicio/gestionar.ps1"
   $limite=(Get-Date).AddSeconds(35)
   while(-not (Test-Path "$datos/control-servicio/anuncio.json") -and (Get-Date) -lt $limite) {Start-Sleep -Milliseconds 300}
-  & node 'server/test/servicio-windows.mjs' $datos 2
+  & node 'server/test/servicio-windows.mjs' $datos 2 $env:SGF_SERVICE_PORT
   if($LASTEXITCODE -ne 0) {throw 'Falló el segundo inicio del servicio.'}
   $env:SGF_SERVICE_ACTION='desactivar'; & "$origen/servicio/gestionar.ps1"
   $estado=Get-Content "$datos/control-servicio/instalado.json" -Raw | ConvertFrom-Json
   if($estado.activo -ne $false) {throw 'El indicador del servicio no se desactivó.'}
   if((Get-CimInstance Win32_Service -Filter "Name='SGFServidor'").StartMode -ne 'Manual') {throw 'El servicio continúa en inicio automático.'}
   if(-not (Test-Path "$datos/sgf-data.db")) {throw 'No se conservó la base ficticia.'}
-  Write-Host 'OK: instalación explícita, servicio virtual, HTTPS 443, dos inicios, cierre y desactivación sin borrar datos.'
+  Write-Host 'OK: instalación explícita, servicio virtual, HTTPS en puerto alternativo, dos inicios, cierre y desactivación sin borrar datos.'
 } finally {
   Stop-Service SGFServidor -ErrorAction SilentlyContinue
   & sc.exe delete SGFServidor 2>$null | Out-Null

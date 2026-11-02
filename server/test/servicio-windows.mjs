@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import tls from 'node:tls';
 import https from 'node:https';
 import {createHash,createHmac} from 'node:crypto';
-const [datos,vez]=process.argv.slice(2);assert(datos && ['1','2'].includes(vez));
+const [datos,vez,puertoTexto='443']=process.argv.slice(2);assert(datos && ['1','2'].includes(vez));
+const puerto=Number(puertoTexto);assert(Number.isInteger(puerto) && puerto>0 && puerto<65536);
 const control=`${datos}\\control-servicio`;
 const token=fs.readFileSync(`${control}\\token.txt`,'utf8').trim();
 const d=JSON.parse(fs.readFileSync(`${control}\\anuncio.json`,'utf8'));
@@ -20,6 +21,6 @@ if(vez==='1') assert.equal((await api('/api/setup/admin',{username:'ficticio_ser
 assert.equal((await api('/api/auth/login',{username:'ficticio_servicio',password:'clave-para-pruebas-123',machineId:'prueba'})).status,200);
 const identidad=JSON.parse(fs.readFileSync(`${datos}\\red-protegida\\identidad.json`,'utf8'));
 const raiz=fs.readFileSync(`${datos}\\red-protegida\\autoridad-publica.crt`);
-const respuesta=await new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:443,path:'/api/health',servername:identidad.nombre,ca:raiz},r=>{r.resume();resolve(r.statusCode);}).on('error',reject);});assert.equal(respuesta,200);
-await assert.rejects(new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:443,path:'/api/health',servername:identidad.nombre},resolve).on('error',reject);}));
+const respuesta=await new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:puerto,path:'/api/health',servername:identidad.nombre,ca:raiz},r=>{r.resume();resolve(r.statusCode);}).on('error',reject);});assert.equal(respuesta,200);
+await assert.rejects(new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:puerto,path:'/api/health',servername:identidad.nombre},resolve).on('error',reject);}));
 console.log('OK: servicio SGF real, HTTPS confiable y control autenticado; cuenta ficticia persistente.');

@@ -298,7 +298,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                         _paso('7', 'Haga una copia al terminar el día',
                             'En «Servidor», pulse «Crear copia ahora». Se guardan las 10 últimas copias.'),
                         _paso('8', 'Abra SGF en otra PC de la red',
-                            'En «Servidor», active HTTPS, exporte el certificado público y compruebe su huella antes de instalarlo en la otra PC. Use el nombre local; requiere mDNS. Si HTTPS no está activo, HTTP no cifra la conexión.'),
+                            'En «Servidor», active HTTPS, exporte el certificado público y compruebe su huella antes de instalarlo en la otra PC. Puede usar un nombre DNS de la organización o el nombre local con mDNS; las redes adicionales necesitan autorización explícita. HTTP no cifra la conexión.'),
                         _paso('9', 'Configure el arranque y la recuperación',
                             'En «Servidor» puede activar el servicio de Windows para iniciarlo antes de la sesión; requiere autorización de administrador y HTTPS. Sin el servicio, el servidor se detiene al cerrar SGF.'),
                         _paso('10', 'Evite abrir instalaciones antiguas a la vez',

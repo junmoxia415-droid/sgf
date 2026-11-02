@@ -4,8 +4,14 @@ import {createPrivateKey,randomBytes,X509Certificate} from 'node:crypto';
 /** Identidad de laboratorio. La clave de CA no se devuelve ni se escribe.
  * No habilita HTTPS por sí sola: falta un almacén de clave protegido, instalación
  * consentida de confianza y coordinación segura con el servicio de Windows. */
-export async function crearIdentidadRed(nombre:string) {
-  if(!/^sgf-[a-f0-9]{12}\.local$/.test(nombre)) throw new Error('Nombre local de SGF inválido.');
+export function nombreDnsValido(nombre:string):boolean {
+  if(nombre.length>253 || !nombre.includes('.') || nombre!==nombre.toLowerCase()) return false;
+  const partes=nombre.split('.');
+  return partes.every(p=>p.length>0 && p.length<=63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(p)) &&
+    !/^\d+\.\d+\.\d+\.\d+$/.test(nombre) && nombre!=='localhost.localdomain';
+}
+export async function crearIdentidadRed(nombre:string,dns?:string) {
+  if(!/^sgf-[a-f0-9]{12}\.local$/.test(nombre) || (dns && !nombreDnsValido(dns))) throw new Error('Nombre de SGF inválido.');
   const ahora=Date.now();
   const comun={keyType:'ec' as const,curve:'P-256' as const,algorithm:'sha256',notBeforeDate:new Date(ahora-300000)};
   const autoridad=await selfsigned.generate([{name:'commonName',value:`SGF red ${randomBytes(8).toString('hex')}`}],{
@@ -14,10 +20,10 @@ export async function crearIdentidadRed(nombre:string) {
   });
   const servidor=await selfsigned.generate([{name:'commonName',value:nombre}],{
     ...comun,notAfterDate:new Date(ahora+365*86400000),ca:{key:autoridad.private,cert:autoridad.cert},
-    extensions:[{name:'basicConstraints',cA:false,critical:true},{name:'keyUsage',digitalSignature:true,critical:true},{name:'extKeyUsage',serverAuth:true},{name:'subjectAltName',altNames:[{type:2,value:nombre}]}],
+    extensions:[{name:'basicConstraints',cA:false,critical:true},{name:'keyUsage',digitalSignature:true,critical:true},{name:'extKeyUsage',serverAuth:true},{name:'subjectAltName',altNames:[{type:2,value:nombre},...(dns ? [{type:2 as const,value:dns}] : [])]}],
   });
   const raiz=new X509Certificate(autoridad.cert), hoja=new X509Certificate(servidor.cert);
-  if(!raiz.ca || hoja.ca || !hoja.verify(raiz.publicKey) || !hoja.checkPrivateKey(createPrivateKey(servidor.private)) || hoja.checkHost(nombre)!==nombre) {
+  if(!raiz.ca || hoja.ca || !hoja.verify(raiz.publicKey) || !hoja.checkPrivateKey(createPrivateKey(servidor.private)) || hoja.checkHost(nombre)!==nombre || (dns && hoja.checkHost(dns)!==dns)) {
     throw new Error('No se pudo validar la identidad de red generada.');
   }
   return {

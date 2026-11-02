@@ -3,9 +3,10 @@ import 'dart:io';
 /// Gestiona únicamente SGFServidor, con confirmación y UAC por cada cambio.
 /// El script verifica la identidad del servicio y nunca modifica firewall o CA.
 class ServicioWindows {
-  ServicioWindows({required this.aplicacion, required this.datos, bool? windows}) : windows = windows ?? Platform.isWindows;
+  ServicioWindows({required this.aplicacion, required this.datos, this.puerto = 443, bool? windows}) : windows = windows ?? Platform.isWindows;
   final String aplicacion;
   final String datos;
+  final int puerto;
   final bool windows;
 
   Future<void> ejecutar(String accion) async {
@@ -32,6 +33,7 @@ try {
         'SGF_SERVICE_SOURCE': aplicacion,
         'SGF_SERVICE_DATA': datos,
         'SGF_SERVICE_USER_SID': sid,
+        'SGF_SERVICE_PORT': '$puerto',
       }).timeout(const Duration(seconds: 150));
     if (resultado.exitCode != 0) {
       throw StateError('Windows no completó la operación o se canceló el permiso. No se modificaron datos existentes; revise el servicio, el puerto y los permisos.');

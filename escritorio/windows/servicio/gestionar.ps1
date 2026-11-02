@@ -9,6 +9,10 @@ $datos=$env:SGF_SERVICE_DATA
 $origen=$env:SGF_SERVICE_SOURCE
 $sid=$env:SGF_SERVICE_USER_SID
 $accion=$env:SGF_SERVICE_ACTION
+$puerto=443
+if($env:SGF_SERVICE_PORT) {
+  if(-not [int]::TryParse($env:SGF_SERVICE_PORT,[ref]$puerto) -or ($puerto -ne 443 -and ($puerto -lt 1024 -or $puerto -gt 65535))) {throw 'Puerto de servicio inválido.'}
+}
 $control=Join-Path $datos 'control-servicio'
 $clave=Join-Path $control 'token.txt'
 $marca=Join-Path $control 'instalado.json'
@@ -55,6 +59,8 @@ if($accion -ne 'instalar') {
   exit 0
 }
 if(ServicioPropio) {
+  $configExistente=Get-Content -LiteralPath (Join-Path $raiz 'config-servicio.json') -Raw | ConvertFrom-Json
+  if($configExistente.puerto -ne $puerto) {throw 'El puerto de la instalación no coincide con el servicio existente; no se modificó.'}
   if(-not (Test-Path -LiteralPath $marca -PathType Leaf)) {throw 'Falta el indicador del servicio.'}
   # Primero impedir que la consola arranque otra instancia, incluso si falla
   # el siguiente paso o el equipo se apaga a mitad de la operación.
@@ -89,7 +95,7 @@ try {
   $rng=[Security.Cryptography.RandomNumberGenerator]::Create(); try {$rng.GetBytes($bytes)} finally {$rng.Dispose()}
   $secreto=([BitConverter]::ToString($bytes)).Replace('-','').ToLowerInvariant()
   [IO.File]::WriteAllText($clave,$secreto,[Text.Encoding]::ASCII)
-  $config=@{tipo='sgf-servicio-v1';datos=$datos;archivoEnv=(Join-Path $datos '.env');token=$clave;anuncio=$anuncio;puerto=443}
+  $config=@{tipo='sgf-servicio-v1';datos=$datos;archivoEnv=(Join-Path $datos '.env');token=$clave;anuncio=$anuncio;puerto=$puerto}
   [IO.File]::WriteAllText((Join-Path $raiz 'config-servicio.json'),($config|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
   [IO.File]::WriteAllText($marca,'{"version":1,"activo":true}',[Text.Encoding]::ASCII)
   & sc.exe config $nombre start= auto | Out-Null

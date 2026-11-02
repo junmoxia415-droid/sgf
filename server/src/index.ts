@@ -12,6 +12,7 @@ import { ErrorSeleccionBase } from "./utils/seleccion-base.js";
 import type { Server as ServidorTls } from 'node:https';
 import { iniciarNombreRed, detenerNombreRed, nombrePersistido } from "./utils/nombre-red.js";
 import { estadoRedProtegida } from "./utils/red-protegida.js";
+import { leerRedes, permitidaRedAdicional } from "./utils/redes-autorizadas.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
@@ -45,6 +46,15 @@ let bloqueoDatos: BloqueoDatos;
 try { bloqueoDatos = BloqueoDatos.adquirir(DATA_DIR); }
 catch (error:any) {
   console.error(`[SGF] No se inició el servidor: ${error?.message || 'no se pudo proteger la carpeta de datos.'}`);
+  process.exit(1);
+}
+// Si el archivo de permisos es inválido, no arrancar con un permiso ampliado
+// ni modificar la base. Se conserva el bloqueo hasta validar la configuración.
+let redesAdicionales: ReturnType<typeof leerRedes>;
+try { redesAdicionales = leerRedes(DATA_DIR); }
+catch {
+  console.error('[SGF] La lista de redes autorizadas no es válida; no se inició el servidor.');
+  bloqueoDatos.cerrar();
   process.exit(1);
 }
 let dbInfo: Awaited<ReturnType<typeof initDatabase>>;
@@ -125,7 +135,7 @@ const server = http.createServer(
   { requestTimeout: SERVER_CONFIG.requestTimeoutMs },
   async (req: AuthenticatedRequest, res: http.ServerResponse) => {
     if (cerrando) return sendJson(res, 503, {success:false,error:'El servidor se está cerrando.'});
-    if (!esRedPrivada(req)) return sendJson(res, 403, { success: false, error: "Acceso permitido solo desde redes privadas." });
+    if (!esRedPrivada(req) && !permitidaRedAdicional(req, redesAdicionales)) return sendJson(res, 403, { success: false, error: "Acceso permitido solo desde redes autorizadas." });
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",

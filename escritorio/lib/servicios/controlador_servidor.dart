@@ -9,6 +9,7 @@ import 'ajustes.dart';
 import 'api.dart';
 import 'canal_local_seguro.dart';
 import 'red_segura.dart';
+import 'redes_autorizadas.dart';
 import 'servicio_existente.dart';
 import 'servicio_windows.dart';
 
@@ -96,7 +97,13 @@ class ControladorServidor extends ChangeNotifier {
   int get puertoHttps => 443;
 
   ServicioExistente get servicioExistente => ServicioExistente(carpetaDatos.path);
-  ServicioWindows get servicioWindows => ServicioWindows(aplicacion: carpetaAplicacion.path, datos: carpetaDatos.path);
+  ServicioWindows get servicioWindows => ServicioWindows(aplicacion: carpetaAplicacion.path, datos: carpetaDatos.path, puerto: ajustes.puerto);
+
+  RedesAutorizadas get redesAutorizadas => RedesAutorizadas(
+    node: ejecutableNode,
+    script: '${carpetaServidor.path}${Platform.pathSeparator}dist${Platform.pathSeparator}scripts${Platform.pathSeparator}redes-autorizadas.js',
+    datos: carpetaDatos.path,
+  );
 
   RedSegura get redSegura => RedSegura(
     node: ejecutableNode,
@@ -106,32 +113,46 @@ class ControladorServidor extends ChangeNotifier {
 
   /// Se llama exclusivamente tras confirmación expresa del administrador.
   /// Nunca se abre HTTP si la identidad se creó pero la activación falla.
-  Future<EstadoRedSegura> activarHttpsRed() async {
+  Future<EstadoRedSegura> activarHttpsRed({int? puerto, String? dns}) async {
+    final destino = puerto ?? puertoHttps;
+    if (destino != 443 && (destino < 1024 || destino > 65535)) throw StateError('El puerto debe ser 443 o estar entre 1024 y 65535.');
+    if (await servicioExistente.configurado()) throw StateError('Desactive el servicio antes de cambiar HTTPS.');
+    final nombreDns = dns?.trim().toLowerCase();
+    if (nombreDns != null && nombreDns.isNotEmpty) {
+      try {
+        final existentes = await redSegura.consultar();
+        if (existentes.activa && existentes.dns != nombreDns) throw StateError('El certificado existente no incluye ese nombre. No se reemplazará automáticamente.');
+        final local = (await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)).expand((i) => i.addresses).map((a) => a.address).toSet();
+        final resuelto = await InternetAddress.lookup(nombreDns, type: InternetAddressType.IPv4).timeout(const Duration(seconds: 5));
+        if (!resuelto.any((a) => local.contains(a.address))) throw StateError('El nombre DNS no apunta a una dirección IPv4 de este equipo.');
+      } on SocketException { throw StateError('No se pudo resolver el nombre DNS en este equipo.'); }
+      on TimeoutException { throw StateError('El DNS tardó demasiado en responder.'); }
+    }
     if (estado == EstadoServidor.arrancando || estado == EstadoServidor.deteniendo) {
       throw StateError('Espere a que termine el inicio o cierre del servidor.');
     }
-    if (!enMarcha || ajustes.puerto != puertoHttps) {
+    if (!enMarcha || ajustes.puerto != destino) {
       try {
-        final socket = await Socket.connect('127.0.0.1', puertoHttps, timeout: const Duration(seconds: 1));
+        final socket = await Socket.connect('127.0.0.1', destino, timeout: const Duration(seconds: 1));
         socket.destroy();
-        throw StateError('El puerto 443 está ocupado por otro programa. SGF no lo ha detenido ni ha cambiado el cortafuegos.');
+        throw StateError('El puerto $destino está ocupado por otro programa. SGF no lo ha detenido ni ha cambiado el cortafuegos.');
       } on SocketException {
         // El arranque posterior confirma que realmente se puede usar el puerto.
       } on TimeoutException {
-        throw StateError('No se pudo verificar si el puerto 443 está disponible.');
+        throw StateError('No se pudo verificar si el puerto $destino está disponible.');
       }
     }
     if (enMarcha) {
       await detener();
       if (avisoCierre) throw StateError('No se confirmó el guardado al detener el servidor. No se cambió la conexión de red; revise los datos antes de continuar.');
     }
-    final identidad = await redSegura.preparar();
-    ajustes.puerto = puertoHttps;
-    ajustes.urlPublica = 'https://${identidad.nombre}${puertoHttps == 443 ? '' : ':$puertoHttps'}';
+    final identidad = await redSegura.preparar(dns: dns?.trim().toLowerCase());
+    ajustes.puerto = destino;
+    ajustes.urlPublica = 'https://${identidad.dns ?? identidad.nombre}${destino == 443 ? '' : ':$destino'}';
     await ajustes.guardar();
     try {
       final guardado = jsonDecode(await archivoAjustes.readAsString()) as Map<String, dynamic>;
-      if (guardado['puerto'] != puertoHttps) throw const FormatException('Puerto no guardado');
+      if (guardado['puerto'] != destino) throw const FormatException('Puerto no guardado');
     } catch (_) {
       throw StateError('La identidad HTTPS está preparada, pero no se pudo guardar el puerto. El servidor permanece detenido; no se volverá a HTTP automáticamente.');
     }
@@ -145,8 +166,8 @@ class ControladorServidor extends ChangeNotifier {
   Future<void> activarServicioWindows() async {
     if (!Platform.isWindows) throw UnsupportedError('Esta función requiere Windows.');
     final identidad = await redSegura.consultar();
-    if (!identidad.activa || ajustes.puerto != 443) {
-      throw StateError('Active primero HTTPS en el puerto 443.');
+    if (!identidad.activa || (ajustes.puerto != 443 && (ajustes.puerto < 1024 || ajustes.puerto > 65535))) {
+      throw StateError('Active primero HTTPS con un puerto válido.');
     }
     if (enMarcha && !usandoServicio) {
       await detener();

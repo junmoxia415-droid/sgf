@@ -62,6 +62,8 @@ jobs:
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
           node test/nombre-red.mjs
+          node test/redes-autorizadas.mjs
+          node test/red-institucional.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
           node test/control-tls.mjs
@@ -306,6 +308,7 @@ jobs:
             'distribucion\servidor\dist\utils\control-tls.js',
             'distribucion\servidor\dist\scripts\supervisor-servicio.js',
             'distribucion\servidor\dist\scripts\red-protegida.js',
+            'distribucion\servidor\dist\scripts\redes-autorizadas.js',
             'distribucion\servicio\sgf_servicio.exe',
             'distribucion\servicio\gestionar.ps1',
             'distribucion\client\dist\index.html',

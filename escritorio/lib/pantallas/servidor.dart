@@ -44,6 +44,8 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   bool _actualizandoInicio = false;
   bool? _inicioServicio;
   bool _actualizandoServicio = false;
+  List<String>? _redesExtra;
+  String? _errorRedesExtra;
   List<String> _enlaces = const [];
   String? _errorRed;
   bool _consultandoRed = false;
@@ -62,6 +64,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     _consultarRedSegura();
     _consultarInicio();
     _consultarServicio();
+    _consultarRedesExtra();
     _actualizarEstado = Timer.periodic(const Duration(seconds: 5), (_) { if (widget.servidor.enMarcha) _cargar(); });
   }
 
@@ -98,15 +101,32 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   }
 
   Future<void> _activarRedSegura() async {
-    final aceptado = await confirmar(context, titulo: 'Activar HTTPS para la red',
-      mensaje: 'SGF detendrá brevemente el servidor, generará un certificado propio y tratará de usar el puerto 443. '
-        'El otro equipo deberá confiar explícitamente en el certificado público y verificar su huella. '
-        'No se modificará el cortafuegos ni se instalarán certificados automáticamente. '
-        'Si falla la preparación, no se volverá a HTTP de forma silenciosa.', textoConfirmar: 'Activar HTTPS');
-    if (!aceptado || !mounted) return;
+    final puerto = TextEditingController(text: '443');
+    final dns = TextEditingController();
+    final opcion = await showDialog<({int puerto, String? dns})>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Activar HTTPS para la red'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Si el puerto 443 está ocupado, puede usar otro, por ejemplo 8443, sin detener el programa que lo ocupa. El firewall debe permitir el puerto elegido.'),
+        TextField(controller: puerto, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto HTTPS')),
+        const SizedBox(height: 12),
+        const Text('En una red con DNS de empresa puede indicar el nombre completo de este equipo. Debe resolver a una dirección de esta PC. Si lo deja vacío se usará el nombre local de SGF, que depende de mDNS.'),
+        TextField(controller: dns, decoration: const InputDecoration(labelText: 'Nombre DNS completo (opcional)', hintText: 'equipo.empresa.ejemplo')),
+        const SizedBox(height: 12),
+        const Text('SGF se detendrá brevemente. En la otra PC habrá que verificar e instalar el certificado público. No se cambiarán el firewall ni los certificados de confianza.'),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: () {
+          final p=int.tryParse(puerto.text.trim());
+          if (p==null || (p!=443 && (p<1024 || p>65535))) { avisar(context, 'Use 443 o un puerto entre 1024 y 65535.', tipo: TipoAviso.error); return; }
+          final n=dns.text.trim().toLowerCase();
+          Navigator.pop(context, (puerto:p, dns:n.isEmpty ? null : n));
+        }, child: const Text('Activar HTTPS'))],
+    ));
+    puerto.dispose(); dns.dispose();
+    if (opcion == null || !mounted) return;
     setState(() => _cambiandoRedSegura = true);
     try {
-      final estado = await widget.servidor.activarHttpsRed();
+      final estado = await widget.servidor.activarHttpsRed(puerto: opcion.puerto, dns: opcion.dns);
       if (mounted) setState(() { _redSegura = estado; _errorRedSegura = null; });
       await _consultarRed(); await _cargar();
       if (mounted) avisar(context, 'HTTPS preparado. Exporte el certificado público y configúrelo en la otra PC.');
@@ -133,6 +153,40 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     } catch (e) {
       if (mounted) avisar(context, 'No se pudo guardar el certificado público: $e', tipo: TipoAviso.error);
     }
+  }
+
+  Future<void> _consultarRedesExtra() async {
+    try {
+      final redes=await widget.servidor.redesAutorizadas.leer();
+      if (mounted) setState(() { _redesExtra=redes; _errorRedesExtra=null; });
+    } catch (_) { if (mounted) setState(() { _redesExtra=null; _errorRedesExtra='No se pudo leer la configuración de redes adicionales.'; }); }
+  }
+
+  Future<void> _editarRedesExtra() async {
+    final texto=TextEditingController(text: (_redesExtra ?? []).join('\n'));
+    final resultado=await showDialog<String>(context: context, builder: (context)=>AlertDialog(
+      title: const Text('Redes adicionales autorizadas'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Escriba una red IPv4 por línea. Use /32 para una sola PC o /24 a /31 para una red. Ejemplos: 203.0.113.5/32 y 203.0.113.0/24. Solicite el rango al responsable de su red.'),
+        TextField(controller:texto, maxLines:4, decoration:const InputDecoration(labelText:'Redes adicionales')),
+        const SizedBox(height:12),
+        const Text('Las redes adicionales solo se aceptan mediante HTTPS. Verifique el alcance con el administrador y limite también el firewall; una dirección pública puede ser accesible desde Internet.'),
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancelar')),
+        FilledButton(onPressed:()=>Navigator.pop(context,texto.text),child:const Text('Continuar'))],
+    ));
+    texto.dispose();
+    if(resultado==null || !mounted) return;
+    final redes=resultado.split(RegExp(r'[\n,]')).map((s)=>s.trim()).where((s)=>s.isNotEmpty).toList();
+    final ok=await confirmar(context, titulo:'¿Autorizar estas redes?', mensaje: redes.isEmpty
+      ? 'Se quitarán todas las redes adicionales. Las redes privadas habituales seguirán funcionando.'
+      : 'Se aceptarán conexiones HTTPS desde: ${redes.join(', ')}. Autorice únicamente direcciones de su organización y restrinja el firewall. El cambio se aplicará al reiniciar el servidor.', textoConfirmar:'Guardar');
+    if(!ok || !mounted) return;
+    try {
+      final guardadas=await widget.servidor.redesAutorizadas.guardar(redes);
+      if(mounted) setState(() { _redesExtra=guardadas; _errorRedesExtra=null; });
+      if(mounted) avisar(context,'Redes guardadas. Reinicie el servidor para aplicar el cambio.');
+    } catch(e) { if(mounted) avisar(context,'No se pudo guardar: $e',tipo:TipoAviso.error); }
   }
 
   Future<void> _consultarServicio() async {
@@ -224,6 +278,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
         && nombreEquipo.toLowerCase() != 'localhost';
     final enlaceNombre = 'http://$nombreEquipo:${widget.ajustes.puerto}';
+    final enlaceDns = segura && _redSegura?.dns != null ? 'https://${_redSegura!.dns}${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}' : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +384,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Aviso(titulo: 'No se pudo comprobar HTTPS', mensaje: _errorRedSegura!, tipo: TipoAviso.error),
                         TextButton(onPressed: _consultarRedSegura, child: const Text('Volver a comprobar')),
                       ] else if (segura) ...[
-                        const Text('Identidad HTTPS preparada. La otra PC debe confiar en el certificado público y usar el nombre local de SGF.'),
+                        const Text('Identidad HTTPS preparada. La otra PC debe confiar en el certificado público y usar uno de los nombres incluidos en él.'),
                         const SizedBox(height: 8),
                         const Text('Huella SHA-256 del certificado público (compárela por otro medio):', style: TextStyle(fontWeight: FontWeight.w600)),
                         SelectableText(_redSegura!.huella!, style: const TextStyle(fontFamily: 'monospace')),
@@ -343,7 +398,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       else ...[
                         const Text('Actualmente HTTP no cifra los datos de la red. Puede activar HTTPS con un certificado propio; se le pedirá confirmación.'),
                         const SizedBox(height: 8),
-                        FilledButton.icon(onPressed: _cambiandoRedSegura ? null : _activarRedSegura, icon: const Icon(Icons.lock_outline), label: Text(_cambiandoRedSegura ? 'Preparando HTTPS…' : 'Activar HTTPS en el puerto 443')),
+                        FilledButton.icon(onPressed: _cambiandoRedSegura ? null : _activarRedSegura, icon: const Icon(Icons.lock_outline), label: Text(_cambiandoRedSegura ? 'Preparando HTTPS…' : 'Activar HTTPS')),
                       ],
                     ]),
                   ),
@@ -355,6 +410,13 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       const Text('En la otra PC, abra el navegador y pegue uno de estos enlaces. Debe estar en la misma red y el servidor debe estar en marcha.', style: TextStyle(fontSize: 13.5)),
                       if (!enMarcha) const Padding(padding: EdgeInsets.only(top: 8), child: Text('El servidor está detenido: el enlace no funcionará hasta iniciarlo.', style: TextStyle(color: Color(0xFFB8730B)))),
                       const SizedBox(height: 10),
+                      if (enlaceDns != null) ...[
+                        const Text('Nombre DNS de la organización', style: TextStyle(fontWeight: FontWeight.w700)),
+                        Row(children: [Expanded(child: SelectableText(enlaceDns, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                          OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceDns)); if (context.mounted) avisar(context, 'Enlace HTTPS copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar DNS'))]),
+                        const Text('La otra PC debe resolver este nombre y confiar en el certificado público de SGF.', style: TextStyle(fontSize: 12.5)),
+                        const SizedBox(height: 12),
+                      ],
                       if (enMarcha && enlaceEstable != null) ...[
                         const Text('Nombre local automático', style: TextStyle(fontWeight: FontWeight.w700)),
                         Row(children: [
@@ -372,7 +434,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Text('${accesoRed['mensaje'] ?? (segura ? 'Nombre local no disponible; revise mDNS. La dirección IP no coincide con el certificado.' : 'Nombre local no disponible; utilice el enlace por IP.')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
                         const SizedBox(height: 8),
                       ],
-                      if (segura) const Text('Para HTTPS use solo el nombre local indicado: la IP y el nombre de Windows no figuran en el certificado.', style: TextStyle(fontSize: 12.5))
+                      if (segura) const Text('Para HTTPS use los nombres indicados: la dirección IP no figura en el certificado.', style: TextStyle(fontSize: 12.5))
                       else if (_consultandoRed) const Text('Buscando direcciones de red…')
                       else if (_errorRed != null) Text(_errorRed!)
                       else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')
@@ -400,10 +462,22 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       const Text('Si aparecen varios enlaces, pruebe el de la red que comparten los equipos; algunos pueden pertenecer a VPN. El cortafuegos debe permitir conexiones privadas al puerto de SGF.', style: TextStyle(fontSize: 12.5, height: 1.4)),
                       const SizedBox(height: 8),
                       Text(servidor.usandoServicio
-                        ? 'El servicio permanece activo al cerrar esta ventana. La otra PC necesita resolver el nombre local mediante mDNS.'
+                        ? 'El servicio permanece activo al cerrar esta ventana. El nombre local requiere mDNS; el nombre de la organización requiere DNS.'
                         : segura
-                          ? 'Mantenga SGF abierto: al cerrar la aplicación se detiene el servidor. La otra PC necesita resolver el nombre local mediante mDNS.'
+                          ? 'Mantenga SGF abierto: al cerrar la aplicación se detiene el servidor. El nombre local requiere mDNS; el nombre de la organización requiere DNS.'
                           : 'Mantenga SGF abierto: al cerrar la aplicación se detiene el servidor. Si su red no admite mDNS, use una IP reservada en el router como alternativa.', style: const TextStyle(fontSize: 12.5, height: 1.4)),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                  Tarjeta(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Redes de la organización', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      const Text('Si su organización usa direcciones que SGF no reconoce como privadas, puede autorizar direcciones concretas. Solo se aceptarán por HTTPS; mantenga el firewall restringido.'),
+                      const SizedBox(height: 8),
+                      Text(_errorRedesExtra ?? (_redesExtra == null ? 'Comprobando redes…' : _redesExtra!.isEmpty ? 'No hay redes adicionales autorizadas.' : 'Redes configuradas: ${_redesExtra!.join(', ')}')),
+                      OutlinedButton.icon(onPressed: segura && _redesExtra != null ? _editarRedesExtra : null, icon: const Icon(Icons.lan_outlined), label: const Text('Configurar redes adicionales')),
+                      if (!segura) const Text('Active primero HTTPS para autorizar redes adicionales.', style: TextStyle(fontSize: 12.5)),
                     ]),
                   ),
                   const SizedBox(height: 16),
@@ -416,7 +490,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Iniciar el servidor antes de iniciar sesión'),
-                          subtitle: Text(segura ? 'Servicio de Windows con cuenta virtual; requiere autorización de administrador.' : 'Active primero HTTPS en el puerto 443.'),
+                          subtitle: Text(segura ? 'Servicio de Windows con cuenta virtual; requiere autorización de administrador.' : 'Active primero HTTPS.'),
                           value: _inicioServicio ?? false,
                           onChanged: _actualizandoServicio || _inicioServicio == null || (!segura && _inicioServicio != true) ? null : _cambiarServicio,
                         ),

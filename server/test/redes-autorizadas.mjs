@@ -1,0 +1,40 @@
+// Redes ficticias RFC 5737, sin tocar servidores ni equipos reales.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {X509Certificate} from 'node:crypto';
+import {analizarRed,coincideRed,leerRedes,permitidaRedAdicional} from '../dist/utils/redes-autorizadas.js';
+import {crearIdentidadRed} from '../dist/utils/identidad-red.js';
+import {prepararRedProtegida} from '../dist/utils/red-protegida.js';
+const redes=[analizarRed('203.0.113.0/24'),analizarRed('198.51.100.25/32')];
+for (const ip of ['203.0.113.1','203.0.113.255','198.51.100.25','::ffff:203.0.113.3']) assert(coincideRed(ip,redes),ip);
+for (const ip of ['203.0.114.1','198.51.100.26','8.8.8.8','2001:db8::1','203.0.113.01']) assert(!coincideRed(ip,redes),ip);
+for (const invalido of ['0.0.0.0/0','203.0.113.4/24','203.0.113.0/23','127.0.0.1/32','224.0.0.0/24','001.2.3.4/32','203.0.113.256/32']) assert.throws(()=>analizarRed(invalido));
+const req=(encrypted,remote,headers={})=>({socket:{encrypted,remoteAddress:remote},headers});
+assert(permitidaRedAdicional(req(true,'203.0.113.4'),redes));
+assert(!permitidaRedAdicional(req(false,'203.0.113.4'),redes),'HTTP nunca admite redes adicionales');
+assert(!permitidaRedAdicional(req(true,'203.0.113.4',{'x-forwarded-for':'8.8.8.8'}),redes),'No confiar en proxy');
+assert(!permitidaRedAdicional(req(true,'8.8.8.8'),redes));
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sgf-redes-'));const script=path.resolve('dist/scripts/redes-autorizadas.js');
+try {
+ const cli=(...args)=>spawnSync(process.execPath,[script,...args],{encoding:'utf8'});
+ assert.equal(cli('guardar',dir,JSON.stringify(redes.map(x=>x.texto))).status,0);
+ assert.deepEqual(leerRedes(dir).map(r=>r.texto),redes.map(x=>x.texto));
+ assert.notEqual(cli('guardar',dir,JSON.stringify(['0.0.0.0/0'])).status,0);
+ assert.deepEqual(leerRedes(dir).map(r=>r.texto),redes.map(x=>x.texto),'Un error no reemplaza la lista existente');
+ fs.writeFileSync(path.join(dir,'redes-autorizadas.json'),'{invalido');assert.throws(()=>leerRedes(dir));
+ const identidad=await crearIdentidadRed('sgf-123456789abc.local','equipo.empresa.example');
+ const x=new X509Certificate(identidad.certificadoServidor);
+ assert.equal(x.checkHost('equipo.empresa.example'),'equipo.empresa.example');
+ assert.equal(x.checkHost('sgf-123456789abc.local'),'sgf-123456789abc.local');
+ assert.equal(x.checkHost('otro.empresa.example'),undefined);
+ await assert.rejects(crearIdentidadRed('sgf-123456789abc.local','*.empresa.example'));
+ await assert.rejects(prepararRedProtegida(dir,'*.empresa.example'));
+ assert(!fs.existsSync(path.join(dir,'red-protegida')),'No crear identidad incompleta para DNS inválido');
+ const original=await prepararRedProtegida(dir);
+ await assert.rejects(prepararRedProtegida(dir,'equipo.empresa.example'));
+ assert.equal((await prepararRedProtegida(dir)).huella,original.huella,'Nunca reemplazar una identidad existente');
+ console.log('OK: redes extra acotadas, exclusivamente TLS sin proxy, rechazo de rangos inválidos y certificado DNS exacto.');
+} finally {fs.rmSync(dir,{recursive:true,force:true});}
