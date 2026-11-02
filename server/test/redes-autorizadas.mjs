@@ -25,16 +25,27 @@ try {
  assert.notEqual(cli('guardar',dir,JSON.stringify(['0.0.0.0/0'])).status,0);
  assert.deepEqual(leerRedes(dir).map(r=>r.texto),redes.map(x=>x.texto),'Un error no reemplaza la lista existente');
  fs.writeFileSync(path.join(dir,'redes-autorizadas.json'),'{invalido');assert.throws(()=>leerRedes(dir));
- const identidad=await crearIdentidadRed('sgf-123456789abc.local','equipo.empresa.example');
+ const identidad=await crearIdentidadRed('sgf-123456789abc.local','equipo.empresa.example','203.0.113.8');
  const x=new X509Certificate(identidad.certificadoServidor);
  assert.equal(x.checkHost('equipo.empresa.example'),'equipo.empresa.example');
  assert.equal(x.checkHost('sgf-123456789abc.local'),'sgf-123456789abc.local');
  assert.equal(x.checkHost('otro.empresa.example'),undefined);
+ assert.equal(x.checkIP('203.0.113.8'),'203.0.113.8');
+ assert.equal(x.checkIP('203.0.113.9'),undefined);
  await assert.rejects(crearIdentidadRed('sgf-123456789abc.local','*.empresa.example'));
  await assert.rejects(prepararRedProtegida(dir,'*.empresa.example'));
  assert(!fs.existsSync(path.join(dir,'red-protegida')),'No crear identidad incompleta para DNS inválido');
  const original=await prepararRedProtegida(dir);
  await assert.rejects(prepararRedProtegida(dir,'equipo.empresa.example'));
  assert.equal((await prepararRedProtegida(dir)).huella,original.huella,'Nunca reemplazar una identidad existente');
+ const datosDns=path.join(dir,'caso-dns');
+ const o={locales:()=>['203.0.113.8','192.168.100.1'],resolver:async()=>['203.0.113.8']};
+ const idDns=await prepararRedProtegida(datosDns,'equipo.empresa.example',undefined,o);
+ assert.equal(idDns.ip,'203.0.113.8');
+ assert.equal(new X509Certificate(fs.readFileSync(idDns.certificadoServidor)).checkIP('203.0.113.8'),'203.0.113.8');
+ assert.deepEqual(await prepararRedProtegida(datosDns,'equipo.empresa.example',undefined,o),idDns);
+ const mal=path.join(dir,'caso-dns-malo');
+ await assert.rejects(prepararRedProtegida(mal,'equipo.empresa.example',undefined,{...o,resolver:async()=>['203.0.113.8','198.51.100.7']}));
+ assert(!fs.existsSync(path.join(mal,'red-protegida')),'DNS ambiguo no crea identidad');
  console.log('OK: redes extra acotadas, exclusivamente TLS sin proxy, rechazo de rangos inválidos y certificado DNS exacto.');
 } finally {fs.rmSync(dir,{recursive:true,force:true});}

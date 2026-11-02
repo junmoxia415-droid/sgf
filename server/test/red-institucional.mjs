@@ -12,13 +12,13 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'sgf-institucional-'));
 const nombre='sgf-123456789abc.local', dns='equipo.empresa.example';
 let proceso;
 try {
- const identidad=await crearIdentidadRed(nombre,dns), carpeta=path.join(tmp,'red-protegida');fs.mkdirSync(carpeta);
+ const identidad=await crearIdentidadRed(nombre,dns,'127.0.0.1'), carpeta=path.join(tmp,'red-protegida');fs.mkdirSync(carpeta);
  fs.writeFileSync(path.join(tmp,'nombre-red.json'),JSON.stringify({nombre:'sgf-123456789abc'}));
  fs.writeFileSync(path.join(tmp,'redes-autorizadas.json'),JSON.stringify({version:1,redes:['203.0.113.0/24']}));
  fs.writeFileSync(path.join(carpeta,'servidor-clave.pem'),identidad.claveServidor);
  fs.writeFileSync(path.join(carpeta,'servidor.crt'),identidad.certificadoServidor);
  fs.writeFileSync(path.join(carpeta,'autoridad-publica.crt'),identidad.autoridadPublica);
- fs.writeFileSync(path.join(carpeta,'identidad.json'),JSON.stringify({nombre,dns,huella:identidad.huellaAutoridad}));
+ fs.writeFileSync(path.join(carpeta,'identidad.json'),JSON.stringify({nombre,dns,ip:'127.0.0.1',huella:identidad.huellaAutoridad}));
  const socket=net.createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const puerto=socket.address().port;await new Promise(r=>socket.close(r));
  proceso=spawn(process.execPath,['dist/index.js'],{env:{...process.env,SGF_DATA_DIR:tmp,SGF_ENV_FILE:path.join(tmp,'ausente'),SGF_MDNS:'0',DB_TYPE:'sqlite',HOST:'127.0.0.1',PORT:String(puerto),JWT_SECRET:'secreto-solo-para-pruebas-123456',SGF_CONSOLE_TOKEN:'token-solo-para-pruebas-123456'},stdio:['ignore','pipe','pipe']});
  let logs='';proceso.stdout.on('data',b=>logs+=b);proceso.stderr.on('data',b=>logs+=b);
@@ -26,6 +26,7 @@ try {
  assert.match(logs,/\[SGF\] https:\/\//);
  const get=(servername,ca)=>new Promise((resolve,reject)=>{https.get({host:'127.0.0.1',port:puerto,path:'/api/health',servername,ca},r=>{r.resume();resolve(r.statusCode);}).on('error',reject);});
  assert.equal(await get(dns,identidad.autoridadPublica),200);
+ assert.equal(await get(undefined,identidad.autoridadPublica),200,'La IP figura en el certificado');
  await assert.rejects(get('otro.empresa.example',identidad.autoridadPublica));
  await assert.rejects(get(dns,undefined));
  const fin=once(proceso,'exit');

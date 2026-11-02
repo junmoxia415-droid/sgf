@@ -10,6 +10,7 @@ import 'api.dart';
 import 'canal_local_seguro.dart';
 import 'red_segura.dart';
 import 'redes_autorizadas.dart';
+import 'seleccion_puerto.dart';
 import 'servicio_existente.dart';
 import 'servicio_windows.dart';
 
@@ -113,40 +114,40 @@ class ControladorServidor extends ChangeNotifier {
 
   /// Se llama exclusivamente tras confirmación expresa del administrador.
   /// Nunca se abre HTTP si la identidad se creó pero la activación falla.
-  Future<EstadoRedSegura> activarHttpsRed({int? puerto, String? dns}) async {
+  Future<EstadoRedSegura> activarHttpsRed({int? puerto, String? dns, String? ip}) async {
     final destino = puerto ?? puertoHttps;
     if (destino != 443 && (destino < 1024 || destino > 65535)) throw StateError('El puerto debe ser 443 o estar entre 1024 y 65535.');
     if (await servicioExistente.configurado()) throw StateError('Desactive el servicio antes de cambiar HTTPS.');
     final nombreDns = dns?.trim().toLowerCase();
+    final ipElegida = ip?.trim();
+    if (ipElegida != null && ipElegida.isNotEmpty) {
+      final existente = await redSegura.consultar();
+      if (existente.activa && existente.ip != ipElegida) throw StateError('El certificado existente no incluye esa IP. No se reemplazará automáticamente.');
+      final locales = (await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)).expand((i) => i.addresses).map((a) => a.address).toSet();
+      if (!locales.contains(ipElegida)) throw StateError('La IP elegida no pertenece a este equipo.');
+    }
     if (nombreDns != null && nombreDns.isNotEmpty) {
       try {
         final existentes = await redSegura.consultar();
         if (existentes.activa && existentes.dns != nombreDns) throw StateError('El certificado existente no incluye ese nombre. No se reemplazará automáticamente.');
         final local = (await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)).expand((i) => i.addresses).map((a) => a.address).toSet();
         final resuelto = await InternetAddress.lookup(nombreDns, type: InternetAddressType.IPv4).timeout(const Duration(seconds: 5));
-        if (!resuelto.any((a) => local.contains(a.address))) throw StateError('El nombre DNS no apunta a una dirección IPv4 de este equipo.');
+        final coincidencias = resuelto.map((a) => a.address).where(local.contains).toSet();
+        if (coincidencias.length != 1 || resuelto.any((a) => !local.contains(a.address)) || (ipElegida != null && ipElegida.isNotEmpty && !coincidencias.contains(ipElegida))) throw StateError('El nombre DNS debe resolver solamente a la IP elegida de este equipo.');
       } on SocketException { throw StateError('No se pudo resolver el nombre DNS en este equipo.'); }
       on TimeoutException { throw StateError('El DNS tardó demasiado en responder.'); }
     }
     if (estado == EstadoServidor.arrancando || estado == EstadoServidor.deteniendo) {
       throw StateError('Espere a que termine el inicio o cierre del servidor.');
     }
-    if (!enMarcha || ajustes.puerto != destino) {
-      try {
-        final socket = await Socket.connect('127.0.0.1', destino, timeout: const Duration(seconds: 1));
-        socket.destroy();
-        throw StateError('El puerto $destino está ocupado por otro programa. SGF no lo ha detenido ni ha cambiado el cortafuegos.');
-      } on SocketException {
-        // El arranque posterior confirma que realmente se puede usar el puerto.
-      } on TimeoutException {
-        throw StateError('No se pudo verificar si el puerto $destino está disponible.');
-      }
+    if ((!enMarcha || ajustes.puerto != destino) && !await puertoDisponible(destino)) {
+      throw StateError('El puerto $destino está ocupado o no puede usarse. SGF no ha detenido ningún programa ni cambiado el cortafuegos.');
     }
     if (enMarcha) {
       await detener();
       if (avisoCierre) throw StateError('No se confirmó el guardado al detener el servidor. No se cambió la conexión de red; revise los datos antes de continuar.');
     }
-    final identidad = await redSegura.preparar(dns: dns?.trim().toLowerCase());
+    final identidad = await redSegura.preparar(dns: nombreDns?.isNotEmpty == true ? nombreDns : null, ip: ipElegida?.isNotEmpty == true ? ipElegida : null);
     ajustes.puerto = destino;
     ajustes.urlPublica = 'https://${identidad.dns ?? identidad.nombre}${destino == 443 ? '' : ':$destino'}';
     await ajustes.guardar();

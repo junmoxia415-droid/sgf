@@ -9,6 +9,7 @@ import '../servicios/api.dart';
 import '../servicios/inicio_windows.dart';
 import '../servicios/controlador_servidor.dart';
 import '../servicios/red_segura.dart';
+import '../servicios/seleccion_puerto.dart';
 import '../widgets/comunes.dart';
 import 'configurar_base.dart';
 
@@ -47,6 +48,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   List<String>? _redesExtra;
   String? _errorRedesExtra;
   List<String> _enlaces = const [];
+  Set<String> _ipsLocales = const {};
   String? _errorRed;
   bool _consultandoRed = false;
   EstadoRedSegura? _redSegura;
@@ -83,7 +85,10 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     if (mounted) setState(() { _consultandoRed = true; _errorRed = null; });
     try {
       final enlaces = await widget.servidor.enlacesRed();
-      if (mounted) setState(() => _enlaces = enlaces);
+      if (mounted) setState(() { _enlaces = enlaces; _consultandoRed = false; });
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+      final ips = interfaces.expand((i) => i.addresses).map((a) => a.address).toSet();
+      if (mounted) setState(() => _ipsLocales = ips);
     } catch (_) {
       if (mounted) setState(() { _enlaces = []; _errorRed = 'No se pudieron consultar las direcciones de red.'; });
     } finally {
@@ -101,35 +106,43 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   }
 
   Future<void> _activarRedSegura() async {
-    final puerto = TextEditingController(text: '443');
+    final puerto = TextEditingController(text: '8443');
     final dns = TextEditingController();
-    final opcion = await showDialog<({int puerto, String? dns})>(context: context, builder: (context) => AlertDialog(
+    final ip = TextEditingController();
+    var automatico = true;
+    final opcion = await showDialog<({int? puerto, String? dns, String? ip})>(context: context, builder: (context) => StatefulBuilder(builder: (context, cambiar) => AlertDialog(
       title: const Text('Activar HTTPS para la red'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Si el puerto 443 está ocupado, puede usar otro, por ejemplo 8443, sin detener el programa que lo ocupa. El firewall debe permitir el puerto elegido.'),
-        TextField(controller: puerto, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto HTTPS')),
+        const Text('Automático prueba primero 443 y después 8443 y 9443, sin detener otros programas. También puede elegir un puerto manual. El firewall debe permitir el puerto elegido.'),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Elegir puerto automáticamente'), value: automatico, onChanged: (v) => cambiar(() => automatico = v)),
+        if (!automatico) TextField(controller: puerto, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto HTTPS manual')),
         const SizedBox(height: 12),
         const Text('En una red con DNS de empresa puede indicar el nombre completo de este equipo. Debe resolver a una dirección de esta PC. Si lo deja vacío se usará el nombre local de SGF, que depende de mDNS.'),
-        TextField(controller: dns, decoration: const InputDecoration(labelText: 'Nombre DNS completo (opcional)', hintText: 'equipo.empresa.ejemplo')),
+        TextField(controller: dns, decoration: const InputDecoration(labelText: 'Nombre DNS completo (opcional)', hintText: 'sgf.empresa.ejemplo')),
+        const SizedBox(height: 12),
+        const Text('El enlace por IP se incluye automáticamente si DNS identifica una única IP local. Si hay varias interfaces y no usa DNS, indique la IP de esta PC.'),
+        TextField(controller: ip, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'IP de esta PC (opcional)', hintText: 'Ejemplo: 192.168.1.20')),
         const SizedBox(height: 12),
         const Text('SGF se detendrá brevemente. En la otra PC habrá que verificar e instalar el certificado público. No se cambiarán el firewall ni los certificados de confianza.'),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
         FilledButton(onPressed: () {
-          final p=int.tryParse(puerto.text.trim());
-          if (p==null || (p!=443 && (p<1024 || p>65535))) { avisar(context, 'Use 443 o un puerto entre 1024 y 65535.', tipo: TipoAviso.error); return; }
+          final p=automatico ? null : int.tryParse(puerto.text.trim());
+          if (!automatico && (p==null || (p!=443 && (p<1024 || p>65535)))) { avisar(context, 'Use 443 o un puerto entre 1024 y 65535.', tipo: TipoAviso.error); return; }
           final n=dns.text.trim().toLowerCase();
-          Navigator.pop(context, (puerto:p, dns:n.isEmpty ? null : n));
+          final direccion=ip.text.trim();
+          Navigator.pop(context, (puerto:p, dns:n.isEmpty ? null : n, ip:direccion.isEmpty ? null : direccion));
         }, child: const Text('Activar HTTPS'))],
-    ));
-    puerto.dispose(); dns.dispose();
+    )));
+    puerto.dispose(); dns.dispose(); ip.dispose();
     if (opcion == null || !mounted) return;
     setState(() => _cambiandoRedSegura = true);
     try {
-      final estado = await widget.servidor.activarHttpsRed(puerto: opcion.puerto, dns: opcion.dns);
+      final seleccionado = opcion.puerto ?? await seleccionarPuertoLibre();
+      final estado = await widget.servidor.activarHttpsRed(puerto: seleccionado, dns: opcion.dns, ip: opcion.ip);
       if (mounted) setState(() { _redSegura = estado; _errorRedSegura = null; });
       await _consultarRed(); await _cargar();
-      if (mounted) avisar(context, 'HTTPS preparado. Exporte el certificado público y configúrelo en la otra PC.');
+      if (mounted) avisar(context, 'HTTPS preparado en el puerto $seleccionado. Exporte el certificado público y configúrelo en la otra PC.');
     } catch (e) {
       await _consultarRedSegura(); await _consultarRed();
       if (mounted) avisar(context, 'No se pudo completar la activación: $e', tipo: TipoAviso.error);
@@ -279,6 +292,8 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
         && nombreEquipo.toLowerCase() != 'localhost';
     final enlaceNombre = 'http://$nombreEquipo:${widget.ajustes.puerto}';
     final enlaceDns = segura && _redSegura?.dns != null ? 'https://${_redSegura!.dns}${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}' : null;
+    final ipSegura = _redSegura?.ip;
+    final enlaceIp = segura && ipSegura != null && _ipsLocales.contains(ipSegura) ? 'https://$ipSegura${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}' : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,6 +432,17 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         const Text('La otra PC debe resolver este nombre y confiar en el certificado público de SGF.', style: TextStyle(fontSize: 12.5)),
                         const SizedBox(height: 12),
                       ],
+                      if (enlaceIp != null) ...[
+                        const Text('Enlace por IP', style: TextStyle(fontWeight: FontWeight.w700)),
+                        Row(children: [Expanded(child: SelectableText(enlaceIp, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                          OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceIp)); if (context.mounted) avisar(context, 'Enlace por IP copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar IP'))]),
+                        const Text('Este enlace es válido mientras la IP no cambie. Si cambia, el certificado no será válido para la nueva IP.', style: TextStyle(fontSize: 12.5)),
+                        const SizedBox(height: 12),
+                      ] else if (segura && ipSegura != null && !_consultandoRed) ...[
+                        const Text('La IP del certificado ya no pertenece a esta PC; no se ofrece un enlace por IP. No se reemplazará el certificado automáticamente.', style: TextStyle(color: Color(0xFFB8730B))),
+                      ] else if (segura && ipSegura == null) ...[
+                        const Text('Este certificado no incluye una IP. Para usar HTTPS por IP se necesita una identidad preparada con la IP del equipo.', style: TextStyle(fontSize: 12.5)),
+                      ],
                       if (enMarcha && enlaceEstable != null) ...[
                         const Text('Nombre local automático', style: TextStyle(fontWeight: FontWeight.w700)),
                         Row(children: [
@@ -434,7 +460,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Text('${accesoRed['mensaje'] ?? (segura ? 'Nombre local no disponible; revise mDNS. La dirección IP no coincide con el certificado.' : 'Nombre local no disponible; utilice el enlace por IP.')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
                         const SizedBox(height: 8),
                       ],
-                      if (segura) const Text('Para HTTPS use los nombres indicados: la dirección IP no figura en el certificado.', style: TextStyle(fontSize: 12.5))
+                      if (segura) const Text('Para HTTPS use solo los enlaces indicados, incluidos en el certificado.', style: TextStyle(fontSize: 12.5))
                       else if (_consultandoRed) const Text('Buscando direcciones de red…')
                       else if (_errorRed != null) Text(_errorRed!)
                       else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')
