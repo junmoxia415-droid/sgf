@@ -11,6 +11,7 @@ import { prepararEscuchaRedSegura } from "./utils/escucha-red-segura.js";
 import { ErrorSeleccionBase } from "./utils/seleccion-base.js";
 import type { Server as ServidorTls } from 'node:https';
 import { iniciarNombreRed, detenerNombreRed, nombrePersistido } from "./utils/nombre-red.js";
+import { estadoRedProtegida } from "./utils/red-protegida.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
@@ -265,21 +266,23 @@ const server = http.createServer(
   },
 );
 
-// Modo de red HTTPS experimental, activado solo expresamente por el
-// laboratorio. Si faltan archivos o no corresponden, nunca se abre HTTP.
-const usarHttpsRed = process.env.SGF_LAN_TLS === '1';
+// Una identidad persistida habilita HTTPS sin HTTP paralelo. Si existe pero es
+// incompleta, caducada o inválida, fallar cerrado incluso sin variables TLS.
+let usarHttpsRed = false;
 let receptorRed:ServidorTls|typeof server=server;
-if(usarHttpsRed) {
-  try {
-    const nombre=String(process.env.SGF_LAN_TLS_NOMBRE||'');
+try {
+  const identidad=estadoRedProtegida(DATA_DIR);
+  usarHttpsRed=!!identidad || process.env.SGF_LAN_TLS==='1';
+  if(usarHttpsRed) {
+    const nombre=identidad?.nombre || String(process.env.SGF_LAN_TLS_NOMBRE||'');
     if(`${nombrePersistido(DATA_DIR)}.local`!==nombre) throw new Error('Nombre de certificado distinto de la identidad persistida.');
-    receptorRed=prepararEscuchaRedSegura(server,String(process.env.SGF_LAN_TLS_CERT||''),String(process.env.SGF_LAN_TLS_KEY||''),nombre);
-  } catch {
-    console.error('[SGF] No se inició: la identidad HTTPS de la red falta o no es válida. No se abrió HTTP.');
-    try { await closeDb(); } catch { console.error('[SGF] No se pudo confirmar el guardado de la base.'); }
-    bloqueoDatos.cerrar();
-    process.exit(1);
+    receptorRed=prepararEscuchaRedSegura(server,identidad?.certificadoServidor || String(process.env.SGF_LAN_TLS_CERT||''),identidad?.claveServidor || String(process.env.SGF_LAN_TLS_KEY||''),nombre);
   }
+} catch {
+  console.error('[SGF] No se inició: la identidad HTTPS de la red falta o no es válida. No se abrió HTTP.');
+  try { await closeDb(); } catch { console.error('[SGF] No se pudo confirmar el guardado de la base.'); }
+  bloqueoDatos.cerrar();
+  process.exit(1);
 }
 let cerrando = false;
 let controlTls:ServidorTls|null=null;

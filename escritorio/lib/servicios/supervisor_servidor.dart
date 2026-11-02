@@ -24,6 +24,13 @@ class SupervisorServidor {
   Future<void> comprobar() async {
     if (_detenido || _recuperando || !servidor.ajustes.reiniciarEnFallo) return;
     final ahora = _reloj();
+    if (servidor.estado == EstadoServidor.enMarcha && servidor.usandoServicio) {
+      _recuperando = true;
+      _terminado = Completer<void>();
+      try { await servidor.verificarServicio(); }
+      finally { _recuperando = false; _terminado?.complete(); _terminado = null; }
+      if (_detenido || servidor.estado != EstadoServidor.enMarcha) return;
+    }
     if (servidor.estado == EstadoServidor.enMarcha) {
       _funcionandoDesde ??= ahora;
       if (ahora.difference(_funcionandoDesde!) >= const Duration(minutes: 2)) {

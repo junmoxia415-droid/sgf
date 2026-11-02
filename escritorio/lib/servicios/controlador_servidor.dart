@@ -8,6 +8,9 @@ import 'package:flutter/foundation.dart';
 import 'ajustes.dart';
 import 'api.dart';
 import 'canal_local_seguro.dart';
+import 'red_segura.dart';
+import 'servicio_existente.dart';
+import 'servicio_windows.dart';
 
 /// Estado del servidor embebido.
 enum EstadoServidor { detenido, arrancando, enMarcha, deteniendo, fallo }
@@ -37,6 +40,7 @@ class ControladorServidor extends ChangeNotifier {
   EstadoServidor estado = EstadoServidor.detenido;
   String? ultimoError;
   bool avisoCierre = false;
+  bool usandoServicio = false;
   String? tokenConsola;
   VoidCallback? abrirGuia;
   VoidCallback? iniciarSesion;
@@ -48,6 +52,9 @@ class ControladorServidor extends ChangeNotifier {
   /// Direcciones privadas que pueden usarse en otros equipos. Algunas pueden
   /// pertenecer a VPN u otros adaptadores: el usuario elige la de su red.
   Future<List<String>> enlacesRed() async {
+    // El certificado HTTPS solo identifica el nombre .local, no una IP ni el
+    // nombre del equipo. No ofrecer enlaces que causarían error de identidad.
+    if (await Directory('${carpetaDatos.path}${Platform.pathSeparator}red-protegida').exists()) return [];
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
     final direcciones = <String>{};
     for (final interfaz in interfaces) {
@@ -83,6 +90,108 @@ class ControladorServidor extends ChangeNotifier {
   Directory get carpetaDatos =>
       Directory('${Ajustes.carpeta.path}${Platform.pathSeparator}datos');
   File get archivoEnv => File('${carpetaDatos.path}${Platform.pathSeparator}.env');
+  @visibleForTesting
+  File get archivoAjustes => Ajustes.archivo;
+  @visibleForTesting
+  int get puertoHttps => 443;
+
+  ServicioExistente get servicioExistente => ServicioExistente(carpetaDatos.path);
+  ServicioWindows get servicioWindows => ServicioWindows(aplicacion: carpetaAplicacion.path, datos: carpetaDatos.path);
+
+  RedSegura get redSegura => RedSegura(
+    node: ejecutableNode,
+    script: '${carpetaServidor.path}${Platform.pathSeparator}dist${Platform.pathSeparator}scripts${Platform.pathSeparator}red-protegida.js',
+    datos: carpetaDatos.path,
+  );
+
+  /// Se llama exclusivamente tras confirmación expresa del administrador.
+  /// Nunca se abre HTTP si la identidad se creó pero la activación falla.
+  Future<EstadoRedSegura> activarHttpsRed() async {
+    if (estado == EstadoServidor.arrancando || estado == EstadoServidor.deteniendo) {
+      throw StateError('Espere a que termine el inicio o cierre del servidor.');
+    }
+    if (!enMarcha || ajustes.puerto != puertoHttps) {
+      try {
+        final socket = await Socket.connect('127.0.0.1', puertoHttps, timeout: const Duration(seconds: 1));
+        socket.destroy();
+        throw StateError('El puerto 443 está ocupado por otro programa. SGF no lo ha detenido ni ha cambiado el cortafuegos.');
+      } on SocketException {
+        // El arranque posterior confirma que realmente se puede usar el puerto.
+      } on TimeoutException {
+        throw StateError('No se pudo verificar si el puerto 443 está disponible.');
+      }
+    }
+    if (enMarcha) {
+      await detener();
+      if (avisoCierre) throw StateError('No se confirmó el guardado al detener el servidor. No se cambió la conexión de red; revise los datos antes de continuar.');
+    }
+    final identidad = await redSegura.preparar();
+    ajustes.puerto = puertoHttps;
+    ajustes.urlPublica = 'https://${identidad.nombre}${puertoHttps == 443 ? '' : ':$puertoHttps'}';
+    await ajustes.guardar();
+    try {
+      final guardado = jsonDecode(await archivoAjustes.readAsString()) as Map<String, dynamic>;
+      if (guardado['puerto'] != puertoHttps) throw const FormatException('Puerto no guardado');
+    } catch (_) {
+      throw StateError('La identidad HTTPS está preparada, pero no se pudo guardar el puerto. El servidor permanece detenido; no se volverá a HTTP automáticamente.');
+    }
+    if (!await arrancar()) {
+      throw StateError(ultimoError ?? 'La identidad HTTPS se ha preparado, pero el servidor no pudo arrancar.');
+    }
+    return identidad;
+  }
+
+  /// La instalación solo se inicia tras confirmación y autorización UAC.
+  Future<void> activarServicioWindows() async {
+    if (!Platform.isWindows) throw UnsupportedError('Esta función requiere Windows.');
+    final identidad = await redSegura.consultar();
+    if (!identidad.activa || ajustes.puerto != 443) {
+      throw StateError('Active primero HTTPS en el puerto 443.');
+    }
+    if (enMarcha && !usandoServicio) {
+      await detener();
+      if (avisoCierre) throw StateError('No se confirmó el guardado; no se instaló el servicio.');
+    }
+    await servicioWindows.ejecutar('instalar');
+    estado = EstadoServidor.arrancando;
+    notifyListeners();
+    if (!await _conectarServicio(intentos: 50)) {
+      estado = EstadoServidor.fallo;
+      ultimoError = 'Windows instaló el servicio, pero no se pudo autenticar su canal. No se inició otra instancia.';
+      notifyListeners();
+      throw StateError(ultimoError!);
+    }
+  }
+
+  Future<void> desactivarServicioWindows() async {
+    if (!Platform.isWindows) throw UnsupportedError('Esta función requiere Windows.');
+    await servicioWindows.ejecutar('desactivar');
+    api.invalidarCanalLocal();
+    tokenConsola = null;
+    usandoServicio = false;
+    estado = EstadoServidor.detenido;
+    anotar('El servicio quedó detenido y sin inicio automático. Los datos y el certificado se conservan.');
+    notifyListeners();
+  }
+
+  /// Detecta una caída o sustitución sin enviar datos a un servidor no autenticado.
+  Future<void> verificarServicio() async {
+    if (!usandoServicio) return;
+    try {
+      final anuncio = await servicioExistente.leer();
+      if (anuncio == null) throw StateError('Sin anuncio');
+      final ping = await api.panelPing();
+      if (ping['servicio'] != 'sgf-consola' || ping['pid'] != anuncio.pid) throw StateError('Servidor sustituido');
+      await api.panelEstadoConsola();
+    } catch (_) {
+      api.invalidarCanalLocal();
+      tokenConsola = null;
+      usandoServicio = false;
+      estado = EstadoServidor.fallo;
+      ultimoError = 'Se perdió el canal autenticado del servicio. SGF intentará recuperar la conexión sin iniciar otra instancia.';
+      anotar(ultimoError!);
+    }
+  }
 
   String get ejecutableNode {
     final nombre = Platform.isWindows ? 'node.exe' : 'node';
@@ -198,8 +307,34 @@ LOGIN_RATE_PER_15MIN=40
     }
   }
 
+  Future<bool> _conectarServicio({int intentos = 20}) async {
+    for (var i = 0; i < intentos; i++) {
+      try {
+        final anuncio = await servicioExistente.leer();
+        if (anuncio != null) {
+          api.configurarCanalLocal(anuncio.canal);
+          api.tokenConsola = anuncio.token;
+          final ping = await api.panelPing();
+          if (ping['servicio'] != 'sgf-consola' || ping['pid'] != anuncio.pid) throw StateError('Identidad de proceso incorrecta.');
+          await api.panelEstadoConsola();
+          tokenConsola = anuncio.token;
+          usandoServicio = true;
+          estado = EstadoServidor.enMarcha;
+          ultimoError = null;
+          anotar('Conectado al servicio de Windows mediante canal autenticado.');
+          notifyListeners();
+          return true;
+        }
+      } catch (_) { api.invalidarCanalLocal(); }
+      if (i + 1 < intentos) await Future.delayed(const Duration(milliseconds: 500));
+    }
+    api.invalidarCanalLocal();
+    usandoServicio = false;
+    return false;
+  }
+
   /// Arranca el servidor. Devuelve true si ha quedado en marcha.
-  Future<bool> arrancar({bool esperar = true}) async {
+  Future<bool> arrancar({bool esperar = true, bool permitirIniciarServicio = false}) async {
     if (estado == EstadoServidor.arrancando || estado == EstadoServidor.enMarcha) return enMarcha;
 
     // Reservar el arranque antes de cualquier espera para impedir dos inicios
@@ -207,6 +342,28 @@ LOGIN_RATE_PER_15MIN=40
     estado = EstadoServidor.arrancando;
     ultimoError = null;
     notifyListeners();
+    bool servicioConfigurado;
+    try {
+      servicioConfigurado = await servicioExistente.configurado();
+    } catch (_) {
+      estado = EstadoServidor.fallo;
+      ultimoError = 'La configuración del servicio no es válida. No se inició otro servidor ni se cambiaron los datos.';
+      anotar(ultimoError!);
+      return false;
+    }
+    if (servicioConfigurado) {
+      if (await _conectarServicio(intentos: permitirIniciarServicio ? 2 : 20)) return true;
+      if (permitirIniciarServicio) {
+        try {
+          await servicioWindows.ejecutar('iniciar');
+          if (await _conectarServicio(intentos: 40)) return true;
+        } catch (e) { anotar('No se pudo iniciar el servicio de Windows: $e'); }
+      }
+      estado = EstadoServidor.fallo;
+      ultimoError = 'El servicio de SGF está configurado, pero no se pudo autenticar. No se inició otro servidor ni se enviaron credenciales. Compruebe el servicio de Windows.';
+      anotar(ultimoError!);
+      return false;
+    }
     try {
       await _asegurarEnv();
     } catch (e) {
@@ -365,8 +522,29 @@ LOGIN_RATE_PER_15MIN=40
     return false;
   }
 
-  /// Detiene el servidor con orden (SIGTERM), para que guarde la base de datos.
+  /// Detiene el servidor explícitamente. Si es un servicio, Windows solicita UAC.
   Future<void> detener() async {
+    if (usandoServicio) {
+      avisoCierre = false;
+      estado = EstadoServidor.deteniendo;
+      notifyListeners();
+      try {
+        await servicioWindows.ejecutar('detener');
+        api.invalidarCanalLocal();
+        tokenConsola = null;
+        usandoServicio = false;
+        estado = EstadoServidor.detenido;
+        anotar('Servicio de SGF detenido.');
+      } catch (e) {
+        // No dar por detenido un servicio cuyo cierre no se confirmó.
+        estado = EstadoServidor.fallo;
+        ultimoError = 'No se confirmó el cierre del servicio: $e';
+        avisoCierre = true;
+        anotar(ultimoError!);
+      }
+      notifyListeners();
+      return;
+    }
     if (_proceso == null) {
       api.invalidarCanalLocal();
       tokenConsola = null;
@@ -419,17 +597,43 @@ LOGIN_RATE_PER_15MIN=40
       anotar('Espere a que termine el inicio o cierre antes de reiniciar.');
       return;
     }
+    final eraServicio = usandoServicio;
     await detener();
+    if (avisoCierre) return;
     await Future.delayed(const Duration(milliseconds: 600));
-    await arrancar();
+    await arrancar(permitirIniciarServicio: eraServicio);
   }
 
-  /// No se adopta un servidor anterior sin su token: evita confundir un ping
-  /// público con el control real de otro proceso.
+  /// Al cerrar la ventana se desvincula el servicio; no debe detenerse.
+  Future<void> cerrarAplicacion() async {
+    if (usandoServicio) {
+      api.invalidarCanalLocal();
+      tokenConsola = null;
+      usandoServicio = false;
+      estado = EstadoServidor.detenido;
+      notifyListeners();
+    } else {
+      await detener();
+    }
+  }
+
   Future<void> comprobarSiYaEstaArriba() async {
     api.invalidarCanalLocal();
     api.base = ajustes.urlBaseLocal;
-    estado = EstadoServidor.detenido;
+    try {
+      if (await servicioExistente.configurado()) {
+        estado = EstadoServidor.arrancando;
+        notifyListeners();
+        if (await _conectarServicio()) return;
+        estado = EstadoServidor.fallo;
+        ultimoError = 'El servicio está configurado pero no se pudo autenticar. No se inició otro servidor.';
+      } else {
+        estado = EstadoServidor.detenido;
+      }
+    } catch (_) {
+      estado = EstadoServidor.fallo;
+      ultimoError = 'La configuración del servicio no es válida. No se inició otro servidor.';
+    }
     notifyListeners();
   }
 

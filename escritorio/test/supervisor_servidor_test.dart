@@ -11,7 +11,7 @@ class ServidorFalso extends ControladorServidor {
   bool responderBien = false;
   Completer<void>? pendiente;
   @override
-  Future<bool> arrancar({bool esperar = true}) async {
+  Future<bool> arrancar({bool esperar = true, bool permitirIniciarServicio = false}) async {
     llamadas++;
     if (pendiente != null) await pendiente!.future;
     estado = responderBien ? EstadoServidor.enMarcha : EstadoServidor.fallo;

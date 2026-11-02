@@ -88,13 +88,16 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
 
   Future<void> _guardar({bool reiniciar = false}) async {
     final nuevo = int.tryParse(_puerto.text.trim());
-    if (nuevo == null || nuevo < 1024 || nuevo > 65535) {
-      avisar(context, 'El puerto debe ser un número entre 1024 y 65535.', tipo: TipoAviso.aviso);
+    if (nuevo == null || (nuevo != 443 && nuevo < 1024) || nuevo > 65535) {
+      avisar(context, 'Use el puerto 443 o un número entre 1024 y 65535.', tipo: TipoAviso.aviso);
       return;
     }
     final cambiaPuerto = nuevo != widget.ajustes.puerto;
     widget.ajustes.puerto = nuevo;
-    widget.ajustes.urlPublica = 'http://127.0.0.1:$nuevo';
+    final anterior = Uri.tryParse(widget.ajustes.urlPublica);
+    widget.ajustes.urlPublica = anterior?.scheme == 'https' && anterior?.host.isNotEmpty == true
+        ? Uri(scheme: 'https', host: anterior!.host, port: nuevo == 443 ? null : nuevo).toString()
+        : 'http://127.0.0.1:$nuevo';
     await widget.ajustes.guardar();
     widget.alCambiar();
     if (!mounted) return;
@@ -295,9 +298,9 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                         _paso('7', 'Haga una copia al terminar el día',
                             'En «Servidor», pulse «Crear copia ahora». Se guardan las 10 últimas copias.'),
                         _paso('8', 'Abra SGF en otra PC de la red',
-                            'En «Servidor», copie el nombre local automático. Puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS; si no, pruebe el enlace por IP. HTTP no cifra la conexión: use solo una red privada de confianza.'),
+                            'En «Servidor», active HTTPS, exporte el certificado público y compruebe su huella antes de instalarlo en la otra PC. Use el nombre local; requiere mDNS. Si HTTPS no está activo, HTTP no cifra la conexión.'),
                         _paso('9', 'Configure el arranque y la recuperación',
-                            'En «Servidor» active la apertura al iniciar sesión, el encendido al abrir y la recuperación ante fallos. El servidor aún no arranca antes de iniciar sesión y se detiene al cerrar SGF.'),
+                            'En «Servidor» puede activar el servicio de Windows para iniciarlo antes de la sesión; requiere autorización de administrador y HTTPS. Sin el servicio, el servidor se detiene al cerrar SGF.'),
                         _paso('10', 'Evite abrir instalaciones antiguas a la vez',
                             'Las versiones recientes protegen la carpeta contra dos servidores compatibles. Cierre versiones antiguas y no comparta la carpeta de datos en una unidad de red: no pueden garantizar esa protección.'),
                         const SizedBox(height: 6),

@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../servicios/api.dart';
 import '../servicios/inicio_windows.dart';
 import '../servicios/controlador_servidor.dart';
+import '../servicios/red_segura.dart';
 import '../widgets/comunes.dart';
 import 'configurar_base.dart';
 
@@ -40,9 +42,14 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   late final InicioWindows _inicioWindows;
   bool? _inicioSesionWindows;
   bool _actualizandoInicio = false;
+  bool? _inicioServicio;
+  bool _actualizandoServicio = false;
   List<String> _enlaces = const [];
   String? _errorRed;
   bool _consultandoRed = false;
+  EstadoRedSegura? _redSegura;
+  String? _errorRedSegura;
+  bool _cambiandoRedSegura = false;
   Timer? _actualizarEstado;
 
   @override
@@ -52,7 +59,9 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     widget.servidor.addListener(_redibujar);
     _cargar();
     _consultarRed();
+    _consultarRedSegura();
     _consultarInicio();
+    _consultarServicio();
     _actualizarEstado = Timer.periodic(const Duration(seconds: 5), (_) { if (widget.servidor.enMarcha) _cargar(); });
   }
 
@@ -76,6 +85,85 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
       if (mounted) setState(() { _enlaces = []; _errorRed = 'No se pudieron consultar las direcciones de red.'; });
     } finally {
       if (mounted) setState(() => _consultandoRed = false);
+    }
+  }
+
+  Future<void> _consultarRedSegura() async {
+    try {
+      final estado = await widget.servidor.redSegura.consultar();
+      if (mounted) setState(() { _redSegura = estado; _errorRedSegura = null; });
+    } catch (e) {
+      if (mounted) setState(() { _redSegura = null; _errorRedSegura = e.toString(); });
+    }
+  }
+
+  Future<void> _activarRedSegura() async {
+    final aceptado = await confirmar(context, titulo: 'Activar HTTPS para la red',
+      mensaje: 'SGF detendrá brevemente el servidor, generará un certificado propio y tratará de usar el puerto 443. '
+        'El otro equipo deberá confiar explícitamente en el certificado público y verificar su huella. '
+        'No se modificará el cortafuegos ni se instalarán certificados automáticamente. '
+        'Si falla la preparación, no se volverá a HTTP de forma silenciosa.', textoConfirmar: 'Activar HTTPS');
+    if (!aceptado || !mounted) return;
+    setState(() => _cambiandoRedSegura = true);
+    try {
+      final estado = await widget.servidor.activarHttpsRed();
+      if (mounted) setState(() { _redSegura = estado; _errorRedSegura = null; });
+      await _consultarRed(); await _cargar();
+      if (mounted) avisar(context, 'HTTPS preparado. Exporte el certificado público y configúrelo en la otra PC.');
+    } catch (e) {
+      await _consultarRedSegura(); await _consultarRed();
+      if (mounted) avisar(context, 'No se pudo completar la activación: $e', tipo: TipoAviso.error);
+    } finally { if (mounted) setState(() => _cambiandoRedSegura = false); }
+  }
+
+  Future<void> _exportarCertificado() async {
+    final ruta = _redSegura?.certificadoPublico;
+    if (ruta == null) return;
+    try {
+      final salida = await FilePicker.platform.saveFile(dialogTitle: 'Guardar certificado público de SGF',
+        fileName: 'SGF-certificado-publico.crt', type: FileType.custom, allowedExtensions: ['crt']);
+      if (salida == null) return;
+      // Se exporta exclusivamente la autoridad pública. No sustituir archivos
+      // existentes, en particular la clave privada o la base por equivocación.
+      final bytes = await File(ruta).readAsBytes();
+      final destino = File(salida);
+      await destino.create(exclusive: true);
+      await destino.writeAsBytes(bytes, flush: true);
+      if (mounted) avisar(context, 'Certificado público guardado. Verifique la huella antes de confiar en él.');
+    } catch (e) {
+      if (mounted) avisar(context, 'No se pudo guardar el certificado público: $e', tipo: TipoAviso.error);
+    }
+  }
+
+  Future<void> _consultarServicio() async {
+    if (!Platform.isWindows) return;
+    try {
+      final activo = await widget.servidor.servicioExistente.configurado();
+      if (mounted) setState(() => _inicioServicio = activo);
+    } catch (_) {
+      if (mounted) setState(() => _inicioServicio = null);
+    }
+  }
+
+  Future<void> _cambiarServicio(bool activar) async {
+    final ok = await confirmar(context,
+      titulo: activar ? '¿Iniciar SGF antes de iniciar sesión?' : '¿Desactivar el inicio del servicio?',
+      mensaje: activar
+        ? 'Windows pedirá permiso de administrador. Se instalará un servicio con cuenta virtual restringida y archivos protegidos; se concederá a esa cuenta acceso a los datos y al certificado privado de SGF. El servidor continuará funcionando al cerrar esta ventana. No se cambian el cortafuegos ni los certificados de confianza.'
+        : 'Windows pedirá permiso de administrador. Se detendrá el servicio y no se iniciará automáticamente; se conservarán los datos y el certificado. Después puede iniciar SGF desde esta ventana.',
+      textoConfirmar: activar ? 'Activar servicio' : 'Desactivar servicio');
+    if (!ok || !mounted) return;
+    setState(() { _actualizandoServicio = true; _trabajando = true; });
+    try {
+      if (activar) { await widget.servidor.activarServicioWindows(); }
+      else { await widget.servidor.desactivarServicioWindows(); }
+      await _consultarServicio(); await _cargar();
+      if (mounted) avisar(context, activar ? 'Servicio instalado y autenticado. Está configurado para iniciarse al encender el equipo.' : 'Inicio automático del servicio desactivado.');
+    } catch (e) {
+      await _consultarServicio();
+      if (mounted) avisar(context, 'No se pudo cambiar el servicio: $e', tipo: TipoAviso.error);
+    } finally {
+      if (mounted) setState(() { _actualizandoServicio = false; _trabajando = false; });
     }
   }
 
@@ -130,6 +218,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final contadores = (_estado?['contadores'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final disco = (_estado?['disco'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final accesoRed = (_estado?['accesoRed'] as Map?) ?? {};
+    final segura = _redSegura?.activa == true;
     final enlaceEstable = accesoRed['estado'] == 'activo' ? accesoRed['enlace']?.toString() : null;
     final nombreEquipo = Platform.localHostname;
     final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
@@ -162,7 +251,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                                       style: Theme.of(context).textTheme.titleLarge),
                                   Text(
                                     enMarcha
-                                        ? 'Dirección: ${widget.ajustes.urlBaseLocal} · acceso desde redes privadas autorizadas'
+                                        ? 'Puerto: ${widget.ajustes.puerto} · acceso desde redes privadas autorizadas'
                                         : 'La aplicación y los datos están seguros; solo el motor está parado.',
                                     style: TextStyle(
                                         fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -189,7 +278,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                               onPressed: _trabajando || enMarcha || servidor.estado == EstadoServidor.arrancando || servidor.estado == EstadoServidor.deteniendo
                                   ? null
                                   : () => _accion(() async {
-                                        final ok = await servidor.arrancar();
+                                        final ok = await servidor.arrancar(permitirIniciarServicio: true);
                                         if (!mounted) return;
                                         avisar(context, ok ? 'Servidor iniciado correctamente.' : 'No se pudo iniciar el servidor.',
                                             tipo: ok ? TipoAviso.exito : TipoAviso.error);
@@ -234,6 +323,33 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                   const SizedBox(height: 16),
                   Tarjeta(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Conexión cifrada para la red', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      if (_errorRedSegura != null) ...[
+                        Aviso(titulo: 'No se pudo comprobar HTTPS', mensaje: _errorRedSegura!, tipo: TipoAviso.error),
+                        TextButton(onPressed: _consultarRedSegura, child: const Text('Volver a comprobar')),
+                      ] else if (segura) ...[
+                        const Text('Identidad HTTPS preparada. La otra PC debe confiar en el certificado público y usar el nombre local de SGF.'),
+                        const SizedBox(height: 8),
+                        const Text('Huella SHA-256 del certificado público (compárela por otro medio):', style: TextStyle(fontWeight: FontWeight.w600)),
+                        SelectableText(_redSegura!.huella!, style: const TextStyle(fontFamily: 'monospace')),
+                        Text('Caducidad del certificado del servidor: ${_redSegura!.caduca}'),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(onPressed: _exportarCertificado, icon: const Icon(Icons.save_alt), label: const Text('Guardar certificado público')),
+                        const SizedBox(height: 8),
+                        const Text('En la otra PC: 1) copie solo el archivo público; 2) abra sus detalles y compruebe la huella SHA-256 por otro medio; 3) impórtelo como autoridad de confianza solo si coincide. En Firefox: Ajustes → Privacidad y seguridad → Certificados → Ver certificados → Autoridades → Importar; marque la confianza para identificar sitios web. Para Chrome o Edge en Windows: abra certmgr.msc → Entidades de certificación raíz de confianza → Certificados → Todas las tareas → Importar. Nunca comparta la clave privada. La autoridad confiable concede confianza amplia; instálela solo en equipos de confianza.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                      ] else if (_redSegura == null)
+                        const Text('Comprobando la identidad de red…')
+                      else ...[
+                        const Text('Actualmente HTTP no cifra los datos de la red. Puede activar HTTPS con un certificado propio; se le pedirá confirmación.'),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(onPressed: _cambiandoRedSegura ? null : _activarRedSegura, icon: const Icon(Icons.lock_outline), label: Text(_cambiandoRedSegura ? 'Preparando HTTPS…' : 'Activar HTTPS en el puerto 443')),
+                      ],
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                  Tarjeta(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Enlace para otras computadoras', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
                       const Text('En la otra PC, abra el navegador y pegue uno de estos enlaces. Debe estar en la misma red y el servidor debe estar en marcha.', style: TextStyle(fontSize: 13.5)),
@@ -248,13 +364,16 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                             if (context.mounted) avisar(context, 'Nombre local copiado.');
                           }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar nombre local')),
                         ]),
-                        const Text('Este nombre puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS en la misma red. El nombre no cifra ni verifica la conexión.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                        Text(segura
+                          ? 'El nombre puede seguir funcionando si cambia la IP y la otra PC admite mDNS. Verifique la huella e instale el certificado público antes de iniciar sesión.'
+                          : 'Este nombre puede seguir funcionando si cambia la IP, siempre que la otra PC admita mDNS. HTTP no cifra ni verifica la conexión.', style: const TextStyle(fontSize: 12.5, height: 1.4)),
                         const SizedBox(height: 12),
                       ] else if (enMarcha && accesoRed.isNotEmpty) ...[
-                        Text('${accesoRed['mensaje'] ?? 'Nombre local no disponible; utilice el enlace por IP.'}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                        Text('${accesoRed['mensaje'] ?? (segura ? 'Nombre local no disponible; revise mDNS. La dirección IP no coincide con el certificado.' : 'Nombre local no disponible; utilice el enlace por IP.')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
                         const SizedBox(height: 8),
                       ],
-                      if (_consultandoRed) const Text('Buscando direcciones de red…')
+                      if (segura) const Text('Para HTTPS use solo el nombre local indicado: la IP y el nombre de Windows no figuran en el certificado.', style: TextStyle(fontSize: 12.5))
+                      else if (_consultandoRed) const Text('Buscando direcciones de red…')
                       else if (_errorRed != null) Text(_errorRed!)
                       else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')
                       else for (final enlace in _enlaces)
@@ -266,7 +385,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar')),
                         ])),
                       TextButton.icon(onPressed: _consultandoRed ? null : _consultarRed, icon: const Icon(Icons.refresh, size: 18), label: const Text('Actualizar enlaces')),
-                      if (nombreUtilizable && _enlaces.isNotEmpty) ...[
+                      if (!segura && nombreUtilizable && _enlaces.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         const Text('Enlace opcional por nombre del equipo', style: TextStyle(fontWeight: FontWeight.w600)),
                         Row(children: [
@@ -280,7 +399,11 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       ],
                       const Text('Si aparecen varios enlaces, pruebe el de la red que comparten los equipos; algunos pueden pertenecer a VPN. El cortafuegos debe permitir conexiones privadas al puerto de SGF.', style: TextStyle(fontSize: 12.5, height: 1.4)),
                       const SizedBox(height: 8),
-                      const Text('Mantenga SGF abierto en este equipo: al cerrar la aplicación se detiene el servidor. El nombre local intenta seguir funcionando si cambia la IP; si su red no admite mDNS, use una IP reservada en el router como alternativa.', style: TextStyle(fontSize: 12.5, height: 1.4)),
+                      Text(servidor.usandoServicio
+                        ? 'El servicio permanece activo al cerrar esta ventana. La otra PC necesita resolver el nombre local mediante mDNS.'
+                        : segura
+                          ? 'Mantenga SGF abierto: al cerrar la aplicación se detiene el servidor. La otra PC necesita resolver el nombre local mediante mDNS.'
+                          : 'Mantenga SGF abierto: al cerrar la aplicación se detiene el servidor. Si su red no admite mDNS, use una IP reservada en el router como alternativa.', style: const TextStyle(fontSize: 12.5, height: 1.4)),
                     ]),
                   ),
                   const SizedBox(height: 16),
@@ -288,7 +411,17 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Inicio automático', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      const Text('Estas opciones no necesitan Internet y no cambian los datos guardados.', style: TextStyle(fontSize: 13)),
+                      const Text('Estas opciones no necesitan Internet y no borran los datos guardados.', style: TextStyle(fontSize: 13)),
+                      if (Platform.isWindows) ...[
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Iniciar el servidor antes de iniciar sesión'),
+                          subtitle: Text(segura ? 'Servicio de Windows con cuenta virtual; requiere autorización de administrador.' : 'Active primero HTTPS en el puerto 443.'),
+                          value: _inicioServicio ?? false,
+                          onChanged: _actualizandoServicio || _inicioServicio == null || (!segura && _inicioServicio != true) ? null : _cambiarServicio,
+                        ),
+                        if (_inicioServicio == null) TextButton(onPressed: _consultarServicio, child: const Text('Comprobar servicio')),
+                      ],
                       if (_inicioWindows.disponible)
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -399,10 +532,11 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         _Fila(etiqueta: 'Facturas guardadas', valor: '${contadores['facturas'] ?? 0}'),
                         _Fila(etiqueta: 'Equipo', valor: '${_estado?['equipo']?['nombre'] ?? '-'}'),
                         const SizedBox(height: 12),
-                        const Aviso(
+                        Aviso(
                           titulo: 'Acceso por red privada',
-                          mensaje: 'Otras computadoras de redes privadas pueden conectarse con una cuenta. '
-                              'HTTP no cifra contraseñas ni datos; use solo una red confiable y no exponga el puerto en Internet.',
+                          mensaje: segura
+                              ? 'HTTPS cifra la conexión cuando el cliente confía en el certificado correcto y usa el nombre indicado. No exponga SGF a Internet.'
+                              : 'Otras computadoras pueden conectarse con una cuenta. HTTP no cifra contraseñas ni datos; use solo una red confiable y no exponga el puerto en Internet.',
                           tipo: TipoAviso.aviso,
                         ),
                       ],

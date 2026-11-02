@@ -43,16 +43,18 @@ export function direccionesPrivadas():string[] {
 
 export function nombrePersistido(carpeta:string):string {
   const archivo=path.join(carpeta,'nombre-red.json');
-  try {
+  const leer=()=>{
     const v=JSON.parse(fs.readFileSync(archivo,'utf8'));
-    if(typeof v.nombre==='string' && /^sgf-[a-f0-9]{12}$/.test(v.nombre)) return v.nombre;
-  } catch { /* La primera vez no existe. */ }
-  const nombre=`sgf-${randomBytes(6).toString('hex')}`;
+    if(typeof v.nombre!=='string' || !/^sgf-[a-f0-9]{12}$/.test(v.nombre)) throw new Error('La identidad de nombre de red está dañada.');
+    return v.nombre as string;
+  };
+  try { return leer(); }
+  catch(error) { if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error; }
   fs.mkdirSync(carpeta,{recursive:true});
-  // Fallar si no puede persistirse: un nombre nuevo en cada reinicio sería engañoso.
-  const temporal=`${archivo}.${process.pid}.tmp`;
-  try { fs.writeFileSync(temporal, JSON.stringify({nombre}),{mode:0o600}); fs.renameSync(temporal,archivo); }
-  finally { try { fs.unlinkSync(temporal); } catch {} }
+  const nombre=`sgf-${randomBytes(6).toString('hex')}`;
+  // Nunca sustituir una identidad existente ni la de otro proceso concurrente.
+  try { fs.writeFileSync(archivo,JSON.stringify({nombre}),{mode:0o600,flag:'wx'}); }
+  catch(error) { if((error as NodeJS.ErrnoException).code==='EEXIST') return leer(); throw error; }
   return nombre;
 }
 

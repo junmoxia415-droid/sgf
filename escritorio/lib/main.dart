@@ -179,7 +179,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
     _cerrando = true;
     await supervisor.detener();
     try { await _inicioAplicacion; } catch (_) { /* cerrar igualmente */ }
-    await servidor.detener();
+    await servidor.cerrarAplicacion();
     final contexto = _navegador.currentContext;
     if (servidor.avisoCierre && mounted && contexto != null) {
       await showDialog<void>(context: contexto, barrierDismissible: false, builder: (dialogo) => AlertDialog(
@@ -198,7 +198,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
     unawaited(() async {
       await supervisor.detener();
       try { await _inicioAplicacion; } catch (_) { /* cerrar igualmente */ }
-      if (servidor.estado != EstadoServidor.detenido) await servidor.detener();
+      if (servidor.estado != EstadoServidor.detenido) await servidor.cerrarAplicacion();
       servidor.dispose();
     }());
     super.dispose();
