@@ -3,11 +3,13 @@ import 'dart:io';
 
 /// Datos públicos de la identidad LAN. La clave privada nunca sale de la carpeta protegida.
 class EstadoRedSegura {
-  const EstadoRedSegura({required this.activa, this.nombre, this.dns, this.ip, this.huella, this.caduca, this.certificadoPublico});
+  const EstadoRedSegura({required this.activa, this.nombre, this.dns, this.ip, this.ips = const [], this.huella, this.caduca, this.certificadoPublico});
   final bool activa;
   final String? nombre;
   final String? dns;
   final String? ip;
+  final List<String> ips;
+  Set<String> get ipsCertificadas => {if (ip != null) ip!, ...ips};
   final String? huella;
   final String? caduca;
   final String? certificadoPublico;
@@ -40,6 +42,8 @@ class RedSegura {
       final nombre = mapa['nombre'] as String;
       final dns = mapa['dns'] as String?;
       final ip = mapa['ip'] as String?;
+      final ips = ((mapa['ips'] as List?) ?? const []).cast<String>();
+      if (ips.length > 32 || ips.any((ip) => InternetAddress.tryParse(ip)?.type != InternetAddressType.IPv4) || (ip != null && mapa['ips'] != null && !ips.contains(ip))) throw const FormatException('IPs inválidas');
       if (dns != null && !RegExp(r'^[a-z0-9.-]{1,253}$').hasMatch(dns)) throw const FormatException('Nombre DNS inválido');
       if (ip != null && InternetAddress.tryParse(ip)?.type != InternetAddressType.IPv4) throw const FormatException('IP inválida');
       final huella = mapa['huella'] as String;
@@ -50,7 +54,7 @@ class RedSegura {
       // La ruta se fija localmente; nunca se acepta una ruta devuelta por otro proceso.
       final publico = '$datos${Platform.pathSeparator}red-protegida${Platform.pathSeparator}autoridad-publica.crt';
       if (!await File(publico).exists()) throw const FormatException('Falta el certificado público');
-      return EstadoRedSegura(activa: true, nombre: nombre, dns: dns, ip: ip, huella: huella, caduca: caduca, certificadoPublico: publico);
+      return EstadoRedSegura(activa: true, nombre: nombre, dns: dns, ip: ip, ips: ips, huella: huella, caduca: caduca, certificadoPublico: publico);
     } catch (_) {
       throw StateError('La respuesta de identidad HTTPS no es válida. No se activará HTTP automáticamente.');
     }

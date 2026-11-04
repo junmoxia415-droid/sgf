@@ -152,7 +152,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
     windowManager.addListener(this);
     unawaited(windowManager.setPreventClose(true));
     api = Api();
-    servidor = ControladorServidor(ajustes: widget.ajustes, api: api);
+    servidor = ControladorServidor(ajustes: widget.ajustes, api: api, httpsEnInstalacionNueva: true);
     supervisor = SupervisorServidor(servidor: servidor)..iniciar();
     // Al abrir la aplicacion se arranca el servidor automaticamente
     // (a menos que el usuario lo haya desactivado en Ajustes).

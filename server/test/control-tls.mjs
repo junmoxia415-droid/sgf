@@ -9,6 +9,7 @@ import {join,resolve} from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import https from 'node:https';
+import http from 'node:http';
 const base=await mkdtemp(join(tmpdir(),'sgf-control-tls-'));
 const token=randomBytes(32).toString('hex'), jwt=randomBytes(32).toString('hex');
 const principal=resolve('dist/index.js');
@@ -41,7 +42,14 @@ try {
   assert.equal(createHash('sha256').update(conexion.getPeerCertificate().raw).digest('hex'),marca.huella);conexion.end();
   const publico=await pedir(marca.puerto,'/api/panel/ping');assert.equal(publico.body.data.pid,servidor.p.pid);
   assert.equal((await pedir(marca.puerto,'/api/panel/estado')).status,403);
-  assert.equal((await pedir(marca.puerto,'/api/panel/estado','GET',{'x-sgf-console-token':token})).status,200);
+  const panelSeguro=await pedir(marca.puerto,'/api/panel/estado','GET',{'x-sgf-console-token':token});
+  assert.equal(panelSeguro.status,200);assert.match(panelSeguro.body.data.codigoEnlace,/^[A-Za-z0-9_-]{43}$/);
+  const enlaceSeguro=await pedir(marca.puerto,'/api/panel/enlace','GET',{'x-sgf-console-token':token});assert.equal(enlaceSeguro.body.data.codigoEnlace,panelSeguro.body.data.codigoEnlace);
+  const plano=ruta=>new Promise((resolve,reject)=>{const q=http.get({host:'127.0.0.1',port,path:ruta,headers:{'x-sgf-console-token':token}},r=>{let b='';r.on('data',x=>b+=x);r.on('end',()=>resolve({status:r.statusCode,body:JSON.parse(b)}));});q.on('error',reject);});
+  let endpointPlano;
+  for(let i=0;i<50;i++){try { endpointPlano=await plano('/api/panel/enlace'); break; } catch(e) {if(i===49) throw e; await new Promise(r=>setTimeout(r,100));}}
+  assert.equal(endpointPlano.status,403,'El secreto nunca viaja por HTTP');
+  assert.equal((await plano('/api/panel/estado')).body.data.codigoEnlace,undefined,'El panel HTTP no revela la invitación');
   assert.equal((await pedir(marca.puerto,'/api/panel/apagar','POST',{'content-type':'application/json','x-sgf-console-token':token})).status,200);
   const [salida]=await servidor.fin;assert.equal(salida,0);
   const sinClave=ejecutar(await puertoLibre(),'',join(base,'sin-token'));const [fallo]=await sinClave.fin;assert.notEqual(fallo,0);assert.match(sinClave.stderr,/token local/i);

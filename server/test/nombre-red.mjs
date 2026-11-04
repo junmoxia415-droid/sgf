@@ -42,9 +42,10 @@ try {
  c.iniciar(tmp,3000,'0.0.0.0');await esperar(c,'error');assert.equal(c.obtenerEstado().enlace,null,'No se muestra un nombre en conflicto');
  await c.detener();
  const d=new AnunciadorRed({direcciones:()=>ips,crearRespondedor:crear});a=d;d.iniciar(tmp,3000,'127.0.0.1');assert.equal(d.obtenerEstado().estado,'desactivado');
- conflicto=false;const e=new AnunciadorRed({direcciones:()=>ips,crearRespondedor:crear,intervaloMs:60000});a=e;
+ conflicto=false;ips=['203.0.113.50','127.0.0.1'];const e=new AnunciadorRed({direcciones:()=>ips,crearRespondedor:crear,intervaloMs:60000});a=e;
  e.iniciar(tmp,443,'0.0.0.0','https');await esperar(e,'activo');
  assert.match(e.obtenerEstado().enlace,/^https:\/\/sgf-[a-f0-9]{12}\.local$/);
- assert.equal(opciones.at(-1).type,'https');await e.detener();
+ assert.equal(opciones.at(-1).type,'https');
+ assert.deepEqual(opciones.at(-1).restrictedAddresses,['203.0.113.50'],'HTTPS anuncia interfaces institucionales sin autorizar HTTP');await e.detener();
  console.log('OK: nombre local persistente, cambio de IP, red caída, conflicto y filtro de direcciones.');
 } finally {if(a)await a.detener();rmSync(tmp,{recursive:true,force:true});}

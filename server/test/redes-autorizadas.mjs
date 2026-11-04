@@ -43,6 +43,8 @@ try {
  const idDns=await prepararRedProtegida(datosDns,'equipo.empresa.example',undefined,o);
  assert.equal(idDns.ip,'203.0.113.8');
  assert.equal(new X509Certificate(fs.readFileSync(idDns.certificadoServidor)).checkIP('203.0.113.8'),'203.0.113.8');
+ assert.equal(new X509Certificate(fs.readFileSync(idDns.certificadoServidor)).checkIP('192.168.100.1'),'192.168.100.1','Varias interfaces se incorporan a una identidad nueva');
+ assert.deepEqual(idDns.ips,['192.168.100.1','203.0.113.8']);
  assert.deepEqual(await prepararRedProtegida(datosDns,'equipo.empresa.example',undefined,o),idDns);
  const mal=path.join(dir,'caso-dns-malo');
  await assert.rejects(prepararRedProtegida(mal,'equipo.empresa.example',undefined,{...o,resolver:async()=>['203.0.113.8','198.51.100.7']}));

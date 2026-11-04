@@ -187,6 +187,8 @@ class Api {
   /// sesión de usuario, que puede ser normal o haber caducado.
   Future<Map<String, dynamic>> panelEstadoConsola() async =>
       (await _pedir('GET', '/api/panel/estado', sinSesion: true))['data'] as Map<String, dynamic>;
+  Future<Map<String, dynamic>> enlaceRedConsola() async =>
+      (await _pedir('GET', '/api/panel/enlace', sinSesion: true))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> panelBienvenida() async =>
       (await get('/api/panel/bienvenida'))['data'] as Map<String, dynamic>;
   Future<Map<String, dynamic>> panelPing() async => (await get('/api/panel/ping'))['data'] as Map<String, dynamic>;

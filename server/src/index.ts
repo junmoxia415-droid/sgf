@@ -10,9 +10,11 @@ import { iniciarControlTls } from "./utils/control-tls.js";
 import { prepararEscuchaRedSegura } from "./utils/escucha-red-segura.js";
 import { ErrorSeleccionBase } from "./utils/seleccion-base.js";
 import type { Server as ServidorTls } from 'node:https';
-import { iniciarNombreRed, detenerNombreRed, nombrePersistido } from "./utils/nombre-red.js";
+import type { TLSSocket } from 'node:tls';
+import { iniciarNombreRed, detenerNombreRed, nombrePersistido, estadoNombreRed } from "./utils/nombre-red.js";
 import { estadoRedProtegida } from "./utils/red-protegida.js";
 import { leerRedes, permitidaRedAdicional } from "./utils/redes-autorizadas.js";
+import { codigoInvitacion, comprobarEnlace } from "./utils/enlace-seguro.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
@@ -135,7 +137,12 @@ const server = http.createServer(
   { requestTimeout: SERVER_CONFIG.requestTimeoutMs },
   async (req: AuthenticatedRequest, res: http.ServerResponse) => {
     if (cerrando) return sendJson(res, 503, {success:false,error:'El servidor se está cerrando.'});
-    if (!esRedPrivada(req) && !permitidaRedAdicional(req, redesAdicionales)) return sendJson(res, 403, { success: false, error: "Acceso permitido solo desde redes autorizadas." });
+    if (!esRedPrivada(req) && !permitidaRedAdicional(req, redesAdicionales)) {
+      if (!comprobarEnlace(req, res)) {
+        if (!res.headersSent) return sendJson(res, 403, { success: false, error: "Use el enlace privado mostrado por SGF en la computadora servidora." });
+        return;
+      }
+    }
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
@@ -182,6 +189,10 @@ const server = http.createServer(
           const sesionPanel = await authenticate(req, res);
           if (!sesionPanel) return;
           if (sesionPanel.role !== "admin") return sendJson(res, 403, { success: false, error: "Se requiere rol de administrador." });
+        }
+        if (requestPath === "/api/panel/enlace" && req.method === "GET") {
+          if (!esConsolaLocal(req) || !(req.socket as TLSSocket).encrypted) return sendJson(res, 403, { success: false, error: "Solo la consola local cifrada puede consultar el enlace privado." });
+          return sendJson(res, 200, { success: true, data: { codigoEnlace: codigoInvitacion(), accesoRed: estadoNombreRed() } });
         }
         if (requestPath === "/api/panel/bienvenida" && req.method === "GET") return handlePanelBienvenida(req, res);
         if (requestPath === "/api/panel/estado" && req.method === "GET") return handlePanelEstado(req, res);

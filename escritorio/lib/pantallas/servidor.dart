@@ -55,11 +55,13 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   String? _errorRedSegura;
   bool _cambiandoRedSegura = false;
   Timer? _actualizarEstado;
+  late bool _ultimaMarcha;
 
   @override
   void initState() {
     super.initState();
     _inicioWindows = widget.inicioWindows ?? InicioWindows();
+    _ultimaMarcha = widget.servidor.enMarcha;
     widget.servidor.addListener(_redibujar);
     _cargar();
     _consultarRed();
@@ -78,7 +80,18 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   }
 
   void _redibujar() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final enMarcha = widget.servidor.enMarcha;
+    final cambio = enMarcha != _ultimaMarcha;
+    _ultimaMarcha = enMarcha;
+    setState(() {});
+    if (cambio && enMarcha) {
+      // Si se inicia desde esta misma pantalla, no exigir que el usuario
+      // actualice manualmente los enlaces o la identidad.
+      unawaited(_cargar());
+      unawaited(_consultarRed());
+      unawaited(_consultarRedSegura());
+    }
   }
 
   Future<void> _consultarRed() async {
@@ -120,7 +133,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
         const Text('En una red con DNS de empresa puede indicar el nombre completo de este equipo. Debe resolver a una dirección de esta PC. Si lo deja vacío se usará el nombre local de SGF, que depende de mDNS.'),
         TextField(controller: dns, decoration: const InputDecoration(labelText: 'Nombre DNS completo (opcional)', hintText: 'sgf.empresa.ejemplo')),
         const SizedBox(height: 12),
-        const Text('El enlace por IP se incluye automáticamente si DNS identifica una única IP local. Si hay varias interfaces y no usa DNS, indique la IP de esta PC.'),
+        const Text('SGF detecta las IP de esta computadora al crear la identidad. Puede indicar una IP para elegir la preferida; debe pertenecer a este equipo.'),
         TextField(controller: ip, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'IP de esta PC (opcional)', hintText: 'Ejemplo: 192.168.1.20')),
         const SizedBox(height: 12),
         const Text('SGF se detendrá brevemente. En la otra PC habrá que verificar e instalar el certificado público. No se cambiarán el firewall ni los certificados de confianza.'),
@@ -286,14 +299,21 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final disco = (_estado?['disco'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final accesoRed = (_estado?['accesoRed'] as Map?) ?? {};
     final segura = _redSegura?.activa == true;
-    final enlaceEstable = accesoRed['estado'] == 'activo' ? accesoRed['enlace']?.toString() : null;
+    final codigo = _estado?['codigoEnlace']?.toString() ?? '';
+    String? privado(String? url) {
+      if (url == null) return null;
+      if (!url.startsWith('https://')) return url;
+      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) return null;
+      return Uri.parse(url).replace(fragment: 'sgf=$codigo').toString();
+    }
+    final enlaceEstable = accesoRed['estado'] == 'activo' ? privado(accesoRed['enlace']?.toString()) : null;
     final nombreEquipo = Platform.localHostname;
     final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
         && nombreEquipo.toLowerCase() != 'localhost';
     final enlaceNombre = 'http://$nombreEquipo:${widget.ajustes.puerto}';
-    final enlaceDns = segura && _redSegura?.dns != null ? 'https://${_redSegura!.dns}${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}' : null;
-    final ipSegura = _redSegura?.ip;
-    final enlaceIp = segura && ipSegura != null && _ipsLocales.contains(ipSegura) ? 'https://$ipSegura${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}' : null;
+    final enlaceDns = segura && _redSegura?.dns != null ? privado('https://${_redSegura!.dns}${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}') : null;
+    final ipsCertificadas = _redSegura?.ipsCertificadas ?? const <String>{};
+    final enlacesIp = segura ? ipsCertificadas.where(_ipsLocales.contains).map((ip) => privado('https://$ip${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}')).whereType<String>().toList() : <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,9 +442,13 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Enlace para otras computadoras', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      const Text('En la otra PC, abra el navegador y pegue uno de estos enlaces. Debe estar en la misma red y el servidor debe estar en marcha.', style: TextStyle(fontSize: 13.5)),
+                      const Text('En la otra PC, abra el navegador y pegue el enlace completo. El servidor debe estar en marcha y las computadoras deben poder comunicarse. El enlace es privado: compártalo solo con personas autorizadas.', style: TextStyle(fontSize: 13.5)),
                       if (!enMarcha) const Padding(padding: EdgeInsets.only(top: 8), child: Text('El servidor está detenido: el enlace no funcionará hasta iniciarlo.', style: TextStyle(color: Color(0xFFB8730B)))),
                       const SizedBox(height: 10),
+                      if (segura && enMarcha && !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo))
+                        Text(_estado == null
+                          ? 'Preparando el enlace privado…'
+                          : 'Este servidor no ha proporcionado un enlace privado. Revise que el servicio de Windows esté actualizado; no se cambiará automáticamente.'),
                       if (enlaceDns != null) ...[
                         const Text('Nombre DNS de la organización', style: TextStyle(fontWeight: FontWeight.w700)),
                         Row(children: [Expanded(child: SelectableText(enlaceDns, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
@@ -432,16 +456,16 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         const Text('La otra PC debe resolver este nombre y confiar en el certificado público de SGF.', style: TextStyle(fontSize: 12.5)),
                         const SizedBox(height: 12),
                       ],
-                      if (enlaceIp != null) ...[
-                        const Text('Enlace por IP', style: TextStyle(fontWeight: FontWeight.w700)),
-                        Row(children: [Expanded(child: SelectableText(enlaceIp, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                      if (enlacesIp.isNotEmpty) ...[
+                        const Text('Enlaces por IP de esta computadora', style: TextStyle(fontWeight: FontWeight.w700)),
+                        for (final enlaceIp in enlacesIp) Row(children: [Expanded(child: SelectableText(enlaceIp, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
                           OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceIp)); if (context.mounted) avisar(context, 'Enlace por IP copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar IP'))]),
-                        const Text('Este enlace es válido mientras la IP no cambie. Si cambia, el certificado no será válido para la nueva IP.', style: TextStyle(fontSize: 12.5)),
+                        const Text('Si hay varios enlaces, elija el que corresponda a la red de la otra PC. Cada IP solo es válida mientras permanezca en el certificado y en este equipo.', style: TextStyle(fontSize: 12.5)),
                         const SizedBox(height: 12),
-                      ] else if (segura && ipSegura != null && !_consultandoRed) ...[
-                        const Text('La IP del certificado ya no pertenece a esta PC; no se ofrece un enlace por IP. No se reemplazará el certificado automáticamente.', style: TextStyle(color: Color(0xFFB8730B))),
-                      ] else if (segura && ipSegura == null) ...[
-                        const Text('Este certificado no incluye una IP. Para usar HTTPS por IP se necesita una identidad preparada con la IP del equipo.', style: TextStyle(fontSize: 12.5)),
+                      ] else if (segura && ipsCertificadas.isNotEmpty && !_consultandoRed && codigo.isNotEmpty) ...[
+                        const Text('Ninguna IP incluida en el certificado está activa en esta PC. No se reemplazará la identidad automáticamente.', style: TextStyle(color: Color(0xFFB8730B))),
+                      ] else if (segura && ipsCertificadas.isEmpty) ...[
+                        const Text('Este certificado anterior no incluye una IP. Use el nombre incluido o consulte al administrador.', style: TextStyle(fontSize: 12.5)),
                       ],
                       if (enMarcha && enlaceEstable != null) ...[
                         const Text('Nombre local automático', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -497,9 +521,9 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                   const SizedBox(height: 16),
                   Tarjeta(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Redes de la organización', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Redes adicionales (opcional)', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      const Text('Si su organización usa direcciones que SGF no reconoce como privadas, puede autorizar direcciones concretas. Solo se aceptarán por HTTPS; mantenga el firewall restringido.'),
+                      const Text('El enlace privado HTTPS permite conectar sin configurar redes aquí. Esta opción avanzada conserva autorizaciones concretas de versiones anteriores; mantenga el cortafuegos restringido.'),
                       const SizedBox(height: 8),
                       Text(_errorRedesExtra ?? (_redesExtra == null ? 'Comprobando redes…' : _redesExtra!.isEmpty ? 'No hay redes adicionales autorizadas.' : 'Redes configuradas: ${_redesExtra!.join(', ')}')),
                       OutlinedButton.icon(onPressed: segura && _redesExtra != null ? _editarRedesExtra : null, icon: const Icon(Icons.lan_outlined), label: const Text('Configurar redes adicionales')),

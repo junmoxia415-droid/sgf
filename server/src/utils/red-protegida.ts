@@ -13,7 +13,7 @@ import {nombrePersistido} from './nombre-red.js';
 // identidad incompleta debe fallar cerrado: nunca volver silenciosamente a HTTP.
 export type EstadoRedProtegida = {
   activo: true; nombre: string; huella: string; caduca: string;
-  certificadoPublico: string; certificadoServidor: string; claveServidor: string; dns?:string; ip?:string;
+  certificadoPublico: string; certificadoServidor: string; claveServidor: string; dns?:string; ip?:string; ips?:string[];
 };
 const carpetaRed=(datos:string)=>path.join(datos,'red-protegida');
 function archivoRegular(p:string) {
@@ -40,17 +40,18 @@ export function estadoRedProtegida(datos:string):EstadoRedProtegida|null {
   const guardado=JSON.parse(fs.readFileSync(info,'utf8'));
   const nombre=`${nombrePersistido(datos)}.local`;
   if(guardado.nombre!==nombre || (guardado.dns!==undefined && (typeof guardado.dns!=='string' || !nombreDnsValido(guardado.dns))) || (guardado.ip!==undefined && (typeof guardado.ip!=='string' || isIP(guardado.ip)!==4))) throw new Error('La identidad no coincide con el nombre persistente.');
+  if(guardado.ips!==undefined && (!Array.isArray(guardado.ips) || guardado.ips.length>32 || guardado.ips.some((ip:unknown)=>typeof ip!=='string' || isIP(ip)!==4) || new Set(guardado.ips).size!==guardado.ips.length || (guardado.ip && !guardado.ips.includes(guardado.ip)))) throw new Error('La lista de IP de la identidad no es válida.');
   const raiz=new X509Certificate(fs.readFileSync(pub));
   const hoja=new X509Certificate(fs.readFileSync(cert));
   const huella=raiz.fingerprint256.replaceAll(':','').toLowerCase();
   const ahora=Date.now();
   if(!raiz.ca || !raiz.verify(raiz.publicKey) || hoja.ca || !hoja.verify(raiz.publicKey) ||
      !hoja.checkPrivateKey(createPrivateKey(fs.readFileSync(key))) || hoja.checkHost(nombre)!==nombre ||
-     (guardado.dns && hoja.checkHost(guardado.dns)!==guardado.dns) || (guardado.ip && hoja.checkIP(guardado.ip)!==guardado.ip) || guardado.huella!==huella || Date.parse(raiz.validFrom)>ahora || Date.parse(raiz.validTo)<=ahora ||
+     (guardado.dns && hoja.checkHost(guardado.dns)!==guardado.dns) || (guardado.ip && hoja.checkIP(guardado.ip)!==guardado.ip) || (guardado.ips && guardado.ips.some((ip:string)=>hoja.checkIP(ip)!==ip)) || guardado.huella!==huella || Date.parse(raiz.validFrom)>ahora || Date.parse(raiz.validTo)<=ahora ||
      Date.parse(hoja.validFrom)>ahora || Date.parse(hoja.validTo)<=ahora) {
     throw new Error('El certificado de red, su clave o su vigencia no son válidos.');
   }
-  return {activo:true,nombre,huella,caduca:hoja.validTo,certificadoPublico:pub,certificadoServidor:cert,claveServidor:key,dns:guardado.dns,ip:guardado.ip};
+  return {activo:true,nombre,huella,caduca:hoja.validTo,certificadoPublico:pub,certificadoServidor:cert,claveServidor:key,dns:guardado.dns,ip:guardado.ip,ips:guardado.ips};
 }
 export async function prepararRedProtegida(datos:string,dns?:string,ipSolicitada?:string, opciones?: {locales:()=>string[]; resolver:(nombre:string)=>Promise<string[]>}):Promise<EstadoRedProtegida> {
   if(!path.isAbsolute(datos)) throw new Error('La carpeta de datos debe ser absoluta.');
@@ -74,6 +75,11 @@ export async function prepararRedProtegida(datos:string,dns?:string,ipSolicitada
   } else if(!ip && locales.size===1) {
     ip=[...locales][0];
   }
+  // Incluir las interfaces de esta PC en identidades nuevas. Nunca renovar ni
+  // alterar silenciosamente una identidad que ya fue distribuida.
+  const ips=[...locales].filter(x=>isIP(x)===4).sort();
+  if(ips.length>32) throw new Error('Hay demasiadas interfaces de red.');
+  if(ip && !ips.includes(ip)) throw new Error('La IP no pertenece a este equipo.');
   const nombre=`${nombrePersistido(datos)}.local`;
   const dir=carpetaRed(datos);
   // La carpeta final es también el marcador de modo seguro: si la generación
@@ -81,11 +87,11 @@ export async function prepararRedProtegida(datos:string,dns?:string,ipSolicitada
   fs.mkdirSync(dir,{mode:0o700});
   try {
     protegerDirectorio(dir);
-    const identidad=await crearIdentidadRed(nombre,dns,ip);
+    const identidad=await crearIdentidadRed(nombre,dns,ip,ips);
     fs.writeFileSync(path.join(dir,'servidor-clave.pem'),identidad.claveServidor,{mode:0o600,flag:'wx'});
     fs.writeFileSync(path.join(dir,'servidor.crt'),identidad.certificadoServidor,{mode:0o600,flag:'wx'});
     fs.writeFileSync(path.join(dir,'autoridad-publica.crt'),identidad.autoridadPublica,{mode:0o600,flag:'wx'});
-    fs.writeFileSync(path.join(dir,'identidad.json'),JSON.stringify({nombre,huella:identidad.huellaAutoridad,...(dns ? {dns} : {}),...(ip ? {ip} : {})}),{mode:0o600,flag:'wx'});
+    fs.writeFileSync(path.join(dir,'identidad.json'),JSON.stringify({nombre,huella:identidad.huellaAutoridad,...(dns ? {dns} : {}),...(ip ? {ip} : {}),ips}),{mode:0o600,flag:'wx'});
     const estado=estadoRedProtegida(datos);
     if(!estado) throw new Error('No se pudo comprobar la identidad generada.');
     return estado;

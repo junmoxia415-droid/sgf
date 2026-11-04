@@ -23,6 +23,14 @@ export function esIpv4Privada(ip:string):boolean {
   const [a,b]=p.map(Number);
   return a===10 || (a===192 && b===168) || (a===172 && b>=16 && b<=31) || (a===169 && b===254);
 }
+/** Una interfaz IPv4 real: puede ser una dirección institucional no RFC1918.
+ * Nunca se amplía el acceso HTTP por anunciar el nombre. */
+export function esIpv4Interfaz(ip:string):boolean {
+  const p=ip.split('.');
+  if(p.length!==4 || p.some(x=>!/^(0|[1-9]\d{0,2})$/.test(x) || Number(x)>255)) return false;
+  const a=Number(p[0]);
+  return a>0 && a!==127 && a<224;
+}
 /** Omite el puerto únicamente cuando el protocolo usa su puerto estándar. */
 export function crearEnlaceRed(nombre:string,puerto:number,protocolo:'http'|'https'):string {
   if(!Number.isInteger(puerto) || puerto<1 || puerto>65535) throw new Error('Puerto de red inválido.');
@@ -36,6 +44,16 @@ export function direccionesPrivadas():string[] {
   for(const interfaces of Object.values(os.networkInterfaces())) {
     for(const item of interfaces || []) {
       if(!item.internal && item.family==='IPv4' && esIpv4Privada(item.address)) ips.add(item.address);
+    }
+  }
+  return [...ips].sort();
+}
+
+function direccionesLocales():string[] {
+  const ips=new Set<string>();
+  for(const interfaces of Object.values(os.networkInterfaces())) {
+    for(const item of interfaces || []) {
+      if(!item.internal && item.family==='IPv4' && esIpv4Interfaz(item.address)) ips.add(item.address);
     }
   }
   return [...ips].sort();
@@ -72,7 +90,7 @@ export class AnunciadorRed {
   private readonly crearRespondedor:()=>RespondedorRed;
   private readonly intervaloMs:number;
   constructor(opciones:Opciones={}) {
-    this.direcciones=opciones.direcciones || direccionesPrivadas;
+    this.direcciones=opciones.direcciones || direccionesLocales;
     this.crearRespondedor=opciones.crearRespondedor || (()=>ciao.getResponder() as Responder);
     this.intervaloMs=opciones.intervaloMs || 10000;
   }
@@ -88,8 +106,9 @@ export class AnunciadorRed {
     if(this.detenido || this.actualizando) return;
     this.actualizando=true;
     try {
-      // Validar de nuevo, incluso si una fuente de pruebas aporta otras direcciones.
-      const direcciones=[...new Set(this.direcciones().filter(esIpv4Privada))].sort();
+      // El anuncio HTTPS puede usar una IP institucional; HTTP conserva el
+      // filtro anterior. El anuncio no autoriza por sí solo ninguna conexión.
+      const direcciones=[...new Set(this.direcciones().filter(this.protocolo === 'https' ? esIpv4Interfaz : esIpv4Privada))].sort();
       const marca=direcciones.join(',');
       if(marca===this.direccionesAnteriores && (this.estado.estado==='activo' || this.estado.estado==='esperando_red')) return;
       await this.cerrarAnuncio();

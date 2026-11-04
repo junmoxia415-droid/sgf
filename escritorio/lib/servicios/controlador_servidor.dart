@@ -27,7 +27,7 @@ enum EstadoServidor { detenido, arrancando, enMarcha, deteniendo, fallo }
 ///  - Si el proceso se cae, se avisa con el mensaje de error y se puede reiniciar
 ///    sin cerrar la aplicacion.
 class ControladorServidor extends ChangeNotifier {
-  ControladorServidor({required this.ajustes, required this.api, this.usarCanalSeguro = true}) {
+  ControladorServidor({required this.ajustes, required this.api, this.usarCanalSeguro = true, this.httpsEnInstalacionNueva = false}) {
     api.invalidarCanalLocal();
     api.exigirCanalSeguro = usarCanalSeguro;
   }
@@ -36,6 +36,11 @@ class ControladorServidor extends ChangeNotifier {
   final Api api;
   /// La opción no segura existe solo para dobles aislados de prueba.
   final bool usarCanalSeguro;
+  /// Solo para una instalación nueva sin carpeta de datos preexistente.
+  final bool httpsEnInstalacionNueva;
+
+  @visibleForTesting
+  Future<int> seleccionarPuertoInicial() => seleccionarPuertoLibre();
 
   Process? _proceso;
   int _generacionProceso = 0;
@@ -65,19 +70,29 @@ class ControladorServidor extends ChangeNotifier {
     if (await _hayIdentidadProtegida()) {
       final identidad = await redSegura.consultar();
       if (!identidad.activa) throw StateError('La identidad HTTPS no está disponible.');
+      // La invitación solo se recibe del canal local autenticado y cambia al
+      // reiniciar. Sin ella no mostrar enlaces incompletos para otra red.
+      final estado = await api.enlaceRedConsola().timeout(const Duration(seconds: 3));
+      final codigo = estado['codigoEnlace']?.toString() ?? '';
+      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) {
+        throw StateError('No se pudo preparar el enlace privado.');
+      }
       String url(String host) => Uri(scheme: 'https', host: host,
-          port: ajustes.puerto == 443 ? null : ajustes.puerto).toString();
+          port: ajustes.puerto == 443 ? null : ajustes.puerto,
+          fragment: 'sgf=$codigo').toString();
       final enlaces = <String>[];
       if (identidad.dns != null && identidad.dns!.isNotEmpty) enlaces.add(url(identidad.dns!));
-      if (identidad.ip != null) {
+      if (identidad.ipsCertificadas.isNotEmpty) {
         try {
-          if ((await ipsLocales()).contains(identidad.ip)) enlaces.add(url(identidad.ip!));
-        } catch (_) { /* La IP no se ofrece si no se puede comprobar. */ }
+          final actuales = await ipsLocales();
+          for (final ip in identidad.ipsCertificadas) {
+            if (actuales.contains(ip)) enlaces.add(url(ip));
+          }
+        } catch (_) { /* No ofrecer IP que no se puedan comprobar. */ }
       }
       // El nombre .local solo se ofrece si el propio servidor informa que lo
       // está anunciando, y siempre se construye con el nombre certificado.
       try {
-        final estado = await api.panelEstadoConsola().timeout(const Duration(seconds: 3));
         final anuncio = estado['accesoRed'];
         if (anuncio is Map && anuncio['estado'] == 'activo' && identidad.nombre != null) {
           final anunciado = Uri.tryParse('${anuncio['enlace'] ?? ''}');
@@ -427,11 +442,27 @@ LOGIN_RATE_PER_15MIN=40
       anotar(ultimoError!);
       return false;
     }
+    // No migrar ni alterar automáticamente instalaciones previas. Únicamente
+    // una carpeta de datos aún inexistente y la configuración inicial SQLite
+    // permiten preparar HTTPS antes del primer inicio.
     try {
+      final carpetaAntes = await FileSystemEntity.type(carpetaDatos.path, followLinks: false);
+      final esNueva = httpsEnInstalacionNueva && carpetaAntes == FileSystemEntityType.notFound &&
+          !ajustes.asistenteCompletado && ajustes.modoBd == 'sqlite';
       await _asegurarEnv();
+      if (esNueva) {
+        final puerto = await seleccionarPuertoInicial();
+        final identidad = await redSegura.preparar();
+        ajustes.puerto = puerto;
+        ajustes.urlPublica = 'https://${identidad.nombre}${puerto == 443 ? '' : ':$puerto'}';
+        await ajustes.guardar();
+        final guardado = jsonDecode(await archivoAjustes.readAsString()) as Map<String, dynamic>;
+        if (guardado['puerto'] != puerto) throw StateError('No se pudo conservar el puerto HTTPS.');
+        anotar('HTTPS preparado en el puerto $puerto para esta nueva instalación.');
+      }
     } catch (e) {
       estado = EstadoServidor.fallo;
-      ultimoError = 'No se pudo preparar la configuración local: $e';
+      ultimoError = 'No se pudo preparar la configuración local. El servidor no se inició ni se cambió a HTTP automáticamente. Revise el registro y los permisos.';
       anotar(ultimoError!);
       return false;
     }
@@ -452,7 +483,7 @@ LOGIN_RATE_PER_15MIN=40
           timeout: const Duration(seconds: 1));
       socket.destroy();
       estado = EstadoServidor.fallo;
-      ultimoError = 'El puerto ${ajustes.puerto} ya está ocupado. Cierre otra ventana de SGF y vuelva a intentar. Si continúa, reinicie Windows. Cambie el puerto solo si lo usa otro programa, no otra instancia de SGF. No se han borrado sus datos.';
+      ultimoError = 'El puerto ${ajustes.puerto} ya está ocupado. SGF no ha detenido otros programas ni modificado los datos. Consulte qué aplicación usa el puerto antes de continuar; no reinicie si hay un error de guardado.';
       anotar(ultimoError!);
       return false;
     } on SocketException {

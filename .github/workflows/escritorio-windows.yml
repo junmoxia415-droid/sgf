@@ -63,6 +63,7 @@ jobs:
           node test/migracion-permisos.mjs
           node test/nombre-red.mjs
           node test/redes-autorizadas.mjs
+          node test/enlace-seguro.mjs
           node test/red-institucional.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
@@ -72,6 +73,15 @@ jobs:
           node test/transacciones.mjs
           node test/dbconfig-sqlite.mjs
           npx tsx src/scripts/prueba-pdf-layout.ts
+
+      - name: Probar clientes en redes ficticias diferentes
+        working-directory: server
+        run: |
+          set -e
+          sudo ip addr add 203.0.113.50/32 dev lo
+          sudo ip addr add 198.51.100.51/32 dev lo
+          trap 'sudo ip addr del 203.0.113.50/32 dev lo || true; sudo ip addr del 198.51.100.51/32 dev lo || true' EXIT
+          SGF_RED_CLIENTE_PRUEBA=203.0.113.50 SGF_RED_OTRA_PRUEBA=198.51.100.51 node --no-warnings test/acceso-sin-red-real.mjs
 
       - name: Arrancar servidor de pruebas
         working-directory: server
@@ -476,6 +486,13 @@ jobs:
           node test/seleccionar-version.mjs
           node test/navegador.mjs
           SGF_TEST_COMPAT=1 node test/navegador.mjs
+      - name: Probar enlace desde Chromium en red ficticia
+        working-directory: client
+        run: |
+          set -e
+          sudo ip addr add 203.0.113.50/32 dev lo
+          trap 'sudo ip addr del 203.0.113.50/32 dev lo || true' EXIT
+          SGF_RED_CLIENTE_PRUEBA=203.0.113.50 node --no-warnings test/acceso-enlace.mjs
       - name: Preparar Firefox 80 aislado para pruebas con datos ficticios
         run: |
           set -e

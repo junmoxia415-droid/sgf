@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { TLSSocket } from "node:tls";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { esConsolaLocal, esPeticionLocal, tokenConsolaConfigurado } from "../mid
 import { esInstalacionNueva } from "../middleware/auth.js";
 import { getDbMode, pingDb, query, flushParaCopia } from "../models/database.js";
 import { estadoNombreRed } from "../utils/nombre-red.js";
+import { codigoInvitacion } from "../utils/enlace-seguro.js";
 
 /**
  * Panel de control de la consola de escritorio (app Flutter).
@@ -126,6 +128,8 @@ export async function handlePanelEstado(req: IncomingMessage, res: ServerRespons
       bd: ping,
       consolaHabilitada: tokenConsolaConfigurado(),
       accesoRed: estadoNombreRed(),
+      // La invitación es confidencial y solo sale por la consola autenticada.
+      ...(esConsolaLocal(req) && (req.socket as TLSSocket).encrypted ? { codigoEnlace: codigoInvitacion() } : {}),
       contadores: { usuarios, facturas, servicios, lineasExcel },
       disco: { carpetaDatos: datos, archivoEnv: env, bytes: disco.bytes, archivos: disco.archivos },
       ultimaCopia,
