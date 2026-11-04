@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'ajustes.dart';
 
 /// Gestiona únicamente SGFServidor, con confirmación y UAC por cada cambio.
 /// El script verifica la identidad del servicio y nunca modifica firewall o CA.
@@ -10,6 +11,7 @@ class ServicioWindows {
   final bool windows;
 
   Future<void> ejecutar(String accion) async {
+    if (Ajustes.pruebaAislada) throw UnsupportedError('El servicio de Windows está desactivado en la versión de prueba aislada.');
     if (!windows) throw UnsupportedError('El inicio anterior a la sesión solo está disponible en Windows.');
     if (!{'instalar', 'iniciar', 'detener', 'desactivar'}.contains(accion)) throw StateError('Acción de servicio inválida.');
     final script = File('$aplicacion${Platform.pathSeparator}servicio${Platform.pathSeparator}gestionar.ps1');

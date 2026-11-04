@@ -228,6 +228,10 @@ const server = http.createServer(
         (req as any).consoleLocal = "1";
       }
 
+      if (process.env.SGF_PRUEBA_AISLADA === "1" && req.method === "POST" && ["/api/db/test", "/api/db/connect"].includes(requestPath)) {
+        return sendJson(res, 403, { success: false, error: "Esta versión de prueba solo permite SQLite local ficticio; no conecta bases externas." });
+      }
+
       // Rutas de configuracion de BD: siguen fuera de authenticate() para permitir
       // la configuracion inicial, pero se identifica al usuario si trae token y
       // cada handler decide (admin / token de instalacion / solo instalacion nueva).

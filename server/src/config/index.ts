@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Archivo .env: se puede apuntar a otro sitio con SGF_ENV_FILE (lo usa la app de escritorio).
 dotenv.config({ path: process.env.SGF_ENV_FILE || path.resolve(__dirname, "../../.env") });
+// El paquete experimental nunca abre motores empresariales, ni por variables heredadas.
+if (process.env.SGF_PRUEBA_AISLADA === "1") process.env.DB_TYPE = "sqlite";
 
 export const APP_CONFIG = {
   name: "SGF", fullName: "Sistema de Gestion de Facturas",
-  version: "4.0.7", description: "Facturas ETECSA - Cliente/Servidor Centralizado",
+  version: "4.0.8", description: "Facturas ETECSA - Cliente/Servidor Centralizado",
 };
 
 export const SERVER_CONFIG = {

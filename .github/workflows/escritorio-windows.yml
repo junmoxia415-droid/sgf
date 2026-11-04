@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.7)'
+        description: 'Versión a compilar (ej. 4.0.8)'
         required: false
-        default: '4.0.7'
+        default: '4.0.8'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.7' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.8' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -64,6 +64,7 @@ jobs:
           node test/nombre-red.mjs
           node test/redes-autorizadas.mjs
           node test/enlace-seguro.mjs
+          node test/aislamiento-prueba.mjs
           node test/red-institucional.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
@@ -207,9 +208,13 @@ jobs:
           SGF_NODE_TEST: node
         run: flutter test --reporter expanded
 
+      - name: Verificar aislamiento de la edición de prueba
+        working-directory: escritorio
+        run: flutter test --dart-define=SGF_PRUEBA_AISLADA=true test/aislamiento_prueba_test.dart test/instalacion_nueva_https_test.dart --reporter expanded
+
       - name: Compilar ejecutable
         working-directory: escritorio
-        run: flutter build windows --release --build-name=${{ env.VERSION }} --dart-define=SGF_VERSION=${{ env.VERSION }}
+        run: flutter build windows --release --build-name=${{ env.VERSION }} --dart-define=SGF_VERSION=${{ env.VERSION }} --dart-define=SGF_PRUEBA_AISLADA=true
 
       # ── Montaje del paquete: .exe + servidor + Node + dependencias ─────────
       - name: Preparar Node portatil
@@ -279,15 +284,8 @@ jobs:
           Copy-Item -Recurse 'client/dist' (Join-Path $destino 'client/dist')
 
           # 3) Material de apoyo
-          Copy-Item 'escritorio/LEEME-PRIMERO.txt' $destino -ErrorAction Ignore
-          $servicio = Join-Path $destino 'servicio'
-          New-Item -ItemType Directory -Force -Path $servicio | Out-Null
-          $csc = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-          $salidaServicio = Join-Path $servicio 'sgf_servicio.exe'
-          $codigoServicio = (Resolve-Path 'escritorio/windows/servicio/ServicioSgf.cs').Path
-          & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$salidaServicio" $codigoServicio
-          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el servicio de SGF.' }
-          Copy-Item 'escritorio/windows/servicio/gestionar.ps1' $servicio
+          Copy-Item 'escritorio/LEEME-PRUEBA.txt' (Join-Path $destino 'LEEME-PRIMERO.txt')
+          # No incluir gestor de servicio en la edición de prueba aislada.
           Get-ChildItem $destino | Select-Object Name, Length
 
       - name: Probar TLS con Node y dependencias del paquete
@@ -319,8 +317,6 @@ jobs:
             'distribucion\servidor\dist\scripts\supervisor-servicio.js',
             'distribucion\servidor\dist\scripts\red-protegida.js',
             'distribucion\servidor\dist\scripts\redes-autorizadas.js',
-            'distribucion\servicio\sgf_servicio.exe',
-            'distribucion\servicio\gestionar.ps1',
             'distribucion\client\dist\index.html',
             'distribucion\LEEME-PRIMERO.txt'
           )
@@ -370,30 +366,33 @@ jobs:
       - name: Generar instalador
         shell: pwsh
         run: |
-          $iss = 'instalador/sgf.iss'
+          $iss = 'instalador/sgf-prueba.iss'
+          if ('${{ env.VERSION }}' -ne '4.0.8') { throw 'Este instalador aislado solo corresponde a la prueba 4.0.8.' }
           (Get-Content $iss) -replace '@VERSION@', '${{ env.VERSION }}' | Set-Content $iss
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
           if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup fallo (codigo $LASTEXITCODE)"; exit 1 }
           Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
 
-      - name: Probar instalación conservando datos anteriores
+      - name: Probar instalación aislada sin tocar datos anteriores
         shell: pwsh
         run: |
-          # Se usa el APPDATA real del runner efímero, igual que {userappdata}.
-          $carpetaDatos = Join-Path $env:APPDATA 'SGF'
-          $destino = Join-Path $env:RUNNER_TEMP 'sgf-instalado-ensayo'
-          New-Item -ItemType Directory -Force -Path $carpetaDatos | Out-Null
-          $testigo = Join-Path $carpetaDatos ('ensayo-conservar-' + [guid]::NewGuid().ToString() + '.txt')
+          $datosRealesSimulados = Join-Path $env:APPDATA 'SGF'
+          $destino = Join-Path $env:LOCALAPPDATA 'SGF-Prueba-4.0.8'
+          New-Item -ItemType Directory -Force -Path $datosRealesSimulados | Out-Null
+          $testigo = Join-Path $datosRealesSimulados ('ensayo-conservar-' + [guid]::NewGuid().ToString() + '.txt')
           Set-Content $testigo 'informacion ficticia'
           $exe = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
           try {
-            $argumentos = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$destino`" /TASKS=`"`""
-            $prueba = Start-Process -FilePath $exe -ArgumentList $argumentos -Wait -PassThru
+            $prueba = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=""' -Wait -PassThru
             if ($prueba.ExitCode -ne 0) { throw "El instalador devolvió $($prueba.ExitCode)" }
-            if (-not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw 'La aplicación no se instaló.' }
-            if (-not (Test-Path (Join-Path $destino 'client/dist/index.html'))) { throw 'La web no se instaló.' }
-            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos.' }
-            Write-Host 'Instalación silenciosa y conservación de datos: OK.'
+            if (-not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw 'La prueba no se instaló en su carpeta aislada.' }
+            if (-not (Test-Path (Join-Path $destino 'client/dist/index.html'))) { throw 'La web de prueba no se instaló.' }
+            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos ficticios preexistentes.' }
+            $rutaProhibida = Join-Path $env:RUNNER_TEMP 'intento-de-carpeta-externa'
+            $intento = Start-Process -FilePath $exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$rutaProhibida`"" -Wait -PassThru
+            if ($intento.ExitCode -eq 0 -or (Test-Path (Join-Path $rutaProhibida 'sgf_escritorio.exe'))) { throw 'La prueba permitió una ruta de instalación no aislada.' }
+            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'El intento alteró datos ficticios anteriores.' }
+            Write-Host 'Instalación aislada y conservación de datos anteriores: OK.'
           } finally { Remove-Item $testigo -Force -ErrorAction Ignore }
 
       - name: Comprimir version portable
@@ -416,7 +415,7 @@ jobs:
       # publica una Release con el instalador dentro, que es lo que se descarga
       # desde la página del repositorio.
       - name: Publicar la Release con el instalador
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        if: (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/feature/sgf-4-0-8-prueba') && env.VERSION == '4.0.8'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -427,22 +426,17 @@ jobs:
           if (-not $instalador) { Write-Error "No se genero el instalador"; exit 1 }
 
           $notas = @"
-          ## SGF Escritorio v${{ env.VERSION }}
+          ## SGF Escritorio 4.0.8 — versión de prueba aislada
 
-          Aplicacion instalable para Windows. **No hace falta instalar Node ni nada mas**: el instalador trae todo dentro.
+          **Solo para pruebas con datos ficticios. No es una actualización de producción.** No la conecte a bases Oracle o SQL Server reales ni la utilice con facturas reales.
 
-          - ``SGF-Escritorio-Setup-${{ env.VERSION }}.exe`` — instalador recomendado para Windows 10/11 de 64 bits. El servidor se inicia al abrir SGF.
-          - ``SGF-Escritorio-Portable-${{ env.VERSION }}.zip`` — para probar sin instalar: descomprimir y ejecutar ``sgf_escritorio.exe``.
+          - ``SGF-Escritorio-Setup-4.0.8.exe`` instala una copia de prueba en una carpeta separada; no actualiza el programa SGF existente.
+          - ``SGF-Escritorio-Portable-4.0.8.zip`` ejecuta la misma versión sin instalar. Ambas usan **%APPDATA%\SGF-PRUEBA-4.0.8**, no la carpeta de datos de producción. Instalador y portable comparten los datos de prueba entre sí.
+          - La aplicación solo permite SQLite local en esta edición: Oracle y SQL Server están bloqueados. El servicio de Windows y la opción de inicio automático del sistema están desactivados para evitar afectar el SGF existente. No se cambia el cortafuegos ni se instala ningún certificado automáticamente.
 
-          Incluye bibliotecas Microsoft de ejecucion junto a los programas. Se ha comprobado en una maquina virtual Windows, pero no en una PC fisica limpia. El asistente permite crear una cuenta de administrador propia; no hay una cuenta de fabrica.
+          Esta prueba ofrece un enlace privado HTTPS sin configurar rangos de clientes; cada usuario debe iniciar sesión. Al reiniciar el servidor cambia el enlace. La otra PC debe confiar explícitamente en el certificado y poder alcanzar al servidor. DNS/mDNS, cortafuegos y cambios de IP pueden impedir la conexión. Una IP nueva que no figure en el certificado no tendrá un enlace IP válido.
 
-          La web selecciona automaticamente una interfaz moderna o una compatible con navegadores mas antiguos. Firefox 80 se probo en Linux con datos ficticios; no se garantiza compatibilidad con todos los navegadores antiguos, que pueden tener vulnerabilidades.
-
-          El nombre local depende de mDNS. **La web de red todavia usa HTTP sin cifrar**: no exponer a Internet ni enviar datos sensibles en redes no confiables. HTTPS LAN y certificado compartible siguen en desarrollo, no son una opcion integrada.
-
-          **El servidor todavia no arranca antes de iniciar sesion en Windows** y se detiene al cerrar la aplicacion. El canal entre SGF Escritorio y su proceso local utiliza TLS efimero autenticado.
-
-          La carpeta de datos se protege frente a dos servidores compatibles simultaneos. Cierre versiones anteriores antes de actualizar y no comparta la carpeta en unidades de red que no garanticen bloqueos SQLite. Si la configuracion de base anterior es ambigua o incorrecta, SGF detiene el arranque en vez de cambiar silenciosamente a SQLite; conserve la configuracion y los datos hasta corregirla.
+          Las pruebas automatizadas utilizaron datos ficticios y máquinas virtuales. Todavía no se ha validado entre dos PC físicas ni una actualización segura con facturas o servicio activo. Mantenga su instalación real intacta y no exponga este servidor a Internet.
           "@
           $notas | Set-Content -Path notas-release.md -Encoding utf8
 
@@ -452,7 +446,9 @@ jobs:
           gh release create $etiqueta $instalador $portable `
             --repo ${{ github.repository }} `
             --target '${{ github.sha }}' `
-            --title "SGF Escritorio v${{ env.VERSION }}" `
+            --title "SGF Escritorio v${{ env.VERSION }} — PRUEBA AISLADA" `
+            --prerelease `
+            --latest=false `
             --notes-file notas-release.md
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la release.' }
           Write-Host "Release publicada: $etiqueta"

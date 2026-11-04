@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../servicios/api.dart';
+import '../servicios/ajustes.dart';
 import '../widgets/comunes.dart';
 
 /// Configuración local posterior al asistente. No muestra contraseñas guardadas.
@@ -68,7 +69,7 @@ class _ConfigurarBaseDialogoState extends State<ConfigurarBaseDialogo> {
     title: const Text('Configurar base de datos'),
     content: SizedBox(width:560, child: _inicializando ? const Center(child:CircularProgressIndicator()) : SingleChildScrollView(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
       Text('Base actual: ${_actual.toUpperCase()}. Cambiar de base no traslada los datos ni las cuentas.'), const SizedBox(height:14),
-      DropdownButtonFormField<String>(initialValue:_tipo, decoration:const InputDecoration(labelText:'Base de datos'), items:const [DropdownMenuItem(value:'sqlite',child:Text('SQLite local')),DropdownMenuItem(value:'oracle',child:Text('Oracle')),DropdownMenuItem(value:'mssql',child:Text('SQL Server'))], onChanged:_trabajando?null:(v){if(v==null)return;setState(() {_tipo=v;_probado=false;_aviso=null;_puerto.text=v=='oracle'?'1521':'1433';});}),
+      DropdownButtonFormField<String>(initialValue:_tipo, decoration:const InputDecoration(labelText:'Base de datos'), items:[const DropdownMenuItem(value:'sqlite',child:Text('SQLite local')),if (!Ajustes.pruebaAislada) const DropdownMenuItem(value:'oracle',child:Text('Oracle')),if (!Ajustes.pruebaAislada) const DropdownMenuItem(value:'mssql',child:Text('SQL Server'))], onChanged:_trabajando?null:(v){if(v==null)return;setState(() {_tipo=v;_probado=false;_aviso=null;_puerto.text=v=='oracle'?'1521':'1433';});}),
       if(_tipo!='sqlite') ...[
         const SizedBox(height:10),
         TextField(controller:_host,onChanged:_modificado,decoration:const InputDecoration(labelText:'Servidor o dirección')),

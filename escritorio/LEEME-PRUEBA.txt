@@ -1,0 +1,33 @@
+SGF 4.0.8 - VERSION DE PRUEBA AISLADA
+====================================
+
+Esta version es solo para pruebas con datos ficticios. NO es una actualizacion
+para la instalacion de trabajo y NO se debe usar con facturas reales.
+
+El instalador utiliza su propia carpeta de programa y esta aplicacion utiliza:
+  %APPDATA%\SGF-PRUEBA-4.0.8
+La version portable utiliza la misma carpeta DE PRUEBA, no una carpeta dentro
+del ZIP. Instalador y portable comparten entre si esos datos de prueba.
+No importa ni borra automaticamente los datos de %APPDATA%\SGF.
+
+PRUEBA BASICA
+1. Abra SGF Prueba y cree un administrador con datos ficticios.
+2. Desde Servidor o Inicio copie el enlace privado HTTPS completo.
+3. En otra PC que pueda alcanzar este equipo, abra el enlace e inicie sesion.
+   Para evitar alertas de certificado, la otra PC debe confiar explicitamente
+   en la autoridad de prueba de SGF. No se instala automaticamente.
+4. El enlace es privado. Al reiniciar SGF se genera otro: copielo de nuevo.
+
+El puerto se elige automaticamente (443 si esta libre, si no uno alternativo).
+El nombre local depende de mDNS y puede no funcionar entre subredes. El enlace
+por IP solo funciona mientras la IP este incluida en el certificado y activa en
+este equipo. La red y el cortafuegos deben permitir la conexion.
+
+Esta prueba no modifica el cortafuegos ni instala certificados de confianza.
+El servicio y el inicio automatico de Windows estan desactivados en esta version
+para evitar afectar una instalacion de trabajo. Oracle y SQL Server estan bloqueados: la prueba utiliza exclusivamente
+SQLite local. No exponga SGF a Internet.
+
+Si algo falla, no detenga servicios ajenos ni reinicie la PC para liberar un
+puerto. Conserve los datos reales y pida ayuda. La actualizacion segura de una
+instalacion con facturas o servicio activo aun no esta validada.

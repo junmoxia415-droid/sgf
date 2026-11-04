@@ -245,10 +245,11 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
       children: [
         Text('Paso 1 · ¿Dónde se guardan los datos?', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 6),
-        const Text(
-          'Si no está seguro, deje la primera opción: funciona de inmediato y sin configurar nada. '
-          'Siempre se puede cambiar más adelante.',
-          style: TextStyle(fontSize: 14),
+        Text(
+          Ajustes.pruebaAislada
+            ? 'Esta versión de prueba solo admite SQLite local, separado de la instalación de trabajo.'
+            : 'Si no está seguro, deje la primera opción: funciona de inmediato y sin configurar nada. Siempre se puede cambiar más adelante.',
+          style: const TextStyle(fontSize: 14),
         ),
         const SizedBox(height: 18),
         _Opcion(
@@ -259,7 +260,8 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
               'Es la opción para trabajar sin conexión.',
           alPulsar: () => setState(() => _modo = 'sqlite'),
         ),
-        _Opcion(
+        if (Ajustes.pruebaAislada) const Text('Esta edición de prueba usa únicamente datos locales ficticios.'),
+        if (!Ajustes.pruebaAislada) _Opcion(
           seleccionada: _modo == 'oracle',
           icono: Icons.storage,
           titulo: 'Base de datos Oracle de la empresa',
@@ -267,7 +269,7 @@ class _AsistenteInicialState extends State<AsistenteInicial> {
               'que le haya dado el administrador de la base de datos.',
           alPulsar: () => setState(() => _modo = 'oracle'),
         ),
-        _Opcion(
+        if (!Ajustes.pruebaAislada) _Opcion(
           seleccionada: _modo == 'mssql',
           icono: Icons.dns,
           titulo: 'Base de datos SQL Server de la empresa',

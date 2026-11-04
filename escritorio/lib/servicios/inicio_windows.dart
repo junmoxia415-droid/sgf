@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'ajustes.dart';
 
 typedef EjecutarComando = Future<ProcessResult> Function(String programa, List<String> argumentos);
 
@@ -19,7 +20,7 @@ class InicioWindows {
   final String _ejecutable;
   final Future<String> Function()? _carpetaInicioPersonalizada;
 
-  bool get disponible => _windows;
+  bool get disponible => _windows && !Ajustes.pruebaAislada;
 
   Future<File> _accesoInicio() async {
     String carpeta;
@@ -50,7 +51,7 @@ class InicioWindows {
   }
 
   Future<bool> activo() async {
-    if (!_windows) return false;
+    if (!disponible) return false;
     final registro = await _registroExiste();
     final acceso = await _accesoInicio();
     return registro || await acceso.exists();
@@ -59,7 +60,7 @@ class InicioWindows {
   /// Solo cambia la entrada del usuario actual y el acceso SGF creado por el
   /// instalador. No altera otras aplicaciones ni crea un servicio de sistema.
   Future<void> establecer(bool habilitar) async {
-    if (!_windows) throw UnsupportedError('Esta opción solo está disponible en Windows.');
+    if (!disponible) throw UnsupportedError('Inicio automático desactivado en esta versión de prueba.');
     final acceso = await _accesoInicio();
     if (habilitar) {
       if (!_ejecutable.toLowerCase().endsWith('sgf_escritorio.exe')) {

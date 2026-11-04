@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../servicios/api.dart';
+import '../servicios/ajustes.dart';
 import '../servicios/inicio_windows.dart';
 import '../servicios/controlador_servidor.dart';
 import '../servicios/red_segura.dart';
@@ -536,7 +537,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                       Text('Inicio automático', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
                       const Text('Estas opciones no necesitan Internet y no borran los datos guardados.', style: TextStyle(fontSize: 13)),
-                      if (Platform.isWindows) ...[
+                      if (Platform.isWindows && !Ajustes.pruebaAislada) ...[
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Iniciar el servidor antes de iniciar sesión'),
@@ -554,7 +555,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           value: _inicioSesionWindows ?? false,
                           onChanged: _actualizandoInicio || _inicioSesionWindows == null ? null : _cambiarInicio,
                         )
-                      else const Text('La apertura automática al iniciar sesión está disponible en Windows.'),
+                      else Text(Ajustes.pruebaAislada ? 'El servicio y el inicio automático de Windows están desactivados en esta versión de prueba.' : 'La apertura automática al iniciar sesión está disponible en Windows.'),
                       if (_inicioWindows.disponible && _inicioSesionWindows == null)
                         TextButton(onPressed: _consultarInicio, child: const Text('No se pudo consultar el inicio; reintentar')),
                       SwitchListTile(

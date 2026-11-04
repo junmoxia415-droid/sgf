@@ -28,13 +28,18 @@ class Ajustes {
   String modoBd; // sqlite | oracle | mssql
   bool guiaVista;
 
+  /// El paquete experimental usa un perfil propio; nunca reutiliza SGF real.
+  static const pruebaAislada = bool.fromEnvironment('SGF_PRUEBA_AISLADA');
+  static String get nombreCarpeta => pruebaAislada ? 'SGF-PRUEBA-4.0.8' : 'SGF';
+  static File get marcadorReinicio => File('${carpeta.parent.path}${Platform.pathSeparator}${pruebaAislada ? 'SGF-PRUEBA-4.0.8' : 'SGF'}-solicitud-reinicio.txt');
+
   static Directory get carpeta {
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'] ?? Platform.environment['LOCALAPPDATA'] ?? '.';
-      return Directory('$appData\\SGF');
+      return Directory('$appData\\$nombreCarpeta');
     }
     final home = Platform.environment['HOME'] ?? '.';
-    return Directory('$home/.config/sgf');
+    return Directory('$home/.config/${pruebaAislada ? 'sgf-prueba-4.0.8' : 'sgf'}');
   }
 
   static File get archivo => File('${carpeta.path}${Platform.pathSeparator}ajustes.json');

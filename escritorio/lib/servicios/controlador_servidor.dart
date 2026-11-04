@@ -319,7 +319,7 @@ class ControladorServidor extends ChangeNotifier {
     try {
       final escritorio = await _carpetaEscritorio();
       if (escritorio == null) return;
-      final nota = File('${escritorio.path}${Platform.pathSeparator}CONTRASENA INICIAL DE SGF.txt');
+      final nota = File('${escritorio.path}${Platform.pathSeparator}${Ajustes.pruebaAislada ? 'CONTRASENA INICIAL DE SGF PRUEBA 4.0.8.txt' : 'CONTRASENA INICIAL DE SGF.txt'}');
       if (await nota.exists()) return;
       await nota.writeAsString(
         'SGF Escritorio\n'
@@ -507,6 +507,8 @@ LOGIN_RATE_PER_15MIN=40
         workingDirectory: carpetaServidor.path,
         environment: {
           'NODE_ENV': 'production',
+          if (Ajustes.pruebaAislada) 'SGF_PRUEBA_AISLADA': '1',
+          if (Ajustes.pruebaAislada) 'DB_TYPE': 'sqlite',
           'SGF_DATA_DIR': carpetaDatos.path,
           'SGF_ENV_FILE': archivoEnv.path,
           'SGF_CONSOLE_TOKEN': tokenConsola!,

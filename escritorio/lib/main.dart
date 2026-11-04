@@ -27,7 +27,7 @@ Future<void> main() async {
       size: Size(1360, 800),
       minimumSize: Size(1040, 680),
       center: true,
-      title: 'SGF · Sistema de Gestión de Facturas',
+      title: Ajustes.pruebaAislada ? 'SGF 4.0.8 · PRUEBA AISLADA' : 'SGF · Sistema de Gestión de Facturas',
       titleBarStyle: TitleBarStyle.normal,
     );
     unawaited(windowManager.waitUntilReadyToShow(opciones, () async {
@@ -46,7 +46,7 @@ Future<void> main() async {
 
   var ajustes = await Ajustes.cargar();
   final carpeta = Ajustes.carpeta;
-  final marcador = File('${carpeta.parent.path}${Platform.pathSeparator}SGF-solicitud-reinicio.txt');
+  final marcador = Ajustes.marcadorReinicio;
   final reinicioSolicitado = await marcador.exists();
   String? errorReinicio;
   if (reinicioSolicitado) {
@@ -208,7 +208,7 @@ class _SgfAppState extends State<SgfApp> with WindowListener {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navegador,
-      title: 'SGF · Sistema de Gestión de Facturas',
+      title: Ajustes.pruebaAislada ? 'SGF 4.0.8 · PRUEBA AISLADA' : 'SGF · Sistema de Gestión de Facturas',
       debugShowCheckedModeBanner: false,
       theme: temaSgf(Brightness.light),
       darkTheme: temaSgf(Brightness.dark),
