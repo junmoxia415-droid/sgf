@@ -37,7 +37,7 @@ class _CatalogoLineasPantallaState extends State<CatalogoLineasPantalla> {
   @override
   Widget build(BuildContext context) {
     final columnas = <String>{for(final fila in _filas) ...fila.keys}.toList();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Cabecera(titulo: 'Datos de líneas', descripcion: 'Consulte las filas importadas del Excel. Desplácese horizontalmente para ver todas las columnas.'),
       Tarjeta(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [

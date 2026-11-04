@@ -554,7 +554,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           await widget.ajustes.guardar();
                         },
                       ),
-                      const Text('El inicio del servidor antes de iniciar sesión en Windows todavía no está disponible en esta versión.', style: TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                      if (!Platform.isWindows) const Text('El inicio del servidor antes de iniciar sesión requiere Windows.', style: TextStyle(fontSize: 12.5)),
                     ]),
                   ),
                   const SizedBox(height: 16),
@@ -777,16 +777,18 @@ class _Fila extends StatelessWidget {
 }
 
 /// Abre la version web en el navegador del sistema.
-Future<void> abrirEnNavegador(String url) async {
+Future<bool> abrirEnNavegador(String url) async {
   try {
+    final ProcessResult resultado;
     if (Platform.isWindows) {
-      await Process.run('cmd', ['/c', 'start', '', url]);
+      resultado = await Process.run('cmd', ['/c', 'start', '', url]);
     } else if (Platform.isMacOS) {
-      await Process.run('open', [url]);
+      resultado = await Process.run('open', [url]);
     } else {
-      await Process.run('xdg-open', [url]);
+      resultado = await Process.run('xdg-open', [url]);
     }
+    return resultado.exitCode == 0;
   } catch (_) {
-    // sin navegador disponible: la app funciona igual
+    return false;
   }
 }

@@ -28,6 +28,16 @@ class _InicioPantallaState extends State<InicioPantalla> {
   Map<String, dynamic>? _estado;
   String? _error;
   bool _cargando = true;
+  Future<List<String>>? _enlaces;
+  bool? _ultimaMarcha;
+
+  Future<List<String>> _enlacesActuales() {
+    if (_enlaces == null || _ultimaMarcha != widget.servidor.enMarcha) {
+      _ultimaMarcha = widget.servidor.enMarcha;
+      _enlaces = widget.servidor.enlacesRed();
+    }
+    return _enlaces!;
+  }
 
   @override
   void initState() {
@@ -36,7 +46,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Future<void> _cargar() async {
-    setState(() => _cargando = true);
+    setState(() { _cargando = true; _enlaces = null; });
     try {
       final datos = await widget.api.panelEstado();
       if (mounted) setState(() {
@@ -56,6 +66,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.servidor.enMarcha) { _enlaces = null; _ultimaMarcha = false; }
     if (widget.api.conSesion && !widget.api.esAdmin) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Cabecera(titulo: 'Bienvenido, ${widget.api.usuario}', descripcion: 'Seleccione una tarea para empezar. Solo verá las opciones autorizadas para su cuenta.'),
@@ -85,19 +96,24 @@ class _InicioPantallaState extends State<InicioPantalla> {
         ),
         if (widget.api.esAdmin && widget.servidor.enMarcha) ...[
           FutureBuilder<List<String>>(
-            future: widget.servidor.enlacesRed(),
+            future: _enlacesActuales(),
             builder: (context, snapshot) {
               final enlaces = snapshot.data ?? const <String>[];
               return Tarjeta(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Acceso desde otras computadoras', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 6),
-                const Text('En la misma red privada, abra uno de estos enlaces en el navegador. Cada persona necesita una cuenta creada por el administrador.'),
-                if (enlaces.isEmpty) const Text('No se detectó una dirección de red privada; compruebe la conexión.')
+                const Text('En una red autorizada, abra un enlace en el navegador. Cada persona necesita una cuenta creada por el administrador.'),
+                if (snapshot.connectionState != ConnectionState.done) const Text('Comprobando enlaces de red…')
+                else if (snapshot.hasError) const Text('No se pudieron comprobar los enlaces. Revise la configuración en «Servidor».')
+                else if (enlaces.isEmpty) const Text('No hay enlaces disponibles. Compruebe las direcciones y el estado de red en «Servidor».')
                 else for (final enlace in enlaces) Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
                   SelectableText(enlace, style: const TextStyle(fontWeight: FontWeight.bold)),
                   TextButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlace)); if (context.mounted) avisar(context, 'Enlace copiado.'); }, icon: const Icon(Icons.copy, size: 16), label: const Text('Copiar')),
                 ]),
-                const Text('Aviso: HTTP no cifra contraseñas ni datos. Utilice únicamente una red privada confiable. El cortafuegos de Windows puede requerir permiso.', style: TextStyle(fontSize: 12)),
+                if (snapshot.connectionState == ConnectionState.done && !snapshot.hasError && enlaces.any((e) => e.startsWith('http://')))
+                  const Text('HTTP no cifra contraseñas ni datos. Utilice únicamente una red privada confiable.', style: TextStyle(fontSize: 12))
+                else if (snapshot.connectionState == ConnectionState.done && !snapshot.hasError && enlaces.any((e) => e.startsWith('https://')))
+                  const Text('HTTPS requiere que el navegador confíe en el certificado. El DNS y el cortafuegos deben estar configurados; tener un enlace no garantiza la conexión.', style: TextStyle(fontSize: 12)),
               ]));
             },
           ),

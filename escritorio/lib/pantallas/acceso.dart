@@ -23,6 +23,15 @@ class _AccesoSgfState extends State<AccesoSgf> {
   final _clave = TextEditingController();
   bool _entrando = false;
   String? _error;
+  Future<List<String>>? _enlaces;
+  bool? _ultimaMarcha;
+  Future<List<String>> _enlacesActuales() {
+    if (_enlaces == null || _ultimaMarcha != widget.servidor.enMarcha) {
+      _ultimaMarcha = widget.servidor.enMarcha;
+      _enlaces = widget.servidor.enlacesRed();
+    }
+    return _enlaces!;
+  }
   @override
   void initState() { super.initState(); widget.servidor.addListener(_actualizar); }
   @override
@@ -43,6 +52,7 @@ class _AccesoSgfState extends State<AccesoSgf> {
   }
   @override
   Widget build(BuildContext context) {
+    if (!widget.servidor.enMarcha) { _enlaces = null; _ultimaMarcha = false; }
     if (widget.api.conSesion) {
       return PantallaPrincipal(
         servidor: widget.servidor, api: widget.api, ajustes: widget.ajustes,
@@ -72,16 +82,19 @@ class _AccesoSgfState extends State<AccesoSgf> {
             const Text('Inicie sesión para comenzar. Si necesita una cuenta, solicítela al administrador.', textAlign: TextAlign.center),
             const SizedBox(height: 22),
             if (widget.servidor.enMarcha) FutureBuilder<List<String>>(
-              future: widget.servidor.enlacesRed(), builder: (context, snapshot) {
+              future: _enlacesActuales(), builder: (context, snapshot) {
                 final enlaces = snapshot.data ?? const <String>[];
-                if (enlaces.isEmpty) return const SizedBox.shrink();
+                if (snapshot.connectionState != ConnectionState.done || snapshot.hasError || enlaces.isEmpty) return const SizedBox.shrink();
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Enlace para otras computadoras de la red:', style: TextStyle(fontWeight: FontWeight.w600)),
                   for (final enlace in enlaces) Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                     SelectableText(enlace),
                     IconButton(tooltip: 'Copiar enlace', onPressed: () => Clipboard.setData(ClipboardData(text: enlace)), icon: const Icon(Icons.copy, size: 18)),
                   ]),
-                  const Text('HTTP no cifra los datos: use solo una red privada confiable.', style: TextStyle(fontSize: 12)),
+                  if (enlaces.any((e) => e.startsWith('http://')))
+                    const Text('HTTP no cifra los datos: use solo una red privada confiable.', style: TextStyle(fontSize: 12))
+                  else
+                    const Text('HTTPS requiere que el navegador confíe en el certificado y que la red esté configurada.', style: TextStyle(fontSize: 12)),
                   const SizedBox(height: 14),
                 ]);
               },

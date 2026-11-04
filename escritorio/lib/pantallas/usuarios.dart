@@ -78,7 +78,7 @@ class _UsuariosPantallaState extends State<UsuariosPantalla> {
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Cabecera(
           titulo: 'Usuarios',

@@ -107,7 +107,7 @@ class _ImportarPantallaState extends State<ImportarPantalla> {
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Cabecera(
           titulo: 'Importar Excel de líneas',

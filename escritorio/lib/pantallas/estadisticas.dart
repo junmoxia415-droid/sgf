@@ -110,7 +110,7 @@ class _EstadisticasPantallaState extends State<EstadisticasPantalla> {
     final resumen = (datos?['resumen'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Cabecera(
           titulo: 'Estadísticas',

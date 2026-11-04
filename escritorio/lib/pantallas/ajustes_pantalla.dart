@@ -306,9 +306,9 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                         const SizedBox(height: 6),
                         const Aviso(
                           titulo: 'Si algo va mal',
-                          mensaje: '1) Mire el registro en «Servidor».  2) Pulse Reiniciar.  '
-                              '3) Si sigue igual, cierre la aplicación, vuelva a abrirla y, si es necesario, '
-                              'restaure una copia de seguridad con el administrador del sistema.',
+                          mensaje: 'Mire el registro en «Servidor» y consulte al administrador. '
+                              'Si hubo un error al guardar, no cierre ni reinicie el servidor: los últimos cambios podrían perderse. '
+                              'Antes de actualizar o restaurar, asegure una copia de los datos.',
                           tipo: TipoAviso.aviso,
                         ),
                       ],
@@ -331,7 +331,7 @@ class _AjustesPantallaState extends State<AjustesPantalla> {
                         _fila('Programa', 'SGF Escritorio ${const String.fromEnvironment('SGF_VERSION', defaultValue: '4.0.7')}'),
                         _fila('Motor', 'Incluido (no hace falta instalar nada más)'),
                         _fila('Datos', Ajustes.carpeta.path),
-                        _fila('Escucha en', a.urlBaseLocal),
+                        _fila('Puerto configurado', '${a.puerto}'),
                         const SizedBox(height: 10),
                         const Text(
                           'La aplicación funciona sin internet. El servidor admite conexiones de redes privadas; los datos se guardan en la base configurada.',

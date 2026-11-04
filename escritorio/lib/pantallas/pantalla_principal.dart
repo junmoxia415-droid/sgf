@@ -163,6 +163,27 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     return ok;
   }
 
+  Future<void> _abrirNavegador() async {
+    String? enlace;
+    try { enlace = await servidor.enlaceParaNavegador(); } catch (_) { /* Se explica abajo sin degradar HTTPS. */ }
+    if (!mounted) return;
+    if (enlace == null) {
+      await showDialog<void>(context: context, builder: (context) => AlertDialog(
+        title: const Text('No hay un enlace disponible'),
+        content: const Text('Compruebe que el servidor está iniciado. Si usa HTTPS, revise en «Servidor» el DNS, la IP incluida en el certificado o el nombre local anunciado. No se abrirá HTTP como alternativa. Compruebe también la confianza del certificado en el navegador.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
+      ));
+      return;
+    }
+    final abierto = await abrirEnNavegador(enlace);
+    if (!mounted || abierto) return;
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('No se pudo abrir el navegador'),
+      content: SelectableText('Abra esta dirección manualmente: $enlace'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final ancho = MediaQuery.sizeOf(context).width;
@@ -193,11 +214,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   setState(() => _seleccion = 0);
                 }
               },
-              onAbrirNavegador: () => abrirEnNavegador(widget.ajustes.urlBaseLocal),
+              onAbrirNavegador: _abrirNavegador,
             ),
             const Divider(height: 1),
             Expanded(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   NavigationRail(
                     scrollable: true,
@@ -248,9 +270,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                       color: Theme.of(context).scaffoldBackgroundColor,
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 22, 24, 32),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1180),
-                          child: areas[indice].constructor(context),
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1600),
+                            child: areas[indice].constructor(context),
+                          ),
                         ),
                       ),
                     ),

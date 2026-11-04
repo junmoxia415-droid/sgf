@@ -48,7 +48,13 @@ void main() {
       expect(identidad.activa,isTrue);expect(identidad.nombre,startsWith('sgf-'));
       expect(ajustes.puerto,port);expect(c.enMarcha,isTrue);
       expect((await api.panelPing())['servicio'],'sgf-consola');
-      expect(await c.enlacesRed(),isEmpty,reason:'No debe ofrecer IP fuera del certificado');
+      final enlaces = await c.enlacesRed();
+      for (final enlace in enlaces) {
+        final uri = Uri.parse(enlace);
+        expect(uri.scheme, 'https');
+        expect({identidad.nombre, identidad.dns, identidad.ip}, contains(uri.host), reason: 'Solo destinos incluidos en el certificado');
+        expect(uri.port, port);
+      }
       expect(await File(identidad.certificadoPublico!).exists(),isTrue);
       await c.detener();expect(c.avisoCierre,isFalse);
       expect((await c.redSegura.consultar()).huella,identidad.huella);

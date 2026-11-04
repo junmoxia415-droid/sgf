@@ -51,12 +51,43 @@ class ControladorServidor extends ChangeNotifier {
 
   bool get enMarcha => estado == EstadoServidor.enMarcha;
 
-  /// Direcciones privadas que pueden usarse en otros equipos. Algunas pueden
-  /// pertenecer a VPN u otros adaptadores: el usuario elige la de su red.
+  @visibleForTesting
+  Future<Set<String>> ipsLocales() async => (await NetworkInterface.list(
+    type: InternetAddressType.IPv4, includeLoopback: false,
+  )).expand((i) => i.addresses).map((a) => a.address).toSet();
+
+  Future<bool> _hayIdentidadProtegida() async =>
+      await FileSystemEntity.type('${carpetaDatos.path}${Platform.pathSeparator}red-protegida', followLinks: false) != FileSystemEntityType.notFound;
+
+  /// Solo muestra destinos cubiertos por el certificado en modo HTTPS.
+  /// Que un enlace exista no garantiza que el DNS o el cortafuegos estén listos.
   Future<List<String>> enlacesRed() async {
-    // El certificado HTTPS solo identifica el nombre .local, no una IP ni el
-    // nombre del equipo. No ofrecer enlaces que causarían error de identidad.
-    if (await Directory('${carpetaDatos.path}${Platform.pathSeparator}red-protegida').exists()) return [];
+    if (await _hayIdentidadProtegida()) {
+      final identidad = await redSegura.consultar();
+      if (!identidad.activa) throw StateError('La identidad HTTPS no está disponible.');
+      String url(String host) => Uri(scheme: 'https', host: host,
+          port: ajustes.puerto == 443 ? null : ajustes.puerto).toString();
+      final enlaces = <String>[];
+      if (identidad.dns != null && identidad.dns!.isNotEmpty) enlaces.add(url(identidad.dns!));
+      if (identidad.ip != null) {
+        try {
+          if ((await ipsLocales()).contains(identidad.ip)) enlaces.add(url(identidad.ip!));
+        } catch (_) { /* La IP no se ofrece si no se puede comprobar. */ }
+      }
+      // El nombre .local solo se ofrece si el propio servidor informa que lo
+      // está anunciando, y siempre se construye con el nombre certificado.
+      try {
+        final estado = await api.panelEstadoConsola().timeout(const Duration(seconds: 3));
+        final anuncio = estado['accesoRed'];
+        if (anuncio is Map && anuncio['estado'] == 'activo' && identidad.nombre != null) {
+          final anunciado = Uri.tryParse('${anuncio['enlace'] ?? ''}');
+          if (anunciado?.scheme == 'https' && anunciado?.host == identidad.nombre && anunciado?.port == ajustes.puerto) {
+            enlaces.add(url(identidad.nombre!));
+          }
+        }
+      } catch (_) { /* No anunciar un nombre que no se pudo comprobar. */ }
+      return enlaces;
+    }
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
     final direcciones = <String>{};
     for (final interfaz in interfaces) {
@@ -70,6 +101,16 @@ class ControladorServidor extends ChangeNotifier {
       }
     }
     return direcciones.toList()..sort();
+  }
+
+  /// Nunca envía el navegador al puerto de control, ni hace downgrade a HTTP
+  /// si existe una identidad protegida que no puede consultarse.
+  Future<String?> enlaceParaNavegador() async {
+    if (!enMarcha) return null;
+    final protegida = await _hayIdentidadProtegida();
+    if (!protegida) return ajustes.urlBaseLocal;
+    final enlaces = (await enlacesRed()).where((e) => Uri.tryParse(e)?.scheme == 'https');
+    return enlaces.isEmpty ? null : enlaces.first;
   }
 
 
