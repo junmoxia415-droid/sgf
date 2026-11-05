@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -30,11 +32,26 @@ class _InicioPantallaState extends State<InicioPantalla> {
   bool _cargando = true;
   Future<List<String>>? _enlaces;
   bool? _ultimaMarcha;
+  Timer? _revisarNombre;
+  int _intentosNombre = 0;
 
   Future<List<String>> _enlacesActuales() {
     if (_enlaces == null || _ultimaMarcha != widget.servidor.enMarcha) {
+      if (_ultimaMarcha != widget.servidor.enMarcha) _intentosNombre = 0;
       _ultimaMarcha = widget.servidor.enMarcha;
-      _enlaces = widget.servidor.enlacesRed();
+      _enlaces = widget.servidor.enlacesRed().then((enlaces) {
+        final esperandoAlias = enlaces.any((e) => RegExp(r'^https://sgf-[a-f0-9]{12}\.local(?::\d+)?$').hasMatch(e));
+        final tieneAlias = enlaces.any((e) => Uri.tryParse(e)?.host == 'sgf-minint.local');
+        if (tieneAlias) _intentosNombre = 0;
+        if (mounted && widget.servidor.enMarcha && (tieneAlias || (esperandoAlias && _intentosNombre < 6)) && _revisarNombre == null) {
+          if (!tieneAlias) _intentosNombre++;
+          _revisarNombre = Timer(Duration(seconds: tieneAlias ? 10 : 4), () {
+            _revisarNombre = null;
+            if (mounted && widget.servidor.enMarcha) setState(() => _enlaces = null);
+          });
+        }
+        return enlaces;
+      });
     }
     return _enlaces!;
   }
@@ -44,6 +61,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
     super.initState();
     if (widget.api.esAdmin || !widget.api.conSesion) _cargar();
   }
+
+  @override
+  void dispose() { _revisarNombre?.cancel(); super.dispose(); }
 
   Future<void> _cargar() async {
     setState(() { _cargando = true; _enlaces = null; });

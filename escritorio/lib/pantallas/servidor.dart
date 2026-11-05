@@ -56,6 +56,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   String? _errorRedSegura;
   bool _cambiandoRedSegura = false;
   Timer? _actualizarEstado;
+  bool _pendienteConsultaRed = false;
   late bool _ultimaMarcha;
 
   @override
@@ -96,6 +97,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
   }
 
   Future<void> _consultarRed() async {
+    if (_consultandoRed) { _pendienteConsultaRed = true; return; }
     if (mounted) setState(() { _consultandoRed = true; _errorRed = null; });
     try {
       final enlaces = await widget.servidor.enlacesRed();
@@ -106,7 +108,10 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     } catch (_) {
       if (mounted) setState(() { _enlaces = []; _errorRed = 'No se pudieron consultar las direcciones de red.'; });
     } finally {
-      if (mounted) setState(() => _consultandoRed = false);
+      if (mounted) {
+        setState(() => _consultandoRed = false);
+        if (_pendienteConsultaRed) { _pendienteConsultaRed = false; unawaited(_consultarRed()); }
+      }
     }
   }
 
@@ -306,7 +311,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
       final despues = (datos['accesoRed'] as Map?)?['enlaceAmigable'];
       if (mounted) {
         setState(() => _estado = datos);
-        if (antes != despues && !_consultandoRed) unawaited(_consultarRed());
+        if (antes != despues) unawaited(_consultarRed());
       }
     } on ApiError {
       if (mounted) setState(() => _estado = null);
