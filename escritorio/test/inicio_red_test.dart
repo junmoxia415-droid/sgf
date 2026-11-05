@@ -31,7 +31,7 @@ void main() {
     c.resultado.complete(['https://sgf.ejemplo.test']);
     await tester.pumpAndSettle();
     expect(find.text('https://sgf.ejemplo.test'), findsOneWidget);
-    expect(find.textContaining('HTTPS requiere'), findsOneWidget);
+    expect(find.textContaining('certificado de confianza'), findsOneWidget);
     expect(find.textContaining('HTTP no cifra'), findsNothing);
     expect(c.consultas, 1);
     await tester.pumpWidget(const SizedBox.shrink()); c.dispose();

@@ -26,6 +26,12 @@ type AnalyzeResult = {
   mappingSuggestions: Record<string, { suggestedTable: SGFTable; mapping: Record<string, string> }>;
 };
 
+// Mantener los índices originales del Excel: quitar un encabezado vacío sin
+// conservar su posición desplaza todos los valores de las columnas siguientes.
+function encabezadosConPosicion(row: any[]) {
+  return row.map((h, indice) => ({ nombre: String(h ?? "").trim(), indice })).filter(h => h.nombre !== "");
+}
+
 export async function analyzeExcelFile(buffer: Buffer): Promise<AnalyzeResult> {
   const xlsx = await getXlsx();
   const wb = xlsx.read(buffer, { type: "buffer" });
@@ -37,11 +43,12 @@ export async function analyzeExcelFile(buffer: Buffer): Promise<AnalyzeResult> {
     const ws = wb.Sheets[sheetName];
     const json = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
     if (json.length === 0) continue;
-    const headers = (json[0] as any[]).map(h => String(h || "").trim()).filter(Boolean);
+    const columnas = encabezadosConPosicion(json[0] as any[]);
+    const headers = columnas.map(c => c.nombre);
     const rows = json.slice(1);
     const preview = rows.slice(0, 3).map(r => {
       const obj: any = {};
-      headers.forEach((h, i) => obj[h] = r[i]);
+      columnas.forEach(c => obj[c.nombre] = r[c.indice]);
       return obj;
     });
     const suggested = suggestTable(headers);
@@ -212,7 +219,8 @@ async function importarExcelInterno(buffer: Buffer, options: ImportOptions = {})
 
   const headerRow = options.headerRow ?? 0;
   const dataStartRow = options.dataStartRow ?? headerRow + 1;
-  const headers = (json[headerRow] as any[]).map(h => String(h || "").trim()).filter(Boolean);
+  const columnas = encabezadosConPosicion((json[headerRow] as any[]) ?? []);
+  const headers = columnas.map(c => c.nombre);
   if (headers.length === 0) throw new Error("No se encontraron encabezados en la fila " + headerRow);
 
   const suggestedTable = validarTablaImportacion(options.table || suggestTable(headers));
@@ -245,7 +253,7 @@ async function importarExcelInterno(buffer: Buffer, options: ImportOptions = {})
   headers.forEach(h => valuesByCol[h] = []);
   for (const r of rows) {
     headers.forEach((h, i) => {
-      valuesByCol[h].push(r[i]);
+      valuesByCol[h].push(r[columnas[i].indice]);
     });
   }
 
@@ -286,7 +294,7 @@ async function importarExcelInterno(buffer: Buffer, options: ImportOptions = {})
       headers.forEach((h, colIdx) => {
         const dbCol = mapping[h];
         if (!dbCol) return;
-        let val = row[colIdx];
+        let val = row[columnas[colIdx].indice];
         if (val === undefined || val === null) val = "";
         data[dbCol] = String(val).trim();
       });

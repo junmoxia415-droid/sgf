@@ -182,6 +182,32 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     }
   }
 
+  Future<void> _configurarNombreFijo() async {
+    var entrada = (widget.ajustes.nombreDnsFijo ?? '') as String;
+    final nombre = await showDialog<String>(context: context, builder: (dialogo) => AlertDialog(
+      title: const Text('Nombre DNS fijo'),
+      content: SizedBox(width: 500, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Indique un nombre que controle en el DNS de su organización. SGF no crea ni modifica el registro DNS. Cuando cambie la PC servidora, actualice ese registro para que apunte a la nueva PC.'),
+        const SizedBox(height: 12),
+        TextFormField(initialValue: entrada, onChanged: (valor) => entrada = valor, autofocus: true, decoration: const InputDecoration(labelText: 'Nombre DNS', hintText: 'Ejemplo: sgf.vcl.mn', helperText: 'Sin https, puerto, barra ni espacios.')),
+        const SizedBox(height: 12),
+        const Text('El nombre se ofrecerá solo si el DNS de esta PC apunta a sus propias direcciones. Si el certificado no incluye ese nombre, el navegador o Kaspersky mostrarán una advertencia: la identidad no podrá verificarse. Consulte al administrador; no desactive la protección.', style: TextStyle(fontSize: 12.5)),
+        const SizedBox(height: 8),
+        const Text('Para quitar el nombre guardado, deje el campo vacío.', style: TextStyle(fontSize: 12.5)),
+      ]))),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogo), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(dialogo, entrada), child: const Text('Guardar nombre'))],
+    ));
+    if (nombre == null || !mounted) return;
+    try {
+      await widget.servidor.guardarNombreDnsFijo(nombre);
+      await _consultarRed();
+      if (mounted) avisar(context, 'Nombre guardado. SGF no ha cambiado el DNS ni el certificado.');
+    } catch (e) {
+      if (mounted) avisar(context, 'No se pudo guardar el nombre: $e', tipo: TipoAviso.error);
+    }
+  }
+
   Future<void> _consultarRedesExtra() async {
     try {
       final redes=await widget.servidor.redesAutorizadas.leer();
@@ -301,9 +327,10 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     final accesoRed = (_estado?['accesoRed'] as Map?) ?? {};
     final segura = _redSegura?.activa == true;
     final codigo = _estado?['codigoEnlace']?.toString() ?? '';
+    final directo = _estado?['accesoDirecto'] == true;
     String? privado(String? url) {
       if (url == null) return null;
-      if (!url.startsWith('https://')) return url;
+      if (!url.startsWith('https://') || directo) return url;
       if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) return null;
       return Uri.parse(url).replace(fragment: 'sgf=$codigo').toString();
     }
@@ -313,6 +340,10 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
         && nombreEquipo.toLowerCase() != 'localhost';
     final enlaceNombre = 'http://$nombreEquipo:${widget.ajustes.puerto}';
     final enlaceDns = segura && _redSegura?.dns != null ? privado('https://${_redSegura!.dns}${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}') : null;
+    final nombreFijo = widget.ajustes.nombreDnsFijo as String?;
+    final coincidenciasFijo = nombreFijo == null ? <String>[] : _enlaces.where((e) => Uri.tryParse(e)?.host == nombreFijo).toList();
+    final enlaceFijo = directo && coincidenciasFijo.isNotEmpty ? coincidenciasFijo.first : null;
+    final fijoCertificado = nombreFijo != null && (nombreFijo == _redSegura?.dns || nombreFijo == _redSegura?.nombre);
     final ipsCertificadas = _redSegura?.ipsCertificadas ?? const <String>{};
     final enlacesIp = segura ? ipsCertificadas.where(_ipsLocales.contains).map((ip) => privado('https://$ip${widget.ajustes.puerto == 443 ? '' : ':${widget.ajustes.puerto}'}')).whereType<String>().toList() : <String>[];
 
@@ -443,14 +474,28 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Enlace para otras computadoras', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      const Text('En la otra PC, abra el navegador y pegue el enlace completo. El servidor debe estar en marcha y las computadoras deben poder comunicarse. El enlace es privado: compártalo solo con personas autorizadas.', style: TextStyle(fontSize: 13.5)),
+                      const Text('En la otra PC abra el enlace e inicie sesión. El servidor debe estar en marcha y la red debe permitir la conexión. No exponga SGF a Internet.', style: TextStyle(fontSize: 13.5)),
                       if (!enMarcha) const Padding(padding: EdgeInsets.only(top: 8), child: Text('El servidor está detenido: el enlace no funcionará hasta iniciarlo.', style: TextStyle(color: Color(0xFFB8730B)))),
                       const SizedBox(height: 10),
-                      if (segura && enMarcha && !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo))
+                      if (segura && enMarcha && !directo && !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo))
                         Text(_estado == null
                           ? 'Preparando el enlace privado…'
                           : 'Este servidor no ha proporcionado un enlace privado. Revise que el servicio de Windows esté actualizado; no se cambiará automáticamente.'),
-                      if (enlaceDns != null) ...[
+                      if (segura) ...[
+                        OutlinedButton.icon(onPressed: _configurarNombreFijo, icon: const Icon(Icons.language, size: 18), label: const Text('Configurar nombre DNS fijo')),
+                        if (nombreFijo != null) ...[
+                          const SizedBox(height: 8),
+                          const Text('Nombre fijo de la organización', style: TextStyle(fontWeight: FontWeight.w700)),
+                          if (enlaceFijo != null) ...[
+                            Row(children: [Expanded(child: SelectableText(enlaceFijo, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                              OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceFijo)); if (context.mounted) avisar(context, 'Nombre fijo copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar nombre fijo'))]),
+                            if (!fijoCertificado) const Text('Advertencia: el certificado actual no cubre este nombre. El navegador o Kaspersky pueden advertir o bloquear la conexión; no se puede verificar la identidad con este certificado.', style: TextStyle(color: Color(0xFFB8730B), fontSize: 12.5)),
+                            const Text('Si cambia la PC servidora, actualice el DNS manualmente. Este enlace no funcionará mientras el servidor esté detenido.', style: TextStyle(fontSize: 12.5)),
+                          ] else Text(enMarcha ? 'El nombre $nombreFijo no apunta solamente a este equipo o no pudo comprobarse. Revise el DNS de la organización y pulse Actualizar.' : 'El nombre guardado se comprobará cuando el servidor esté en marcha.', style: const TextStyle(fontSize: 12.5)),
+                          const SizedBox(height: 12),
+                        ],
+                      ],
+                      if (enlaceDns != null && enlaceDns != enlaceFijo) ...[
                         const Text('Nombre DNS de la organización', style: TextStyle(fontWeight: FontWeight.w700)),
                         Row(children: [Expanded(child: SelectableText(enlaceDns, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
                           OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceDns)); if (context.mounted) avisar(context, 'Enlace HTTPS copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar DNS'))]),
@@ -463,7 +508,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: enlaceIp)); if (context.mounted) avisar(context, 'Enlace por IP copiado.'); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar IP'))]),
                         const Text('Si hay varios enlaces, elija el que corresponda a la red de la otra PC. Cada IP solo es válida mientras permanezca en el certificado y en este equipo.', style: TextStyle(fontSize: 12.5)),
                         const SizedBox(height: 12),
-                      ] else if (segura && ipsCertificadas.isNotEmpty && !_consultandoRed && codigo.isNotEmpty) ...[
+                      ] else if (segura && ipsCertificadas.isNotEmpty && !_consultandoRed && (directo || codigo.isNotEmpty)) ...[
                         const Text('Ninguna IP incluida en el certificado está activa en esta PC. No se reemplazará la identidad automáticamente.', style: TextStyle(color: Color(0xFFB8730B))),
                       ] else if (segura && ipsCertificadas.isEmpty) ...[
                         const Text('Este certificado anterior no incluye una IP. Use el nombre incluido o consulte al administrador.', style: TextStyle(fontSize: 12.5)),
@@ -485,7 +530,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Text('${accesoRed['mensaje'] ?? (segura ? 'Nombre local no disponible; revise mDNS. La dirección IP no coincide con el certificado.' : 'Nombre local no disponible; utilice el enlace por IP.')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
                         const SizedBox(height: 8),
                       ],
-                      if (segura) const Text('Para HTTPS use solo los enlaces indicados, incluidos en el certificado.', style: TextStyle(fontSize: 12.5))
+                      if (segura) const Text('La web de inicio de sesión es accesible para quienes puedan alcanzar el servidor. Las facturas requieren una cuenta autorizada. Verifique que el nombre del enlace coincida con el certificado antes de confiar en él.', style: TextStyle(fontSize: 12.5))
                       else if (_consultandoRed) const Text('Buscando direcciones de red…')
                       else if (_errorRed != null) Text(_errorRed!)
                       else if (_enlaces.isEmpty) const Text('No se detectó una dirección de red privada. Conecte este equipo a la red y actualice.')
@@ -524,7 +569,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Redes adicionales (opcional)', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      const Text('El enlace privado HTTPS permite conectar sin configurar redes aquí. Esta opción avanzada conserva autorizaciones concretas de versiones anteriores; mantenga el cortafuegos restringido.'),
+                      const Text('El acceso HTTPS permite conectar sin configurar redes aquí. Esta opción avanzada conserva autorizaciones concretas de versiones anteriores; mantenga el cortafuegos restringido.'),
                       const SizedBox(height: 8),
                       Text(_errorRedesExtra ?? (_redesExtra == null ? 'Comprobando redes…' : _redesExtra!.isEmpty ? 'No hay redes adicionales autorizadas.' : 'Redes configuradas: ${_redesExtra!.join(', ')}')),
                       OutlinedButton.icon(onPressed: segura && _redesExtra != null ? _editarRedesExtra : null, icon: const Icon(Icons.lan_outlined), label: const Text('Configurar redes adicionales')),
@@ -677,8 +722,7 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                           padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
                           child: Row(
                             children: [
-                              Text('Registro de actividad', style: Theme.of(context).textTheme.titleMedium),
-                              const Spacer(),
+                              Expanded(child: Text('Registro de actividad', style: Theme.of(context).textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
                               TextButton.icon(
                                 onPressed: () => setState(() => servidor.registro.clear()),
                                 icon: const Icon(Icons.delete_sweep_outlined, size: 18),

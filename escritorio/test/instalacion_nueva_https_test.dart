@@ -43,7 +43,7 @@ void main() {
       expect((await c.redSegura.consultar()).activa,isTrue);
       expect((await api.panelPing())['servicio'],'sgf-consola');
       final enlaces=await c.enlacesRed();
-      for(final enlace in enlaces){expect(Uri.parse(enlace).scheme,'https');expect(Uri.parse(enlace).fragment,startsWith('sgf='));}
+      for(final enlace in enlaces){expect(Uri.parse(enlace).scheme,'https');expect(Uri.parse(enlace).fragment,isEmpty);}
       final plano=HttpClient();
       try { await expectLater(plano.getUrl(Uri.parse('http://127.0.0.1:$puerto/api/health')).then((r)=>r.close()),throwsA(anything)); }
       finally {plano.close(force:true);}

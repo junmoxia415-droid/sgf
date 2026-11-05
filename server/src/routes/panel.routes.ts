@@ -129,7 +129,7 @@ export async function handlePanelEstado(req: IncomingMessage, res: ServerRespons
       consolaHabilitada: tokenConsolaConfigurado(),
       accesoRed: estadoNombreRed(),
       // La invitación es confidencial y solo sale por la consola autenticada.
-      ...(esConsolaLocal(req) && (req.socket as TLSSocket).encrypted ? { codigoEnlace: codigoInvitacion() } : {}),
+      ...(esConsolaLocal(req) && (req.socket as TLSSocket).encrypted ? { codigoEnlace: codigoInvitacion(), accesoDirecto: true } : {}),
       contadores: { usuarios, facturas, servicios, lineasExcel },
       disco: { carpetaDatos: datos, archivoEnv: env, bytes: disco.bytes, archivos: disco.archivos },
       ultimaCopia,

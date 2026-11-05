@@ -52,7 +52,7 @@ void main() {
       for (final enlace in enlaces) {
         final uri = Uri.parse(enlace);
         expect(uri.scheme, 'https');
-        expect(uri.fragment, matches(RegExp(r'^sgf=[A-Za-z0-9_-]{43}$')));
+        expect(uri.fragment, isEmpty);
         expect({identidad.nombre, identidad.dns, identidad.ip, ...identidad.ips}, contains(uri.host), reason: 'Solo destinos incluidos en el certificado');
         expect(uri.port, port);
       }

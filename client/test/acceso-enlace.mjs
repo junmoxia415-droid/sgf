@@ -33,26 +33,26 @@ try {
   const q=https.request({host:ip,port,path:ruta,method,localAddress:'127.0.0.1',ca:id.autoridadPublica,headers},r=>{let texto='';r.setEncoding('utf8');r.on('data',x=>texto+=x);r.on('end',()=>resolve({status:r.statusCode,texto}));});q.on('error',reject);q.end(datos);
  });
  let r=await req('/api/setup/admin',{method:'POST',body:{username:'admin_ficticio',name:'Administrador ficticio',password:'para-pruebas-123'}});assert.equal(r.status,201,r.texto);
- r=await req('/api/panel/enlace');assert.equal(r.status,200,r.texto);const code=JSON.parse(r.texto).data.codigoEnlace;
+ r=await req('/api/panel/enlace');assert.equal(r.status,200,r.texto);assert.equal(JSON.parse(r.texto).data.accesoDirecto,true);
  const spki=createHash('sha256').update(new X509Certificate(id.certificadoServidor).publicKey.export({type:'spki',format:'der'})).digest('base64');
  browser=await chromium.launch({headless:true,args:['--no-sandbox','--no-proxy-server',`--ignore-certificate-errors-spki-list=${spki}`]});
  const context=await browser.newContext();const page=await context.newPage();const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const base=`https://${ip}:${port}`;
- await page.goto(`${base}/#sgf=${code}`);
+ await page.goto(base);
  await page.getByText('Bienvenido a SGF').waitFor({timeout:30000});
- assert(!page.url().includes(code),'El secreto no queda en la barra del navegador tras conectar');
+ assert(!page.url().includes('#sgf='),'El enlace no contiene un secreto largo');
  await page.getByLabel('Usuario',{exact:true}).fill('admin_ficticio');
  await page.getByLabel('Contraseña',{exact:true}).fill('para-pruebas-123');
  await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await page.getByText('Facturas registradas').waitFor({timeout:15000});
  assert.deepEqual(errors,[]);
- // Otro navegador sin enlace no obtiene la interfaz ni las facturas.
+ // Otro navegador llega al login, pero no obtiene las facturas sin iniciar sesión.
  const otra=await browser.newContext();const p2=await otra.newPage();
- await p2.goto(base);await p2.getByText('Este enlace no está completo.',{exact:false}).waitFor();
- const rr=await p2.evaluate(()=>fetch('/api/facturas').then(r=>r.status));assert.equal(rr,403);
+ await p2.goto(base);await p2.getByText('Bienvenido a SGF').waitFor();
+ const rr=await p2.evaluate(()=>fetch('/api/facturas').then(r=>r.status));assert.equal(rr,401);
  await otra.close(); await context.close();
- console.log('OK: Chromium abre el enlace HTTPS, inicia sesión ficticia y otra PC sin enlace queda bloqueada.');
+ console.log('OK: Chromium abre el enlace corto HTTPS, inicia sesión y protege los datos sin sesión.');
 } finally {
  if(browser)await browser.close();
  if(server&&server.exitCode===null){server.kill('SIGTERM');await once(server,'exit');}

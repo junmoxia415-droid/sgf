@@ -314,6 +314,10 @@ export function checkRateLimit(key: string, opts: RateLimitOptions): RateLimitRe
   const now = Date.now();
   const entry = rateLimitBuckets.get(key);
   if (!entry || entry.resetAt <= now) {
+    if (!entry && rateLimitBuckets.size >= 10000) {
+      for (const [k, v] of rateLimitBuckets) if (v.resetAt <= now) rateLimitBuckets.delete(k);
+      if (rateLimitBuckets.size >= 10000) return {allowed:false, remaining:0, resetAt:now + 60000, retryAfterSeconds:60};
+    }
     const next = { hits: 1, resetAt: now + opts.windowMs };
     rateLimitBuckets.set(key, next);
     return {

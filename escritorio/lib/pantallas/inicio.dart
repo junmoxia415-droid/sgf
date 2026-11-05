@@ -113,7 +113,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
                 if (snapshot.connectionState == ConnectionState.done && !snapshot.hasError && enlaces.any((e) => e.startsWith('http://')))
                   const Text('HTTP no cifra contraseñas ni datos. Utilice únicamente una red privada confiable.', style: TextStyle(fontSize: 12))
                 else if (snapshot.connectionState == ConnectionState.done && !snapshot.hasError && enlaces.any((e) => e.startsWith('https://')))
-                  const Text('Comparta el enlace completo solo con personas autorizadas. HTTPS requiere confianza en el certificado y una red que permita la conexión.', style: TextStyle(fontSize: 12)),
+                  const Text('Cada usuario debe iniciar sesión. La red debe permitir la conexión y el nombre debe coincidir con un certificado de confianza. Si aparece una advertencia, verifique la identidad antes de enviar contraseñas.', style: TextStyle(fontSize: 12)),
               ]));
             },
           ),

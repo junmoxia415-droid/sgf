@@ -94,7 +94,7 @@ class _AccesoSgfState extends State<AccesoSgf> {
                   if (enlaces.any((e) => e.startsWith('http://')))
                     const Text('HTTP no cifra los datos: use solo una red privada confiable.', style: TextStyle(fontSize: 12))
                   else
-                    const Text('HTTPS requiere que el navegador confíe en el certificado y que la red esté configurada.', style: TextStyle(fontSize: 12)),
+                    const Text('HTTPS requiere confianza en el certificado y que el nombre coincida. Una advertencia indica que no se ha podido verificar la identidad.', style: TextStyle(fontSize: 12)),
                   const SizedBox(height: 14),
                 ]);
               },

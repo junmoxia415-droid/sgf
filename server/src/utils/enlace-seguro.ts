@@ -25,7 +25,7 @@ function coincide(valor: string): boolean {
   const a = Buffer.from(valor, 'utf8'), b = Buffer.from(invitacion, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
 }
-function tlsDirecto(req: IncomingMessage): boolean {
+export function tlsDirecto(req: IncomingMessage): boolean {
   return Boolean((req.socket as TLSSocket).encrypted) &&
     !req.headers['x-forwarded-for'] && !req.headers['x-real-ip'] && !req.headers.forwarded;
 }

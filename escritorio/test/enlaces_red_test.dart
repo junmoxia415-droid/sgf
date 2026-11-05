@@ -23,7 +23,7 @@ class ControlRedPrueba extends ControladorServidor {
 
 class ApiEnlaceHttps extends Api {
   final codigo = 'Z' * 43;
-  @override Future<Map<String, dynamic>> panelEstado() async => {'codigoEnlace':codigo, 'accesoRed':{'estado':'activo','enlace':'https://sgf-123456abcdef.local'}};
+  @override Future<Map<String, dynamic>> panelEstado() async => {'codigoEnlace':codigo, 'accesoDirecto':true, 'accesoRed':{'estado':'activo','enlace':'https://sgf-123456abcdef.local'}};
 }
 class RedEnlacePrueba extends RedSegura {
   RedEnlacePrueba() : super(node:'',script:'',datos:'');
@@ -35,7 +35,33 @@ class ControlEnlaceHttps extends ControlRedPrueba {
   void encender() { estado=EstadoServidor.enMarcha; notifyListeners(); }
 }
 
+class ControlNombreFijo extends ControlEnlaceHttps {
+  ControlNombreFijo({required super.ajustes,required super.api});
+  @override Future<void> guardarNombreDnsFijo(String nombre) async { ajustes.nombreDnsFijo=nombre.trim().toLowerCase(); }
+  @override Future<List<String>> enlacesRed() async => ajustes.nombreDnsFijo == null ? [] : ['https://${ajustes.nombreDnsFijo}'];
+}
+
 void main() {
+  testWidgets('Configura nombre fijo y advierte si el certificado no lo cubre', (tester) async {
+    tester.view.physicalSize=const Size(1040,680);tester.view.devicePixelRatio=1;addTearDown(tester.view.reset);
+    final ajustes=Ajustes(puerto:443), api=ApiEnlaceHttps();
+    final servidor=ControlNombreFijo(ajustes:ajustes,api:api)..estado=EstadoServidor.enMarcha;
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:ServidorPantalla(
+      servidor:servidor,api:api,ajustes:ajustes,iniciarSesion:() async=>true,inicioWindows:InicioWindows(windows:false),
+    )))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Configurar nombre DNS fijo'));await tester.pumpAndSettle();
+    await tester.tap(find.text('Configurar nombre DNS fijo'));await tester.pumpAndSettle();
+    expect(find.textContaining('SGF no crea ni modifica'),findsOneWidget);
+    await tester.enterText(find.byType(TextField).last,'sgf.vcl.mn');
+    await tester.tap(find.text('Guardar nombre'));await tester.pumpAndSettle();
+    expect(ajustes.nombreDnsFijo,'sgf.vcl.mn');
+    expect(find.text('https://sgf.vcl.mn'),findsOneWidget);
+    expect(find.textContaining('certificado actual no cubre este nombre'),findsOneWidget);
+    expect(tester.takeException(),isNull);
+    await tester.pumpWidget(const SizedBox.shrink());servidor.dispose();
+  });
+
   testWidgets('Al arrancar, el enlace aparece sin pulsar Actualizar', (tester) async {
     tester.view.physicalSize = const Size(1400, 1200); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -45,7 +71,7 @@ void main() {
       servidor:servidor, api:api, ajustes:ajustes, iniciarSesion:() async=>true, inicioWindows:InicioWindows(windows:false),
     )))));
     await tester.pumpAndSettle();
-    final enlace='https://sgf.ejemplo.test#sgf=${api.codigo}';
+    final enlace='https://sgf.ejemplo.test';
     expect(find.text(enlace),findsNothing);
     servidor.encender();
     await tester.pumpAndSettle();
@@ -54,7 +80,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink()); servidor.dispose();
   });
 
-  testWidgets('Muestra y copia el enlace privado completo desde Servidor', (tester) async {
+  testWidgets('Muestra y copia el enlace corto desde Servidor', (tester) async {
     tester.view.physicalSize = const Size(1400, 1200); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     String? copiado;
@@ -69,7 +95,7 @@ void main() {
       servidor:servidor, api:api, ajustes:ajustes, iniciarSesion:() async=>true, inicioWindows:InicioWindows(windows:false),
     )))));
     await tester.pumpAndSettle();
-    final enlace='https://sgf.ejemplo.test#sgf=${api.codigo}';
+    final enlace='https://sgf.ejemplo.test';
     expect(find.text(enlace),findsOneWidget);
     await tester.ensureVisible(find.text('Copiar DNS')); await tester.pumpAndSettle();
     await tester.tap(find.text('Copiar DNS')); await tester.pumpAndSettle();

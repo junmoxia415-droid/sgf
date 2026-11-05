@@ -14,6 +14,8 @@ const otra=process.env.SGF_RED_OTRA_PRUEBA;
 if(!fuente || !otra) { console.log('OMITIDO: requiere dos IP aisladas de laboratorio.');process.exit(0); }
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'sgf-enlace-privado-'));
 let proceso;
+const vecino=fs.mkdtempSync(path.join(process.cwd(),'../client/dist-prueba-prefijo-'));
+fs.writeFileSync(path.join(vecino,'privado.txt'),'SENTINELA-NO-PUBLICA');
 try {
  const nombre='sgf-123456789abc.local';
  const id=await crearIdentidadRed(nombre,undefined,'127.0.0.1');
@@ -45,34 +47,38 @@ try {
  assert.equal(setup.status,201,setup.texto);
  const panel=await req('/api/panel/enlace',{headers:{'x-sgf-console-token':consola}});
  assert.equal(panel.status,200,panel.texto);const codigo=JSON.parse(panel.texto).data.codigoEnlace;
- assert.match(codigo,/^[A-Za-z0-9_-]{43}$/);
- let r=await req('/',{ip:fuente});assert.equal(r.status,200);assert(r.texto.includes('location.hash'));assert(!r.texto.includes(codigo));
- for(const ruta of ['/api/health','/api/facturas','/api/panel/estado','/api/panel/enlace','/api/setup/estado']) assert.equal((await req(ruta,{ip:fuente})).status,403,ruta);
- r=await req('/api/acceso/enlace',{ip:fuente,method:'POST',headers:{'x-sgf-enlace':'incorrecto'}});assert.equal(r.status,403);
- r=await req('/api/acceso/enlace',{ip:fuente,method:'POST',headers:{'x-sgf-enlace':codigo}});assert.equal(r.status,204,r.texto);
- const cookie=r.headers['set-cookie'][0].split(';')[0];
- assert.equal((await req('/api/facturas',{ip:fuente,headers:{cookie}})).status,401,'Una invitación no inicia sesión');
- assert.equal((await req('/api/panel/estado',{ip:fuente,headers:{cookie,'x-sgf-console-token':consola}})).status,403,'El panel sigue solo en el equipo local');
- assert.equal((await req('/api/setup/estado',{ip:fuente,headers:{cookie}})).status,403,'La configuración inicial sigue siendo local');
- assert.equal((await req('/api/facturas',{ip:otra})).status,403,'Una segunda dirección no se autoriza automáticamente');
- assert.equal((await req('/api/health',{ip:fuente,headers:{cookie,'x-forwarded-for':'203.0.113.8'}})).status,403,'Proxy no autorizado');
- r=await req('/api/auth/login',{ip:fuente,method:'POST',headers:{cookie},body:{username:'admin_ficticio',password:'para-pruebas-123'}});
+ assert.match(codigo,/^[A-Za-z0-9_-]{43}$/);assert.equal(JSON.parse(panel.texto).data.accesoDirecto,true);
+ let r=await req('/',{ip:fuente});assert.equal(r.status,200);assert(r.texto.includes('seleccionar-version.js'));assert(!r.texto.includes(codigo));
+ r=await req('/%2e%2e%2f'+path.basename(vecino)+'/privado.txt',{ip:fuente});assert.equal(r.status,403,'No se sirve un directorio vecino con el mismo prefijo');assert(!r.texto.includes('SENTINELA-NO-PUBLICA'));
+ r=await req('/api/health',{ip:fuente});assert.equal(r.status,200);assert(!r.texto.includes('sgf-data.db'),'Health no revela la ruta de la base');
+ assert.equal((await req('/api/db/config',{ip:fuente})).status,403,'Configuración BD no es pública');
+ assert.equal((await req('/api/db/disconnect',{ip:fuente,method:'POST',body:{}})).status,403,'No se puede cambiar BD sin sesión');
+ assert.equal((await req('/api/facturas',{ip:fuente})).status,401,'Sin cuenta no hay acceso a facturas');
+ for(const ruta of ['/api/panel/estado','/api/panel/enlace','/api/setup/estado']) assert.equal((await req(ruta,{ip:fuente})).status,403,ruta);
+ assert.equal((await req('/api/panel/estado',{ip:fuente,headers:{'x-sgf-console-token':consola}})).status,403,'El panel sigue local');
+ assert.equal((await req('/api/health',{ip:fuente,headers:{'x-forwarded-for':'203.0.113.8'}})).status,403,'Proxy no autorizado');
+ r=await req('/api/auth/login',{ip:fuente,method:'POST',body:{username:'admin_ficticio',password:'para-pruebas-123'}});
  assert.equal(r.status,200,r.texto);const jwt=JSON.parse(r.texto).data.token;
- r=await req('/api/facturas',{ip:fuente,headers:{cookie,authorization:`Bearer ${jwt}`}});
- assert.equal(r.status,200,r.texto);
- // Otra PC puede usar el mismo enlace, sin conocer ni configurar su IP.
- r=await req('/api/acceso/enlace',{ip:otra,method:'POST',headers:{'x-sgf-enlace':codigo}});assert.equal(r.status,204,r.texto);
- assert.equal((await req('/api/health',{ip:otra,headers:{cookie:r.headers['set-cookie'][0].split(';')[0]}})).status,200);
+ r=await req('/api/facturas',{ip:fuente,headers:{authorization:`Bearer ${jwt}`}});assert.equal(r.status,200,r.texto);
+ assert.equal((await req('/api/health',{ip:otra})).status,200,'Otra PC llega sin configurar rangos');
+ assert.equal((await req('/api/facturas',{ip:otra})).status,401);
+ for(let i=0;i<30;i++) {
+  r=await req('/api/auth/login',{ip:otra,method:'POST',body:{username:`usuario_inventado_${i}`,password:'para-pruebas-123'}});
+  assert.equal(r.status,401);
+ }
+ r=await req('/api/auth/login',{ip:otra,method:'POST',body:{username:'otro_usuario',password:'para-pruebas-123'}});
+ assert.equal(r.status,429,'Limite por IP aunque se varíe el usuario');
  const terminado=once(proceso,'exit');
  r=await req('/api/panel/apagar',{method:'POST',headers:{'x-sgf-console-token':consola}});assert.equal(r.status,200);
  const [code]=await terminado;assert.equal(code,0,logs);proceso=null;
  await arrancar();
  const panelNuevo=await req('/api/panel/enlace',{headers:{'x-sgf-console-token':consola}});
  const codigoNuevo=JSON.parse(panelNuevo.texto).data.codigoEnlace;
- assert.notEqual(codigoNuevo,codigo,'El enlace cambia al reiniciar el servidor');
- assert.equal((await req('/api/facturas',{ip:fuente,headers:{cookie,authorization:`Bearer ${jwt}`}})).status,403,'La cookie anterior no sirve tras reiniciar');
+ assert.notEqual(codigoNuevo,codigo,'El antiguo código efímero sigue cambiando, pero ya no forma parte del enlace corto');
+ assert.equal((await req('/',{ip:fuente})).status,200,'La dirección sin secreto sigue funcionando tras reiniciar');
+ assert.equal((await req('/api/facturas',{ip:fuente})).status,401,'Sin sesión siguen protegidos los datos tras reiniciar');
  const finNuevo=once(proceso,'exit');
  assert.equal((await req('/api/panel/apagar',{method:'POST',headers:{'x-sgf-console-token':consola}})).status,200);
  const [codeNuevo]=await finNuevo;assert.equal(codeNuevo,0,logs);proceso=null;
- console.log('OK: dos clientes, invitación privada, login, reinicio e invalidación de enlace con datos ficticios.');
-} finally {if(proceso&&proceso.exitCode===null){proceso.kill('SIGKILL');await once(proceso,'exit');}fs.rmSync(tmp,{recursive:true,force:true});}
+ console.log('OK: dos clientes, enlace corto estable, autenticación, límite de intentos y reinicio con datos ficticios.');
+} finally {if(proceso&&proceso.exitCode===null){proceso.kill('SIGKILL');await once(proceso,'exit');}fs.rmSync(tmp,{recursive:true,force:true});fs.rmSync(vecino,{recursive:true,force:true});}

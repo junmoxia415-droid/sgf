@@ -61,27 +61,68 @@ class ControladorServidor extends ChangeNotifier {
     type: InternetAddressType.IPv4, includeLoopback: false,
   )).expand((i) => i.addresses).map((a) => a.address).toSet();
 
+  /// No crea ni modifica DNS: solo acepta un nombre indicado por el administrador.
+  static bool nombreDnsValido(String nombre) {
+    if (nombre.length > 253 || !nombre.contains('.') || nombre == 'localhost.localdomain') return false;
+    if (InternetAddress.tryParse(nombre) != null) return false;
+    return nombre.split('.').every((p) => p.length <= 63 && RegExp(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$').hasMatch(p));
+  }
+
+  @visibleForTesting
+  Future<Set<String>> ipsLocalesDns() async => (await NetworkInterface.list(
+    type: InternetAddressType.any, includeLoopback: false,
+  )).expand((i) => i.addresses).map((a) => a.address).toSet();
+
+  @visibleForTesting
+  Future<Set<String>> resolverDns(String nombre) async =>
+      (await InternetAddress.lookup(nombre, type: InternetAddressType.any).timeout(const Duration(seconds: 4))).map((ip) => ip.address).toSet();
+
+  Future<void> guardarNombreDnsFijo(String entrada) async {
+    final nombre = entrada.trim().toLowerCase();
+    if (nombre.isNotEmpty && !nombreDnsValido(nombre)) throw StateError('Escriba un nombre DNS válido, sin http, puerto ni espacios.');
+    final anterior = ajustes.nombreDnsFijo;
+    ajustes.nombreDnsFijo = nombre.isEmpty ? null : nombre;
+    await ajustes.guardar();
+    try {
+      final guardado = jsonDecode(await archivoAjustes.readAsString()) as Map<String, dynamic>;
+      if (guardado['nombreDnsFijo'] != ajustes.nombreDnsFijo) throw const FormatException('No se guardó el nombre.');
+    } catch (_) {
+      ajustes.nombreDnsFijo = anterior;
+      throw StateError('No se pudo guardar el nombre DNS; no se modificó la configuración.');
+    }
+  }
+
   Future<bool> _hayIdentidadProtegida() async =>
       await FileSystemEntity.type('${carpetaDatos.path}${Platform.pathSeparator}red-protegida', followLinks: false) != FileSystemEntityType.notFound;
 
-  /// Solo muestra destinos cubiertos por el certificado en modo HTTPS.
-  /// Que un enlace exista no garantiza que el DNS o el cortafuegos estén listos.
+  /// En HTTPS muestra los destinos certificados y, si se configuró explícitamente,
+  /// el nombre DNS fijo que resuelve a este equipo. El nombre fijo puede no estar
+  /// cubierto por el certificado: la interfaz debe advertirlo claramente.
   Future<List<String>> enlacesRed() async {
     if (await _hayIdentidadProtegida()) {
       final identidad = await redSegura.consultar();
       if (!identidad.activa) throw StateError('La identidad HTTPS no está disponible.');
-      // La invitación solo se recibe del canal local autenticado y cambia al
-      // reiniciar. Sin ella no mostrar enlaces incompletos para otra red.
+      // El canal local autenticado confirma si el servidor admite enlaces
+      // cortos. Si es un servicio anterior, conservar su invitación anterior.
       final estado = await api.enlaceRedConsola().timeout(const Duration(seconds: 3));
+      final directo = estado['accesoDirecto'] == true;
       final codigo = estado['codigoEnlace']?.toString() ?? '';
-      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) {
-        throw StateError('No se pudo preparar el enlace privado.');
+      if (!directo && !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) {
+        throw StateError('No se pudo preparar un enlace compatible con el servidor.');
       }
       String url(String host) => Uri(scheme: 'https', host: host,
           port: ajustes.puerto == 443 ? null : ajustes.puerto,
-          fragment: 'sgf=$codigo').toString();
+          fragment: directo ? null : 'sgf=$codigo').toString();
       final enlaces = <String>[];
-      if (identidad.dns != null && identidad.dns!.isNotEmpty) enlaces.add(url(identidad.dns!));
+      final nombreFijo = ajustes.nombreDnsFijo;
+      if (directo && nombreFijo != null && nombreDnsValido(nombreFijo)) {
+        try {
+          final locales = await ipsLocalesDns();
+          final resueltos = await resolverDns(nombreFijo);
+          if (resueltos.isNotEmpty && resueltos.every(locales.contains)) enlaces.add(url(nombreFijo));
+        } catch (_) { /* No ofrecer un nombre que no apunta a este equipo. */ }
+      }
+      if (identidad.dns != null && identidad.dns!.isNotEmpty && !enlaces.contains(url(identidad.dns!))) enlaces.add(url(identidad.dns!));
       if (identidad.ipsCertificadas.isNotEmpty) {
         try {
           final actuales = await ipsLocales();

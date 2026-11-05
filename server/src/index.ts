@@ -14,7 +14,7 @@ import type { TLSSocket } from 'node:tls';
 import { iniciarNombreRed, detenerNombreRed, nombrePersistido, estadoNombreRed } from "./utils/nombre-red.js";
 import { estadoRedProtegida } from "./utils/red-protegida.js";
 import { leerRedes, permitidaRedAdicional } from "./utils/redes-autorizadas.js";
-import { codigoInvitacion, comprobarEnlace } from "./utils/enlace-seguro.js";
+import { codigoInvitacion, tlsDirecto } from "./utils/enlace-seguro.js";
 import { authenticate, authenticateOpcional, sendJson } from "./middleware/auth.js";
 import { esConsolaLocal, esPeticionLocal, esRedPrivada, tokenConsolaConfigurado } from "./middleware/local.js";
 import { handlePanelBienvenida, handlePanelCopia, handlePanelEstado, handlePanelPeriodos, handlePanelPing } from "./routes/panel.routes.js";
@@ -106,7 +106,8 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
   if (requestPath === "/") requestPath = "/index.html";
 
   const filePath = path.normalize(path.join(CLIENT_DIST_DIR, requestPath));
-  if (!filePath.startsWith(CLIENT_DIST_DIR)) {
+  const relativo = path.relative(CLIENT_DIST_DIR, filePath);
+  if (relativo === '..' || relativo.startsWith(`..${path.sep}`) || path.isAbsolute(relativo)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -137,11 +138,11 @@ const server = http.createServer(
   { requestTimeout: SERVER_CONFIG.requestTimeoutMs },
   async (req: AuthenticatedRequest, res: http.ServerResponse) => {
     if (cerrando) return sendJson(res, 503, {success:false,error:'El servidor se está cerrando.'});
-    if (!esRedPrivada(req) && !permitidaRedAdicional(req, redesAdicionales)) {
-      if (!comprobarEnlace(req, res)) {
-        if (!res.headersSent) return sendJson(res, 403, { success: false, error: "Use el enlace privado mostrado por SGF en la computadora servidora." });
-        return;
-      }
+    // Las redes no reconocidas pueden llegar solo por HTTPS directo. La web y
+    // el login son públicos en la red alcanzable; datos y panel conservan sus
+    // controles de autenticación y consola local. El firewall sigue siendo del administrador.
+    if (!esRedPrivada(req) && !permitidaRedAdicional(req, redesAdicionales) && !tlsDirecto(req)) {
+      return sendJson(res, 403, { success: false, error: "Esta conexión requiere HTTPS directo." });
     }
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
@@ -171,7 +172,9 @@ const server = http.createServer(
             version: APP_CONFIG.version,
             status: "online",
             dbMode: getDbMode(),
-            db: ping,
+            // Los visitantes no necesitan rutas locales ni mensajes de error
+            // de la BD (pueden contener nombres de servidores y archivos).
+            db: esPeticionLocal(req) ? ping : { ok: ping.ok, msg: ping.ok ? "Disponible" : "No disponible", ms: ping.ms },
             instanceId: SERVER_INSTANCE_ID,
             uptime: process.uptime(),
             memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
@@ -192,7 +195,7 @@ const server = http.createServer(
         }
         if (requestPath === "/api/panel/enlace" && req.method === "GET") {
           if (!esConsolaLocal(req) || !(req.socket as TLSSocket).encrypted) return sendJson(res, 403, { success: false, error: "Solo la consola local cifrada puede consultar el enlace privado." });
-          return sendJson(res, 200, { success: true, data: { codigoEnlace: codigoInvitacion(), accesoRed: estadoNombreRed() } });
+          return sendJson(res, 200, { success: true, data: { codigoEnlace: codigoInvitacion(), accesoDirecto: true, accesoRed: estadoNombreRed() } });
         }
         if (requestPath === "/api/panel/bienvenida" && req.method === "GET") return handlePanelBienvenida(req, res);
         if (requestPath === "/api/panel/estado" && req.method === "GET") return handlePanelEstado(req, res);

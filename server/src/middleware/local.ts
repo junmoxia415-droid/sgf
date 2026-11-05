@@ -21,7 +21,7 @@ const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"]);
 
 export function esPeticionLocal(req: IncomingMessage): boolean {
   // Si hay un proxy delante, X-Forwarded-For delata que no es una conexion directa.
-  if (req.headers["x-forwarded-for"] || req.headers["x-real-ip"]) return false;
+  if (req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || req.headers.forwarded) return false;
   const remoto = String(req.socket?.remoteAddress || "").toLowerCase();
   if (!LOOPBACK.has(remoto)) return false;
   return true;

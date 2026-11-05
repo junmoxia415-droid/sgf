@@ -16,6 +16,7 @@ class Ajustes {
     this.asistenteCompletado = false,
     this.modoBd = 'sqlite',
     this.guiaVista = false,
+    this.nombreDnsFijo,
   });
 
   int puerto;
@@ -27,6 +28,7 @@ class Ajustes {
   bool asistenteCompletado;
   String modoBd; // sqlite | oracle | mssql
   bool guiaVista;
+  String? nombreDnsFijo;
 
   /// El paquete experimental usa un perfil propio; nunca reutiliza SGF real.
   static const pruebaAislada = bool.fromEnvironment('SGF_PRUEBA_AISLADA');
@@ -63,6 +65,7 @@ class Ajustes {
         asistenteCompletado: (mapa['asistenteCompletado'] as bool?) ?? false,
         modoBd: (mapa['modoBd'] as String?) ?? 'sqlite',
         guiaVista: (mapa['guiaVista'] as bool?) ?? false,
+        nombreDnsFijo: mapa['nombreDnsFijo'] as String?,
       );
     } catch (_) {
       return Ajustes();
@@ -82,6 +85,7 @@ class Ajustes {
         'asistenteCompletado': asistenteCompletado,
         'modoBd': modoBd,
         'guiaVista': guiaVista,
+        'nombreDnsFijo': nombreDnsFijo,
       }));
     } catch (_) {
       // Si no se puede guardar, la app sigue funcionando en memoria.

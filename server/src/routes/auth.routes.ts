@@ -56,6 +56,15 @@ const LOGIN_LIMIT_PER_MIN = Number(process.env.LOGIN_RATE_PER_MIN || 30);
 const LOGIN_LIMIT_PER_15MIN = Number(process.env.LOGIN_RATE_PER_15MIN || 200);
 
 export async function handleLogin(req: AuthenticatedRequest, res: ServerResponse) {
+  // Límite por IP además del límite por usuario: variar los nombres no debe
+  // permitir intentos ilimitados en el formulario accesible desde la red.
+  const ip = getRequestIp(req);
+  const ipConexion = (req.socket.remoteAddress || "desconocida").replace("::ffff:", "");
+  const limiteIp = checkRateLimit(`login-ip:${ipConexion}`, { windowMs: 60 * 1000, max: 30 });
+  if (!limiteIp.allowed) {
+    res.setHeader("Retry-After", String(limiteIp.retryAfterSeconds));
+    return sendJson(res, 429, {success:false, error:"Demasiados intentos desde este equipo. Espere antes de volver a intentar."});
+  }
   let body: any;
   try {
     body = await readJsonBody(req);
@@ -63,7 +72,6 @@ export async function handleLogin(req: AuthenticatedRequest, res: ServerResponse
     return sendJson(res, 400, { success: false, error: "JSON invalido." });
   }
 
-  const ip = getRequestIp(req);
   const usernameAttempt = String(body.username || "").trim();
   const key = `login:${ip}:${usernameAttempt.toLowerCase() || "_"}`;
 
