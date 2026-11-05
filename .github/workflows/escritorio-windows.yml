@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.9)'
+        description: 'Versión a compilar (ej. 4.0.10)'
         required: false
-        default: '4.0.9'
+        default: '4.0.10'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.9' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.10' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -390,18 +390,18 @@ jobs:
         shell: pwsh
         run: |
           $iss = 'instalador/sgf.iss'
-          if ('${{ env.VERSION }}' -ne '4.0.9') { throw 'Esta configuración corresponde únicamente a la versión 4.0.9.' }
+          if ('${{ env.VERSION }}' -ne '4.0.10') { throw 'Esta configuración corresponde únicamente a la versión 4.0.10.' }
           (Get-Content $iss) -replace '@VERSION@', '${{ env.VERSION }}' | Set-Content $iss
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
           if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup fallo (codigo $LASTEXITCODE)"; exit 1 }
           Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
 
-      - name: Probar actualización de SGF 4.0.6 con datos ficticios
+      - name: Probar actualización de SGF 4.0.9 con datos ficticios
         shell: pwsh
         run: |
-          $antiguo = Join-Path $env:RUNNER_TEMP 'sgf-4.0.6.exe'
-          Invoke-WebRequest 'https://github.com/junmoxia415-droid/sgf/releases/download/v4.0.6/SGF-Escritorio-Setup-4.0.6.exe' -OutFile $antiguo
-          if ((Get-FileHash -Algorithm SHA256 $antiguo).Hash -ine '72933301929a904158b9963a597617f83965bb7748d55a4a3b3d12176429b1ea') { throw 'El instalador anterior no coincide con su huella.' }
+          $antiguo = Join-Path $env:RUNNER_TEMP 'sgf-4.0.9.exe'
+          Invoke-WebRequest 'https://github.com/junmoxia415-droid/sgf/releases/download/v4.0.9/SGF-Escritorio-Setup-4.0.9.exe' -OutFile $antiguo
+          if ((Get-FileHash -Algorithm SHA256 $antiguo).Hash -ine 'b55b1475eec2f91b24a6abdfa9a86d037812808b3e50b6b5b1d52f98dca1c37d') { throw 'El instalador anterior no coincide con su huella.' }
           $destino = Join-Path $env:RUNNER_TEMP 'SGF-actualizacion'
           $r = Start-Process $antiguo -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$destino`" /TASKS=`"`"" -Wait -PassThru
           if ($r.ExitCode -ne 0 -or -not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw "No se pudo instalar la versión anterior: $($r.ExitCode)" }
@@ -424,7 +424,7 @@ jobs:
           if ($r.ExitCode -ne 0 -or (Get-FileHash $testigo).Hash -ne $huella) { throw 'La actualización no conservó los datos simulados.' }
           $reg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E2C1A54-6B7D-4C3E-9F11-7A5D2B4C8E90}_is1'
           $info = Get-ItemProperty $reg
-          if ($info.DisplayVersion -ne '4.0.9' -or $info.InstallLocation.TrimEnd('\') -ine $destino.TrimEnd('\')) { throw 'La nueva versión no actualizó la instalación anterior.' }
+          if ($info.DisplayVersion -ne '4.0.10' -or $info.InstallLocation.TrimEnd('\') -ine $destino.TrimEnd('\')) { throw 'La nueva versión no actualizó la instalación anterior.' }
           if (-not (Test-Path (Join-Path $destino 'servicio/gestionar.ps1'))) { throw 'Falta el gestor de servicio.' }
           Write-Host 'Actualización en la misma carpeta, bloqueo de proceso activo y datos ficticios conservados: OK.'
 

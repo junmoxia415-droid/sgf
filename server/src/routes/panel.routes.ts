@@ -120,7 +120,7 @@ export async function handlePanelEstado(req: IncomingMessage, res: ServerRespons
   return sendJson(res, 200, {
     success: true,
     data: {
-      version: "4.0.9",
+      version: "4.0.10",
       pid: process.pid,
       uptimeSegundos: Math.round((Date.now() - INICIO) / 1000),
       puerto: Number(process.env.PORT) || 3000,
