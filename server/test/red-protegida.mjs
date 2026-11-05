@@ -20,6 +20,7 @@ try {
   const identidad=await prepararRedProtegida(dir);
   assert.match(identidad.nombre,/^sgf-[a-f0-9]{12}\.local$/);
   assert.match(identidad.huella,/^[a-f0-9]{64}$/);
+  assert.equal(identidad.cubreNombreAmigable,true,'Una nueva identidad incluye el nombre corto');
   if(process.platform!=='win32') assert.equal(statSync(join(dir,'red-protegida')).mode & 0o077,0);
   const clave=readFileSync(identidad.claveServidor,'utf8');
   const ca=readFileSync(identidad.certificadoPublico,'utf8');
@@ -29,6 +30,7 @@ try {
   let respuesta;
   for(let i=0;i<150;i++){try{respuesta=await get({servername:identidad.nombre,ca});break;}catch{if(proc.exitCode!==null)throw Error(log);await espera(100);}}
   assert.equal(respuesta?.status,200,'El servidor real debe iniciar HTTPS usando la identidad persistida');
+  assert.equal((await get({servername:'sgf-minint.local',ca})).status,200,'Nombre corto cubierto en identidades nuevas');
   await assert.rejects(get({servername:identidad.nombre}),/certificate|issuer|self.signed/i);
   await assert.rejects(get({servername:'otro.local',ca}),/altname|hostname|certificate/i);
   const plano=await new Promise(resolve=>{const r=http.get({host:'127.0.0.1',port,path:'/api/health',timeout:3000},res=>{res.resume();resolve(res.statusCode);});r.on('error',()=>resolve(null));r.on('timeout',()=>{r.destroy();resolve(null);});});

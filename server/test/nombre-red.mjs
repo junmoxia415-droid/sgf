@@ -17,6 +17,7 @@ let ips=['192.168.10.31','8.8.8.8']; let opciones=[]; let cerrados=0; let confli
 class Servicio extends EventEmitter {
  constructor(ajustes){super();this.ajustes=ajustes;}
  async advertise(){if(conflicto)this.emit('hostname-change','falso');}
+ async destroy(){}
  getHostname(){return `${this.ajustes.hostname}.local.`;}
 }
 function crear(){return {createService(o){opciones.push(o);ultimoServicio=new Servicio(o);return ultimoServicio;},async shutdown(){cerrados++;}};}

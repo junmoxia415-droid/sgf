@@ -1,6 +1,7 @@
 import selfsigned from 'selfsigned';
 import {createPrivateKey,randomBytes,X509Certificate} from 'node:crypto';
 import {isIP} from 'node:net';
+import {NOMBRE_AMIGABLE} from './nombre-red.js';
 
 /** Identidad de laboratorio. La clave de CA no se devuelve ni se escribe.
  * No habilita HTTPS por sí sola: falta un almacén de clave protegido, instalación
@@ -23,10 +24,10 @@ export async function crearIdentidadRed(nombre:string,dns?:string,ip?:string,ips
   });
   const servidor=await selfsigned.generate([{name:'commonName',value:nombre}],{
     ...comun,notAfterDate:new Date(ahora+365*86400000),ca:{key:autoridad.private,cert:autoridad.cert},
-    extensions:[{name:'basicConstraints',cA:false,critical:true},{name:'keyUsage',digitalSignature:true,critical:true},{name:'extKeyUsage',serverAuth:true},{name:'subjectAltName',altNames:[{type:2,value:nombre},...(dns ? [{type:2 as const,value:dns}] : []),...ips.map(ip=>({type:7 as const,ip}))]}],
+    extensions:[{name:'basicConstraints',cA:false,critical:true},{name:'keyUsage',digitalSignature:true,critical:true},{name:'extKeyUsage',serverAuth:true},{name:'subjectAltName',altNames:[{type:2,value:nombre},{type:2,value:NOMBRE_AMIGABLE},...(dns && dns!==NOMBRE_AMIGABLE ? [{type:2 as const,value:dns}] : []),...ips.map(ip=>({type:7 as const,ip}))]}],
   });
   const raiz=new X509Certificate(autoridad.cert), hoja=new X509Certificate(servidor.cert);
-  if(!raiz.ca || hoja.ca || !hoja.verify(raiz.publicKey) || !hoja.checkPrivateKey(createPrivateKey(servidor.private)) || hoja.checkHost(nombre)!==nombre || (dns && hoja.checkHost(dns)!==dns) || ips.some(ip=>hoja.checkIP(ip)!==ip)) {
+  if(!raiz.ca || hoja.ca || !hoja.verify(raiz.publicKey) || !hoja.checkPrivateKey(createPrivateKey(servidor.private)) || hoja.checkHost(nombre)!==nombre || hoja.checkHost(NOMBRE_AMIGABLE)!==NOMBRE_AMIGABLE || (dns && hoja.checkHost(dns)!==dns) || ips.some(ip=>hoja.checkIP(ip)!==ip)) {
     throw new Error('No se pudo validar la identidad de red generada.');
   }
   return {

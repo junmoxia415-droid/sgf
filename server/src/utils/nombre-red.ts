@@ -11,8 +11,12 @@ export type EstadoNombreRed = {
   nombre: string | null;
   enlace: string | null;
   mensaje: string;
+  nombreAmigable?: string | null;
+  enlaceAmigable?: string | null;
+  mensajeAmigable?: string;
 };
-type ServicioRed = Pick<CiaoService,'on'|'advertise'|'getHostname'>;
+type ServicioRed = Pick<CiaoService,'on'|'advertise'|'getHostname'|'destroy'>;
+export const NOMBRE_AMIGABLE = 'sgf-minint.local';
 type RespondedorRed = {createService(opciones:ServiceOptions):ServicioRed; shutdown():Promise<void>};
 type Opciones = {direcciones?:()=>string[]; crearRespondedor?:()=>RespondedorRed; intervaloMs?:number};
 
@@ -147,6 +151,38 @@ export class AnunciadorRed {
       if(host!==`${nombre}.local`) throw new Error('El nombre local publicado no coincide con el esperado.');
       this.estado={estado:'activo',nombre:host,enlace:crearEnlaceRed(host,this.puerto,this.protocolo),mensaje:'Nombre publicado en esta red; depende de que los clientes acepten mDNS.'};
       console.log(`[SGF] Nombre de red local: ${this.estado.enlace}`);
+      // Un segundo nombre corto no cambia la identidad persistida ni la CA.
+      // Si existe otro SGF con el mismo nombre, no anunciar el renombrado.
+      if(this.protocolo==='https') {
+        let alias: ServicioRed | null=null;
+        let conflictoAlias=false;
+        let anuncioTerminado=false;
+        const falloAlias=()=>{
+          conflictoAlias=true;
+          if(this.responder===responder && this.estado.estado==='activo') {
+            this.estado={...this.estado,nombreAmigable:null,enlaceAmigable:null,mensajeAmigable:'El nombre sgf-minint.local está ocupado. Detenga el otro servidor SGF o use el enlace alternativo.'};
+            if(alias && anuncioTerminado) void alias.destroy().catch(()=>{});
+          }
+        };
+        try {
+          alias=responder.createService({name:'sgf-minint',hostname:'sgf-minint',type:'https',port:this.puerto,
+            disabledIpv6:true,restrictedAddresses:direcciones});
+          alias.on('name-change',falloAlias);alias.on('hostname-change',falloAlias);
+          await alias.advertise();
+          anuncioTerminado=true;
+          if(this.detenido || this.responder!==responder) {await alias.destroy();return;}
+          if(conflictoAlias || alias.getHostname().replace(/\.$/,'').toLowerCase()!==NOMBRE_AMIGABLE) {
+            falloAlias();
+          } else {
+            this.estado={...this.estado,nombreAmigable:NOMBRE_AMIGABLE,enlaceAmigable:crearEnlaceRed(NOMBRE_AMIGABLE,this.puerto,'https'),mensajeAmigable:'Nombre local disponible en redes compatibles con mDNS.'};
+            console.log(`[SGF] Nombre local corto: ${this.estado.enlaceAmigable}`);
+          }
+        } catch(error:any) {
+          if(alias) try {await alias.destroy();} catch {}
+          if(!this.detenido && this.responder===responder && this.estado.estado==='activo')
+            this.estado={...this.estado,nombreAmigable:null,enlaceAmigable:null,mensajeAmigable:'No se pudo publicar el nombre corto; use otro enlace.'};
+        }
+      }
     } catch(error:any) {
       try { await this.cerrarAnuncio(); } catch { /* No impedir el cierre del servidor. */ }
       if(!this.detenido) {

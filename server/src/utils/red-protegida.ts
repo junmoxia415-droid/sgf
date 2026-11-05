@@ -6,14 +6,14 @@ import {crearIdentidadRed, nombreDnsValido} from './identidad-red.js';
 import {lookup} from 'node:dns/promises';
 import os from 'node:os';
 import {isIP} from 'node:net';
-import {nombrePersistido} from './nombre-red.js';
+import {nombrePersistido,NOMBRE_AMIGABLE} from './nombre-red.js';
 
 // Solo crea datos para el usuario actual; no modifica el almacén de certificados,
 // el cortafuegos ni las políticas. En cuanto existe la carpeta, un inicio con
 // identidad incompleta debe fallar cerrado: nunca volver silenciosamente a HTTP.
 export type EstadoRedProtegida = {
   activo: true; nombre: string; huella: string; caduca: string;
-  certificadoPublico: string; certificadoServidor: string; claveServidor: string; dns?:string; ip?:string; ips?:string[];
+  certificadoPublico: string; certificadoServidor: string; claveServidor: string; dns?:string; ip?:string; ips?:string[]; cubreNombreAmigable:boolean;
 };
 const carpetaRed=(datos:string)=>path.join(datos,'red-protegida');
 function archivoRegular(p:string) {
@@ -51,7 +51,7 @@ export function estadoRedProtegida(datos:string):EstadoRedProtegida|null {
      Date.parse(hoja.validFrom)>ahora || Date.parse(hoja.validTo)<=ahora) {
     throw new Error('El certificado de red, su clave o su vigencia no son válidos.');
   }
-  return {activo:true,nombre,huella,caduca:hoja.validTo,certificadoPublico:pub,certificadoServidor:cert,claveServidor:key,dns:guardado.dns,ip:guardado.ip,ips:guardado.ips};
+  return {activo:true,nombre,huella,caduca:hoja.validTo,certificadoPublico:pub,certificadoServidor:cert,claveServidor:key,cubreNombreAmigable:hoja.checkHost(NOMBRE_AMIGABLE)===NOMBRE_AMIGABLE,dns:guardado.dns,ip:guardado.ip,ips:guardado.ips};
 }
 export async function prepararRedProtegida(datos:string,dns?:string,ipSolicitada?:string, opciones?: {locales:()=>string[]; resolver:(nombre:string)=>Promise<string[]>}):Promise<EstadoRedProtegida> {
   if(!path.isAbsolute(datos)) throw new Error('La carpeta de datos debe ser absoluta.');

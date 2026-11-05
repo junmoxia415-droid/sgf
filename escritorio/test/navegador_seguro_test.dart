@@ -48,6 +48,13 @@ void main() {
       api.estado = {'accesoDirecto': true, 'accesoRed': {'estado':'activo', 'enlace':'https://sgf-123456abcdef.local'}};
       expect(await c.enlacesRed(), ['https://sgf.ejemplo.test', 'https://105.34.3.13', 'https://sgf-123456abcdef.local']);
       expect(await c.enlaceParaNavegador(), 'https://sgf.ejemplo.test');
+      api.estado = {'accesoDirecto':true, 'accesoRed':{'estado':'activo', 'enlace':'https://sgf-123456abcdef.local', 'enlaceAmigable':'https://sgf-minint.local'}};
+      expect((await c.enlacesRed()).first,'https://sgf-minint.local');
+      expect(await c.enlacesRed(),isNot(contains('https://sgf-123456abcdef.local')),reason:'Evitar mostrar el nombre largo si el corto funciona');
+      expect(await c.enlaceParaNavegador(),'https://sgf-minint.local');
+      api.estado = {'accesoDirecto':true, 'accesoRed':{'estado':'activo', 'enlace':'https://sgf-123456abcdef.local', 'enlaceAmigable':'https://otra.local'}};
+      expect(await c.enlacesRed(),isNot(contains('https://otra.local')));
+      api.estado = {'accesoDirecto':true, 'accesoRed':{'estado':'activo', 'enlace':'https://sgf-123456abcdef.local'}};
       ajustes.nombreDnsFijo = 'sgf.vcl.mn';
       c.dns = {'105.34.3.13'};
       expect((await c.enlacesRed()).first, 'https://sgf.vcl.mn');

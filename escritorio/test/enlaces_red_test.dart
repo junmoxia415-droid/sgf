@@ -41,7 +41,28 @@ class ControlNombreFijo extends ControlEnlaceHttps {
   @override Future<List<String>> enlacesRed() async => ajustes.nombreDnsFijo == null ? [] : ['https://${ajustes.nombreDnsFijo}'];
 }
 
+class ApiNombreCorto extends ApiEnlaceHttps {
+  @override Future<Map<String, dynamic>> panelEstado() async => {'accesoDirecto':true,'accesoRed':{'estado':'activo','enlace':'https://sgf-123456abcdef.local','enlaceAmigable':'https://sgf-minint.local'}};
+}
+class ControlNombreCorto extends ControlEnlaceHttps {
+  ControlNombreCorto({required super.ajustes,required super.api});
+  @override Future<List<String>> enlacesRed() async => ['https://sgf-minint.local'];
+}
+
 void main() {
+  testWidgets('Muestra nombre corto y advierte si el certificado anterior no lo cubre', (tester) async {
+    tester.view.physicalSize=const Size(1040,680);tester.view.devicePixelRatio=1;addTearDown(tester.view.reset);
+    final ajustes=Ajustes(puerto:443), api=ApiNombreCorto();
+    final servidor=ControlNombreCorto(ajustes:ajustes,api:api)..estado=EstadoServidor.enMarcha;
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:ServidorPantalla(servidor:servidor,api:api,ajustes:ajustes,iniciarSesion:() async=>true,inicioWindows:InicioWindows(windows:false))))));
+    await tester.pumpAndSettle();
+    expect(find.text('https://sgf-minint.local'),findsOneWidget);
+    expect(find.textContaining('El certificado anterior no incluye este nombre'),findsOneWidget);
+    expect(find.text('https://sgf-123456abcdef.local'),findsNothing,reason:'No priorizar el nombre largo cuando el corto está disponible');
+    expect(tester.takeException(),isNull);
+    await tester.pumpWidget(const SizedBox.shrink());servidor.dispose();
+  });
+
   testWidgets('Configura nombre fijo y advierte si el certificado no lo cubre', (tester) async {
     tester.view.physicalSize=const Size(1040,680);tester.view.devicePixelRatio=1;addTearDown(tester.view.reset);
     final ajustes=Ajustes(puerto:443), api=ApiEnlaceHttps();

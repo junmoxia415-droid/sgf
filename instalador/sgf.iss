@@ -137,7 +137,7 @@ begin
   else if Codigo = 2 then
     Result := 'SGF o su servidor siguen abiertos. Cierre SGF normalmente y vuelva a ejecutar el instalador. No se ha terminado ningun proceso.'
   else if Codigo = 3 then
-    Result := 'Existe el servicio SGFServidor. Desactive el servicio desde SGF antes de actualizar; el instalador no lo modifica ni lo detiene.'
+    Result := 'Existe el servicio SGFServidor. Aunque este detenido, no se actualiza automaticamente. Consulte al administrador; el instalador no modifica ni elimina el servicio.'
   else if Codigo <> 0 then
     Result := 'No se pudo comprobar con seguridad si SGF esta en uso. Cierre SGF y contacte al administrador; no se instalaron archivos.';
 end;

@@ -302,7 +302,12 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
     if (!widget.servidor.enMarcha) return;
     try {
       final datos = await widget.api.panelEstado();
-      if (mounted) setState(() => _estado = datos);
+      final antes = (_estado?['accesoRed'] as Map?)?['enlaceAmigable'];
+      final despues = (datos['accesoRed'] as Map?)?['enlaceAmigable'];
+      if (mounted) {
+        setState(() => _estado = datos);
+        if (antes != despues && !_consultandoRed) unawaited(_consultarRed());
+      }
     } on ApiError {
       if (mounted) setState(() => _estado = null);
     }
@@ -334,7 +339,9 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
       if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(codigo)) return null;
       return Uri.parse(url).replace(fragment: 'sgf=$codigo').toString();
     }
-    final enlaceEstable = accesoRed['estado'] == 'activo' ? privado(accesoRed['enlace']?.toString()) : null;
+    final enlaceCorto = directo && accesoRed['estado'] == 'activo' && Uri.tryParse('${accesoRed['enlaceAmigable'] ?? ''}')?.host == 'sgf-minint.local'
+        ? _enlaces.where((e) => Uri.tryParse(e)?.host == 'sgf-minint.local').firstOrNull : null;
+    final enlaceEstable = accesoRed['estado'] == 'activo' && enlaceCorto == null ? privado(accesoRed['enlace']?.toString()) : null;
     final nombreEquipo = Platform.localHostname;
     final nombreUtilizable = RegExp(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$').hasMatch(nombreEquipo)
         && nombreEquipo.toLowerCase() != 'localhost';
@@ -481,6 +488,17 @@ class _ServidorPantallaState extends State<ServidorPantalla> {
                         Text(_estado == null
                           ? 'Preparando el enlace privado…'
                           : 'Este servidor no ha proporcionado un enlace privado. Revise que el servicio de Windows esté actualizado; no se cambiará automáticamente.'),
+                      if (enMarcha && enlaceCorto != null) ...[
+                        const Text('Nombre local corto', style: TextStyle(fontWeight: FontWeight.w700)),
+                        Row(children: [Expanded(child: SelectableText(enlaceCorto, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                          OutlinedButton.icon(onPressed: () async {await Clipboard.setData(ClipboardData(text: enlaceCorto)); if (context.mounted) avisar(context, 'Nombre corto copiado.');}, icon: const Icon(Icons.copy, size: 18), label: const Text('Copiar nombre corto'))]),
+                        if (_redSegura?.cubreNombreAmigable != true) const Text('El certificado anterior no incluye este nombre. Una advertencia impide comprobar la identidad; consulte al administrador antes de introducir contraseñas.', style: TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                        const Text('Funciona donde la red y las PC admiten mDNS. Debe estar activo un solo servidor con este nombre. Sin puerto visible se requiere el puerto 443.', style: TextStyle(fontSize: 12.5)),
+                        const SizedBox(height: 12),
+                      ] else if (enMarcha && accesoRed['mensajeAmigable'] != null) ...[
+                        Text('${accesoRed['mensajeAmigable']}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFB8730B))),
+                        const SizedBox(height: 8),
+                      ],
                       if (segura) ...[
                         OutlinedButton.icon(onPressed: _configurarNombreFijo, icon: const Icon(Icons.language, size: 18), label: const Text('Configurar nombre DNS fijo')),
                         if (nombreFijo != null) ...[

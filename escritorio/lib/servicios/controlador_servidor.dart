@@ -114,12 +114,19 @@ class ControladorServidor extends ChangeNotifier {
           port: ajustes.puerto == 443 ? null : ajustes.puerto,
           fragment: directo ? null : 'sgf=$codigo').toString();
       final enlaces = <String>[];
+      final anuncio = estado['accesoRed'];
+      if (directo && anuncio is Map && anuncio['estado'] == 'activo') {
+        final corto = Uri.tryParse('${anuncio['enlaceAmigable'] ?? ''}');
+        if (corto?.scheme == 'https' && corto?.host == 'sgf-minint.local' && corto?.port == ajustes.puerto && corto?.path == '' && corto?.hasQuery == false && corto?.hasFragment == false && corto?.userInfo == '') {
+          enlaces.add(url('sgf-minint.local'));
+        }
+      }
       final nombreFijo = ajustes.nombreDnsFijo;
       if (directo && nombreFijo != null && nombreDnsValido(nombreFijo)) {
         try {
           final locales = await ipsLocalesDns();
           final resueltos = await resolverDns(nombreFijo);
-          if (resueltos.isNotEmpty && resueltos.every(locales.contains)) enlaces.add(url(nombreFijo));
+          if (resueltos.isNotEmpty && resueltos.every(locales.contains) && !enlaces.contains(url(nombreFijo))) enlaces.add(url(nombreFijo));
         } catch (_) { /* No ofrecer un nombre que no apunta a este equipo. */ }
       }
       if (identidad.dns != null && identidad.dns!.isNotEmpty && !enlaces.contains(url(identidad.dns!))) enlaces.add(url(identidad.dns!));
@@ -135,7 +142,7 @@ class ControladorServidor extends ChangeNotifier {
       // está anunciando, y siempre se construye con el nombre certificado.
       try {
         final anuncio = estado['accesoRed'];
-        if (anuncio is Map && anuncio['estado'] == 'activo' && identidad.nombre != null) {
+        if (!enlaces.contains(url('sgf-minint.local')) && anuncio is Map && anuncio['estado'] == 'activo' && identidad.nombre != null) {
           final anunciado = Uri.tryParse('${anuncio['enlace'] ?? ''}');
           if (anunciado?.scheme == 'https' && anunciado?.host == identidad.nombre && anunciado?.port == ajustes.puerto) {
             enlaces.add(url(identidad.nombre!));

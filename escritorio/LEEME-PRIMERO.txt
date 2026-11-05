@@ -102,7 +102,8 @@ empezar desde cero, se archiva la carpeta local SGF en una carpeta SGF-respaldo
 y aparece el asistente. Cierre todas las ventanas de SGF antes de instalar.
 Las bases de datos externas no se borran. Guarde una copia aparte antes de
 actualizar o elegir empezar de cero. Cierre SGF y su servidor de forma normal
-antes de instalar. Si existe el servicio SGFServidor, desactivelo desde SGF
-antes de actualizar. El instalador no lo detiene ni elimina automaticamente.
+antes de instalar. Si existe el servicio SGFServidor, la actualizacion se
+bloquea incluso si esta detenido. Consulte al administrador; el instalador no
+lo detiene ni elimina automaticamente.
 Si configura un nombre DNS fijo, SGF no cambia el DNS ni el certificado;
 al cambiar de equipo actualice el registro DNS manualmente.

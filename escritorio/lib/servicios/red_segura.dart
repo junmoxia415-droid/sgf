@@ -3,8 +3,9 @@ import 'dart:io';
 
 /// Datos públicos de la identidad LAN. La clave privada nunca sale de la carpeta protegida.
 class EstadoRedSegura {
-  const EstadoRedSegura({required this.activa, this.nombre, this.dns, this.ip, this.ips = const [], this.huella, this.caduca, this.certificadoPublico});
+  const EstadoRedSegura({required this.activa, this.nombre, this.dns, this.ip, this.ips = const [], this.huella, this.caduca, this.certificadoPublico, this.cubreNombreAmigable = false});
   final bool activa;
+  final bool cubreNombreAmigable;
   final String? nombre;
   final String? dns;
   final String? ip;
@@ -54,7 +55,7 @@ class RedSegura {
       // La ruta se fija localmente; nunca se acepta una ruta devuelta por otro proceso.
       final publico = '$datos${Platform.pathSeparator}red-protegida${Platform.pathSeparator}autoridad-publica.crt';
       if (!await File(publico).exists()) throw const FormatException('Falta el certificado público');
-      return EstadoRedSegura(activa: true, nombre: nombre, dns: dns, ip: ip, ips: ips, huella: huella, caduca: caduca, certificadoPublico: publico);
+      return EstadoRedSegura(activa: true, cubreNombreAmigable: mapa['cubreNombreAmigable'] == true, nombre: nombre, dns: dns, ip: ip, ips: ips, huella: huella, caduca: caduca, certificadoPublico: publico);
     } catch (_) {
       throw StateError('La respuesta de identidad HTTPS no es válida. No se activará HTTP automáticamente.');
     }

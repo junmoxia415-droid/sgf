@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { gzip as gzipCallback } from "node:zlib";
+import { promisify } from "node:util";
 import { APP_CONFIG, SERVER_CONFIG } from "./config/index.js";
 import { closeDb, DATA_DIR, getDbMode, initDatabase, pingDb } from "./models/database.js";
 import { BloqueoDatos } from "./utils/bloqueo-datos.js";
@@ -101,6 +103,10 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+const gzip = promisify(gzipCallback);
+// Solo se cachean recursos estáticos de nombres con hash: no contiene datos del usuario.
+const gzipAssets = new Map<string, Promise<Buffer>>();
+
 async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, url: URL) {
   let requestPath = decodeURIComponent(url.pathname || "/");
   if (requestPath === "/") requestPath = "/index.html";
@@ -116,7 +122,20 @@ async function serveStatic(req: AuthenticatedRequest, res: http.ServerResponse, 
   try {
     const content = await fs.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache, no-store, must-revalidate" : "public, max-age=3600" });
+    const recursoVersionado = /\/assets\/[^/]+-[a-zA-Z0-9_-]{8,}\.(?:js|css)$/.test(requestPath);
+    const admiteGzip = /(?:^|,)\s*gzip\s*(?:;\s*q=(?!0(?:\.0*)?(?:,|$))[^,]+)?(?:,|$)/i.test(String(req.headers['accept-encoding'] || ''));
+    const puedeComprimir = recursoVersionado && content.length > 1024;
+    const headers: Record<string,string> = {"Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": recursoVersionado ? "public, max-age=31536000, immutable" : ext === ".html" ? "no-cache, no-store, must-revalidate" : "public, max-age=3600"};
+    if (puedeComprimir) headers['Vary'] = 'Accept-Encoding';
+    if (puedeComprimir && admiteGzip) {
+      let comprimido = gzipAssets.get(filePath);
+      if (!comprimido) { comprimido = gzip(content); gzipAssets.set(filePath,comprimido); }
+      try {
+        const bytes = await comprimido;
+        if(bytes.length < content.length) { headers['Content-Encoding']='gzip'; res.writeHead(200,headers); return res.end(bytes); }
+      } catch { gzipAssets.delete(filePath); /* Servir original si falla compresión. */ }
+    }
+    res.writeHead(200, headers);
     res.end(content);
     return;
   } catch {

@@ -62,6 +62,9 @@ jobs:
           python3 test/red-y-permisos.py
           node test/migracion-permisos.mjs
           node test/nombre-red.mjs
+          node test/nombre-corto.mjs
+          node test/nombre-corto-mdns-local.mjs
+          node test/certificado-anterior-nombre-corto.mjs
           node test/redes-autorizadas.mjs
           node test/enlace-seguro.mjs
           node test/aislamiento-prueba.mjs
@@ -81,6 +84,10 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
+
+      - name: Probar transferencia web comprimida
+        working-directory: server
+        run: node --no-warnings test/estaticos-rapidos.mjs
 
       - name: Probar clientes en redes ficticias diferentes
         working-directory: server
