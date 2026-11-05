@@ -54,7 +54,7 @@ PrivilegesRequiredOverridesAllowed=dialog
 ; No permitir dos instalaciones a la vez sobre la misma carpeta.
 SetupMutex=SGF_Escritorio_Instalador
 ; Los datos NO se borran al desinstalar: van en %LOCALAPPDATA%\SGF
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
 
 [Languages]
@@ -65,6 +65,7 @@ Name: "escritorio"; Description: "Crear un acceso directo en el escritorio"; Gro
 Name: "inicio"; Description: "Abrir SGF automáticamente al iniciar sesión en Windows"; GroupDescription: "Opciones:"; Flags: unchecked
 
 [Files]
+Source: "..\escritorio\windows\servicio\verificar-actualizacion.ps1"; Flags: dontcopy
 ; Todo el contenido de la carpeta de distribución: la app, el servidor, Node y
 ; las dependencias. Si algo faltara, la compilación falla antes de llegar aquí.
 Source: "..\distribucion\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -118,6 +119,27 @@ begin
       mbConfirmation, MB_YESNO) = IDNO then
       Result := False;
   end;
+end;
+
+// No cerrar ni terminar procesos automáticamente: si hay un servidor o un
+// servicio propio en uso, la actualización se detiene sin tocar los datos.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Codigo: Integer;
+  Script, PowerShell: String;
+begin
+  Result := '';
+  ExtractTemporaryFile('verificar-actualizacion.ps1');
+  Script := ExpandConstant('{tmp}\verificar-actualizacion.ps1');
+  PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  if not Exec(PowerShell, '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + Script + '" -Carpeta "' + ExpandConstant('{app}') + '"', '', SW_HIDE, ewWaitUntilTerminated, Codigo) then
+    Result := 'No se pudo comprobar si SGF esta en uso. No se instalaron archivos.'
+  else if Codigo = 2 then
+    Result := 'SGF o su servidor siguen abiertos. Cierre SGF normalmente y vuelva a ejecutar el instalador. No se ha terminado ningun proceso.'
+  else if Codigo = 3 then
+    Result := 'Existe el servicio SGFServidor. Desactive el servicio desde SGF antes de actualizar; el instalador no lo modifica ni lo detiene.'
+  else if Codigo <> 0 then
+    Result := 'No se pudo comprobar con seguridad si SGF esta en uso. Cierre SGF y contacte al administrador; no se instalaron archivos.';
 end;
 
 // Página de bienvenida propia: en dos líneas explica qué se va a instalar y

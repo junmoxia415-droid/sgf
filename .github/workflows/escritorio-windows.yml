@@ -14,12 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.0.8)'
+        description: 'Versión a compilar (ej. 4.0.9)'
         required: false
-        default: '4.0.8'
+        default: '4.0.9'
 
 env:
-  VERSION: ${{ github.event.inputs.version || '4.0.8' }}
+  VERSION: ${{ github.event.inputs.version || '4.0.9' }}
 
 # Permiso para publicar la Release con el .exe dentro.
 permissions:
@@ -68,12 +68,19 @@ jobs:
           node test/red-institucional.mjs
           node test/exclusion-datos.mjs
           node test/guardado-fallido.mjs
+          node test/excel-columnas-vacias.mjs
           node test/control-tls.mjs
           node test/pdf-guardado.mjs
           node test/pdf-variados-api.mjs
           node test/transacciones.mjs
           node test/dbconfig-sqlite.mjs
           npx tsx src/scripts/prueba-pdf-layout.ts
+
+      - name: Preparar web para la prueba de acceso directo
+        working-directory: client
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
 
       - name: Probar clientes en redes ficticias diferentes
         working-directory: server
@@ -214,7 +221,7 @@ jobs:
 
       - name: Compilar ejecutable
         working-directory: escritorio
-        run: flutter build windows --release --build-name=${{ env.VERSION }} --dart-define=SGF_VERSION=${{ env.VERSION }} --dart-define=SGF_PRUEBA_AISLADA=true
+        run: flutter build windows --release --build-name=${{ env.VERSION }} --dart-define=SGF_VERSION=${{ env.VERSION }}
 
       # ── Montaje del paquete: .exe + servidor + Node + dependencias ─────────
       - name: Preparar Node portatil
@@ -284,8 +291,15 @@ jobs:
           Copy-Item -Recurse 'client/dist' (Join-Path $destino 'client/dist')
 
           # 3) Material de apoyo
-          Copy-Item 'escritorio/LEEME-PRUEBA.txt' (Join-Path $destino 'LEEME-PRIMERO.txt')
-          # No incluir gestor de servicio en la edición de prueba aislada.
+          Copy-Item 'escritorio/LEEME-PRIMERO.txt' (Join-Path $destino 'LEEME-PRIMERO.txt')
+          $servicio = Join-Path $destino 'servicio'
+          New-Item -ItemType Directory -Force -Path $servicio | Out-Null
+          $csc = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+          $salidaServicio = Join-Path $servicio 'sgf_servicio.exe'
+          $codigoServicio = (Resolve-Path 'escritorio/windows/servicio/ServicioSgf.cs').Path
+          & $csc /nologo /target:exe /reference:System.ServiceProcess.dll "/out:$salidaServicio" $codigoServicio
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el servicio de SGF.' }
+          Copy-Item 'escritorio/windows/servicio/gestionar.ps1' $servicio
           Get-ChildItem $destino | Select-Object Name, Length
 
       - name: Probar TLS con Node y dependencias del paquete
@@ -317,6 +331,8 @@ jobs:
             'distribucion\servidor\dist\scripts\supervisor-servicio.js',
             'distribucion\servidor\dist\scripts\red-protegida.js',
             'distribucion\servidor\dist\scripts\redes-autorizadas.js',
+            'distribucion\servicio\sgf_servicio.exe',
+            'distribucion\servicio\gestionar.ps1',
             'distribucion\client\dist\index.html',
             'distribucion\LEEME-PRIMERO.txt'
           )
@@ -366,34 +382,44 @@ jobs:
       - name: Generar instalador
         shell: pwsh
         run: |
-          $iss = 'instalador/sgf-prueba.iss'
-          if ('${{ env.VERSION }}' -ne '4.0.8') { throw 'Este instalador aislado solo corresponde a la prueba 4.0.8.' }
+          $iss = 'instalador/sgf.iss'
+          if ('${{ env.VERSION }}' -ne '4.0.9') { throw 'Esta configuración corresponde únicamente a la versión 4.0.9.' }
           (Get-Content $iss) -replace '@VERSION@', '${{ env.VERSION }}' | Set-Content $iss
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' $iss
           if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup fallo (codigo $LASTEXITCODE)"; exit 1 }
           Get-ChildItem 'instalador/*.exe' | Select-Object Name, Length
 
-      - name: Probar instalación aislada sin tocar datos anteriores
+      - name: Probar actualización de SGF 4.0.6 con datos ficticios
         shell: pwsh
         run: |
-          $datosRealesSimulados = Join-Path $env:APPDATA 'SGF'
-          $destino = Join-Path $env:LOCALAPPDATA 'SGF-Prueba-4.0.8'
-          New-Item -ItemType Directory -Force -Path $datosRealesSimulados | Out-Null
-          $testigo = Join-Path $datosRealesSimulados ('ensayo-conservar-' + [guid]::NewGuid().ToString() + '.txt')
-          Set-Content $testigo 'informacion ficticia'
+          $antiguo = Join-Path $env:RUNNER_TEMP 'sgf-4.0.6.exe'
+          Invoke-WebRequest 'https://github.com/junmoxia415-droid/sgf/releases/download/v4.0.6/SGF-Escritorio-Setup-4.0.6.exe' -OutFile $antiguo
+          if ((Get-FileHash -Algorithm SHA256 $antiguo).Hash -ine '72933301929a904158b9963a597617f83965bb7748d55a4a3b3d12176429b1ea') { throw 'El instalador anterior no coincide con su huella.' }
+          $destino = Join-Path $env:RUNNER_TEMP 'SGF-actualizacion'
+          $r = Start-Process $antiguo -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$destino`" /TASKS=`"`"" -Wait -PassThru
+          if ($r.ExitCode -ne 0 -or -not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw "No se pudo instalar la versión anterior: $($r.ExitCode)" }
+          $datos = Join-Path $env:APPDATA 'SGF/datos'
+          New-Item -ItemType Directory -Force -Path $datos | Out-Null
+          $testigo = Join-Path $datos 'sgf-data.db'
+          Set-Content $testigo 'datos SQLite simulados: no son facturas reales'
+          $huella = (Get-FileHash $testigo).Hash
           $exe = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
+          $nodo = Join-Path $destino 'servidor/runtime/node.exe'
+          Copy-Item (Get-Command node).Source $nodo -Force
+          $proceso = Start-Process $nodo -ArgumentList '-e "setInterval(()=>{},1000)"' -PassThru -NoNewWindow
           try {
-            $prueba = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=""' -Wait -PassThru
-            if ($prueba.ExitCode -ne 0) { throw "El instalador devolvió $($prueba.ExitCode)" }
-            if (-not (Test-Path (Join-Path $destino 'sgf_escritorio.exe'))) { throw 'La prueba no se instaló en su carpeta aislada.' }
-            if (-not (Test-Path (Join-Path $destino 'client/dist/index.html'))) { throw 'La web de prueba no se instaló.' }
-            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'No se conservaron los datos ficticios preexistentes.' }
-            $rutaProhibida = Join-Path $env:RUNNER_TEMP 'intento-de-carpeta-externa'
-            $intento = Start-Process -FilePath $exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$rutaProhibida`"" -Wait -PassThru
-            if ($intento.ExitCode -eq 0 -or (Test-Path (Join-Path $rutaProhibida 'sgf_escritorio.exe'))) { throw 'La prueba permitió una ruta de instalación no aislada.' }
-            if ((Get-Content $testigo -Raw).Trim() -ne 'informacion ficticia') { throw 'El intento alteró datos ficticios anteriores.' }
-            Write-Host 'Instalación aislada y conservación de datos anteriores: OK.'
-          } finally { Remove-Item $testigo -Force -ErrorAction Ignore }
+            Start-Sleep -Seconds 2
+            if ($proceso.HasExited) { throw 'El proceso simulado de la instalación anterior no arrancó.' }
+            $bloqueada = Start-Process $exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=""' -Wait -PassThru
+            if ($bloqueada.ExitCode -eq 0 -or $proceso.HasExited -or (Get-FileHash $testigo).Hash -ne $huella) { throw 'La actualización debe detenerse sin terminar SGF ni cambiar datos.' }
+          } finally { if (-not $proceso.HasExited) { Stop-Process -Id $proceso.Id -Force } }
+          $r = Start-Process $exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=""' -Wait -PassThru
+          if ($r.ExitCode -ne 0 -or (Get-FileHash $testigo).Hash -ne $huella) { throw 'La actualización no conservó los datos simulados.' }
+          $reg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E2C1A54-6B7D-4C3E-9F11-7A5D2B4C8E90}_is1'
+          $info = Get-ItemProperty $reg
+          if ($info.DisplayVersion -ne '4.0.9' -or $info.InstallLocation.TrimEnd('\') -ine $destino.TrimEnd('\')) { throw 'La nueva versión no actualizó la instalación anterior.' }
+          if (-not (Test-Path (Join-Path $destino 'servicio/gestionar.ps1'))) { throw 'Falta el gestor de servicio.' }
+          Write-Host 'Actualización en la misma carpeta, bloqueo de proceso activo y datos ficticios conservados: OK.'
 
       - name: Comprimir version portable
         shell: pwsh
@@ -409,49 +435,7 @@ jobs:
             SGF-Escritorio-Portable-*.zip
           if-no-files-found: error
 
-      # ── Release automática ────────────────────────────────────────────────
-      # Antes el .exe solo quedaba como "artifact" de la ejecución (hay que estar
-      # registrado para descargarlo y caduca). Ahora cada compilación correcta
-      # publica una Release con el instalador dentro, que es lo que se descarga
-      # desde la página del repositorio.
-      - name: Publicar la Release con el instalador
-        if: (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/feature/sgf-4-0-8-prueba') && env.VERSION == '4.0.8'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $etiqueta = "v${{ env.VERSION }}"
-          $instalador = (Get-ChildItem 'instalador/SGF-Escritorio-Setup-*.exe' | Select-Object -First 1).FullName
-          $portable = (Get-ChildItem 'SGF-Escritorio-Portable-*.zip' | Select-Object -First 1).FullName
-          if (-not $instalador) { Write-Error "No se genero el instalador"; exit 1 }
-
-          $notas = @"
-          ## SGF Escritorio 4.0.8 — versión de prueba aislada
-
-          **Solo para pruebas con datos ficticios. No es una actualización de producción.** No la conecte a bases Oracle o SQL Server reales ni la utilice con facturas reales.
-
-          - ``SGF-Escritorio-Setup-4.0.8.exe`` instala una copia de prueba en una carpeta separada; no actualiza el programa SGF existente.
-          - ``SGF-Escritorio-Portable-4.0.8.zip`` ejecuta la misma versión sin instalar. Ambas usan **%APPDATA%\SGF-PRUEBA-4.0.8**, no la carpeta de datos de producción. Instalador y portable comparten los datos de prueba entre sí.
-          - La aplicación solo permite SQLite local en esta edición: Oracle y SQL Server están bloqueados. El servicio de Windows y la opción de inicio automático del sistema están desactivados para evitar afectar el SGF existente. No se cambia el cortafuegos ni se instala ningún certificado automáticamente.
-
-          Esta prueba ofrece un enlace privado HTTPS sin configurar rangos de clientes; cada usuario debe iniciar sesión. Al reiniciar el servidor cambia el enlace. La otra PC debe confiar explícitamente en el certificado y poder alcanzar al servidor. DNS/mDNS, cortafuegos y cambios de IP pueden impedir la conexión. Una IP nueva que no figure en el certificado no tendrá un enlace IP válido.
-
-          Las pruebas automatizadas utilizaron datos ficticios y máquinas virtuales. Todavía no se ha validado entre dos PC físicas ni una actualización segura con facturas o servicio activo. Mantenga su instalación real intacta y no exponga este servidor a Internet.
-          "@
-          $notas | Set-Content -Path notas-release.md -Encoding utf8
-
-          # Nunca reemplazar una versión ya distribuida.
-          gh release view $etiqueta --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) { throw "La release $etiqueta ya existe; no se sobrescribira." }
-          gh release create $etiqueta $instalador $portable `
-            --repo ${{ github.repository }} `
-            --target '${{ github.sha }}' `
-            --title "SGF Escritorio v${{ env.VERSION }} — PRUEBA AISLADA" `
-            --prerelease `
-            --latest=false `
-            --notes-file notas-release.md
-          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la release.' }
-          Write-Host "Release publicada: $etiqueta"
+      # Publicación manual solo después de revisar todas las pruebas.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Navegador real con datos ficticios: la web servida por el mismo servidor

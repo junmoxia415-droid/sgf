@@ -29,9 +29,9 @@ USO DIARIO
   Inicio. En esta pantalla aparece la direccion para otras computadoras.
 - En otra PC de la misma red privada, escriba ese enlace en su navegador. Un
   administrador debe crear primero una cuenta para cada persona en Usuarios.
-- El enlace usa HTTP: contrasenas y datos NO viajan cifrados. Utilicelo solo
-  en una red privada confiable; no lo exponga en Internet. Windows puede pedir
-  autorizar el acceso de Node en el cortafuegos para redes privadas.
+- Use HTTPS y compruebe que el nombre y el certificado sean de confianza.
+  Si aparece una advertencia no se ha verificado la identidad del servidor.
+  No exponga SGF en Internet. El cortafuegos y DNS los configura el administrador.
 - Para procesar facturas: menu "Facturas" y arrastre los PDF a la ventana.
 - Si algun dia algo va mal: menu "Servidor" y revise el registro.
 - Si dice que el puerto esta ocupado, cierre las otras ventanas de SGF y abra
@@ -101,4 +101,8 @@ Al instalar una actualización se conservan los datos por defecto. Si elige
 empezar desde cero, se archiva la carpeta local SGF en una carpeta SGF-respaldo
 y aparece el asistente. Cierre todas las ventanas de SGF antes de instalar.
 Las bases de datos externas no se borran. Guarde una copia aparte antes de
-actualizar o elegir empezar de cero.
+actualizar o elegir empezar de cero. Cierre SGF y su servidor de forma normal
+antes de instalar. Si existe el servicio SGFServidor, desactivelo desde SGF
+antes de actualizar. El instalador no lo detiene ni elimina automaticamente.
+Si configura un nombre DNS fijo, SGF no cambia el DNS ni el certificado;
+al cambiar de equipo actualice el registro DNS manualmente.
